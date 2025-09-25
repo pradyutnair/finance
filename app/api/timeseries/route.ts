@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { databases } from "@/lib/appwrite";
-import { Query } from "appwrite";
+import { Client, Databases, Query } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 
-const DATABASE_ID = "68d42ac20031b27284c9";
-const TRANSACTIONS_COLLECTION_ID = "transactions";
+const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +13,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+
+    // Create Appwrite client
+    const client = new Client()
+      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
+      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+    
+    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const databases = new Databases(client);
 
     // Build query filters
     const filters = [Query.equal("userId", userId)];

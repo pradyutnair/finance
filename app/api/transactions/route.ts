@@ -1,75 +1,59 @@
-import { NextRequest, NextResponse } from "next/server";
-import { databases } from "@/lib/appwrite";
-import { Query } from "appwrite";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
+import { Client, Databases, Query } from "appwrite";
 
-const DATABASE_ID = "68d42ac20031b27284c9";
-const TRANSACTIONS_COLLECTION_ID = "transactions";
-
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    // Authenticate user
-    const user: any = await requireAuthUser(request);
-    const userId = user.$id;
+    // Require authenticated user
+    const user = await requireAuthUser(request);
+    const userId = user.$id || user.id;
+
     const { searchParams } = new URL(request.url);
-    
+    const accountId = searchParams.get("accountId");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
-    const category = searchParams.get("category");
-    const accountId = searchParams.get("accountId");
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
 
-    // Build query filters
-    const filters = [Query.equal("userId", userId)];
+    // Create Appwrite client
+    const client = new Client()
+      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
+      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
     
-    if (category) {
-      filters.push(Query.equal("category", category));
-    }
-    
+    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const databases = new Databases(client);
+
+    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+
+    // Build query
+    const queries = [Query.equal('userId', userId)];
     if (accountId) {
-      filters.push(Query.equal("accountId", accountId));
+      queries.push(Query.equal('accountId', accountId));
     }
     
-    if (from && to) {
-      filters.push(Query.greaterThanEqual("bookingDate", from));
-      filters.push(Query.lessThanEqual("bookingDate", to));
-    }
+    // Add ordering by booking date (newest first)
+    queries.push(Query.orderDesc('bookingDate'));
+    queries.push(Query.limit(limit));
+    queries.push(Query.offset(offset));
 
-    // Fetch transactions
+    // Get user's transactions
     const transactionsResponse = await databases.listDocuments(
       DATABASE_ID,
       TRANSACTIONS_COLLECTION_ID,
-      [
-        ...filters,
-        Query.orderDesc("bookingDate"),
-        Query.limit(limit),
-        Query.offset(offset)
-      ]
+      queries
     );
 
-    // Transform data to match frontend expectations
-    const transactions = transactionsResponse.documents.map(doc => ({
-      id: doc.$id,
-      date: doc.bookingDate,
-      merchant: doc.counterparty || "Unknown",
-      description: doc.description || "",
-      category: doc.category || "Uncategorized",
-      amount: doc.amount,
-      currency: doc.currency,
-      accountId: doc.accountId
-    }));
-
     return NextResponse.json({
-      transactions,
+      ok: true,
+      transactions: transactionsResponse.documents,
       total: transactionsResponse.total
     });
 
-  } catch (error: any) {
-    console.error("Error fetching transactions:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch transactions" },
-      { status: error.status || 500 }
-    );
+  } catch (err: any) {
+    console.error('Error fetching transactions:', err);
+    const status = err?.status || 500;
+    const message = err?.message || "Internal Server Error";
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

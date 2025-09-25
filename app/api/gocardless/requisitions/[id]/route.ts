@@ -15,7 +15,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     try {
       const authedUser: any = await requireAuthUser(request);
       authedUserId = (authedUser?.$id || authedUser?.id || null) as string | null;
-    } catch {
+    } catch (authError) {
+      console.log('🔍 Authentication failed in callback, will use reference parsing:', authError.message);
       // Not authenticated via JWT/cookie; will fallback to reference parsing
     }
 
@@ -48,17 +49,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!userId) {
       const reference: string | undefined = requisition.reference;
       if (reference && typeof reference === 'string') {
-        // Support both user_ and sandbox_ prefixes
-        const match = reference.match(/^(?:user|sandbox)_([^_]+)_/);
+        console.log('🔍 Parsing user ID from reference:', reference);
+        
+        // Support both user_ and sandbox_ prefixes, and dev-user format
+        let match = reference.match(/^(?:user|sandbox)_([^_]+)_/);
+        if (!match) {
+          // Try dev-user format: dev-user-timestamp
+          match = reference.match(/^dev-user-(\d+)/);
+        }
+        
         if (match && match[1]) {
           userId = match[1];
+          console.log('✅ Extracted user ID from reference:', userId);
+        } else {
+          console.log('❌ Could not parse user ID from reference format');
         }
       }
     }
 
     if (!userId) {
+      console.error('❌ Unable to determine user ID from session or reference');
+      console.error('📝 Requisition reference:', requisition?.reference);
+      console.error('🔑 Authenticated user ID:', authedUserId);
       return NextResponse.json({ ok: false, error: "Unable to determine user from session or reference" }, { status: 400 });
     }
+
+    console.log('✅ Processing requisition for user:', userId);
 
     // If requisition is linked, process the accounts
     if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {

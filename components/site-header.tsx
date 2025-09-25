@@ -20,7 +20,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
         <DateRangePicker
             onUpdate={(values) => console.log(values)}
-            initialDateFrom={new Date()}
+            initialDateFrom={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)}
             initialDateTo={new Date()}
             align="start"
             locale="en-GB"

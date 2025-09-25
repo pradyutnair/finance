@@ -1,60 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
-import { databases } from "@/lib/appwrite";
-import { Query } from "appwrite";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
+import { Client, Databases, Query } from "appwrite";
 
-const DATABASE_ID = "68d42ac20031b27284c9";
-const BALANCES_COLLECTION_ID = "balances";
-const BANK_ACCOUNTS_COLLECTION_ID = "bank_accounts";
-
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    // Authenticate user
-    const user: any = await requireAuthUser(request);
-    const userId = user.$id;
+    // Require authenticated user
+    const user = await requireAuthUser(request);
+    const userId = user.$id || user.id;
 
-    // Fetch bank accounts
+    // Create Appwrite client
+    const client = new Client()
+      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
+      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+    
+    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const databases = new Databases(client);
+
+    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+    const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
+
+    // Get user's bank accounts
     const accountsResponse = await databases.listDocuments(
       DATABASE_ID,
       BANK_ACCOUNTS_COLLECTION_ID,
-      [Query.equal("userId", userId)]
+      [Query.equal('userId', userId)]
     );
 
-    // Fetch balances
-    const balancesResponse = await databases.listDocuments(
-      DATABASE_ID,
-      BALANCES_COLLECTION_ID,
-      [Query.equal("userId", userId)]
-    );
-
-    // Create a map of account balances
-    const balanceMap = new Map();
-    balancesResponse.documents.forEach(balance => {
-      balanceMap.set(balance.accountId, balance);
+    return NextResponse.json({
+      ok: true,
+      accounts: accountsResponse.documents
     });
 
-    // Transform data to match frontend expectations
-    const accounts = accountsResponse.documents.map(account => {
-      const balance = balanceMap.get(account.accountId);
-      
-      return {
-        id: account.accountId,
-        name: account.accountName || "Unknown Account",
-        type: account.type || "unknown",
-        balance: balance?.balanceAmount || 0,
-        currency: balance?.currency || "EUR",
-        status: "active", // Bank accounts don't have status field
-        lastSync: account.$updatedAt
-      };
-    });
-
-    return NextResponse.json(accounts);
-
-  } catch (error: any) {
-    console.error("Error fetching accounts:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch accounts" },
-      { status: error.status || 500 }
-    );
+  } catch (err: any) {
+    console.error('Error fetching accounts:', err);
+    const status = err?.status || 500;
+    const message = err?.message || "Internal Server Error";
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

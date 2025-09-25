@@ -9,7 +9,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ refe
     console.log('🔍 Looking up requisition by reference:', reference);
 
     // List all requisitions and find the one with matching reference
-    const requisitions = await listRequisitions();
+    let requisitions;
+    try {
+      requisitions = await listRequisitions();
+    } catch (gcError) {
+      console.error('❌ Failed to list requisitions from GoCardless:', gcError);
+      return NextResponse.json({ ok: false, error: "Failed to fetch requisitions from GoCardless" }, { status: 500 });
+    }
+
     const matchingRequisition = requisitions.results?.find((req: any) => req.reference === reference);
 
     if (!matchingRequisition) {
