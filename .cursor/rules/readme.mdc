@@ -1,0 +1,5 @@
+---
+description: Do not create READMEs until explcitly asked to do so. Do not clutter the project with useless files. 
+globs:
+alwaysApply: true
+---

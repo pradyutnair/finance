@@ -1,0 +1,204 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
+import { requireAuthUser } from "@/lib/auth";
+import { getRequisition, getAccounts, getBalances, getTransactions, HttpError } from "@/lib/gocardless";
+import { Client, Databases, ID } from "appwrite";
+import { createAppwriteClient } from "@/lib/auth";
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id: requisitionId } = await params;
+
+    // Get requisition status from GoCardless
+    const requisition = await getRequisition(requisitionId);
+    
+    if (!requisition) {
+      return NextResponse.json({ ok: false, error: "Requisition not found" }, { status: 404 });
+    }
+
+    // Extract user ID from reference (format: user_[userId]_[timestamp])
+    const userIdMatch = requisition.reference?.match(/user_([^_]+)_/);
+    if (!userIdMatch) {
+      return NextResponse.json({ ok: false, error: "Invalid reference format" }, { status: 400 });
+    }
+    const userId = userIdMatch[1];
+
+    // If requisition is linked, process the accounts
+    if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {
+      // Create server-side client with API key
+      const client = new Client()
+        .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
+        .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+      
+      // Set API key for server-side operations
+      client.setKey(process.env.APPWRITE_API_KEY as string);
+      const databases = new Databases(client);
+
+      try {
+        // Store requisition in database first
+        try {
+          await databases.createDocument(
+            process.env.APPWRITE_DATABASE_ID as string,
+            'requisitions',
+            requisition.id,
+            {
+              userId: userId,
+              requisitionId: requisition.id,
+              institutionId: requisition.institution_id,
+              institutionName: requisition.institution_name || 'Unknown Bank',
+              status: requisition.status,
+              reference: requisition.reference,
+            }
+          );
+        } catch (error) {
+          console.error('Error storing requisition:', error);
+        }
+
+        // Create bank connection record first to get connectionId
+        let connectionDocId = '';
+        try {
+          const connectionDoc = await databases.createDocument(
+            process.env.APPWRITE_DATABASE_ID as string,
+            'bank_connections',
+            ID.unique(),
+            {
+              userId: userId,
+              institutionId: requisition.institution_id,
+              institutionName: requisition.institution_name || 'Unknown Bank',
+              status: 'active',
+              requisitionId: requisition.id,
+            }
+          );
+          connectionDocId = connectionDoc.$id;
+          console.log('✅ Created bank connection:', connectionDocId);
+        } catch (error) {
+          console.error('Error storing bank connection:', error);
+          throw error; // Stop processing if connection creation fails
+        }
+
+        // Process each account
+        for (const accountId of requisition.accounts) {
+          try {
+            // Get account details
+            const accountDetails = await getAccounts(accountId);
+            
+            // Store bank account in database
+            try {
+              const accountDoc = await databases.createDocument(
+                process.env.APPWRITE_DATABASE_ID as string,
+                'bank_accounts',
+                accountId,
+                {
+                  userId: userId,
+                  connectionId: connectionDocId,
+                  accountId: accountId,
+                  institutionId: requisition.institution_id,
+                  institutionName: requisition.institution_name || 'Unknown Bank',
+                  iban: accountDetails.iban || null,
+                  accountName: accountDetails.name || null,
+                  currency: accountDetails.currency || 'EUR',
+                  status: 'active',
+                  raw: JSON.stringify(accountDetails),
+                }
+              );
+
+              // Get and store balances
+              try {
+                const balancesResponse = await getBalances(accountId);
+                const balances = balancesResponse?.balances || [];
+                if (balances && balances.length > 0) {
+                  for (const balance of balances) {
+                    try {
+                      const balanceId = `${accountId}_${balance.balanceType || 'closingBooked'}_${balance.referenceDate || new Date().toISOString().split('T')[0]}`;
+                      await databases.createDocument(
+                        process.env.APPWRITE_DATABASE_ID as string,
+                        'balances',
+                        balanceId,
+                        {
+                          userId: userId,
+                          accountId: accountId,
+                          balanceAmount: balance.balanceAmount?.amount || '0',
+                          currency: balance.balanceAmount?.currency || 'EUR',
+                          balanceType: balance.balanceType || 'closingBooked',
+                          referenceDate: balance.referenceDate || new Date().toISOString().split('T')[0],
+                        }
+                      );
+                    } catch (error) {
+                      console.error('Error storing balance:', error);
+                    }
+                  }
+                }
+              } catch (balanceError) {
+                console.error(`Error fetching balances for account ${accountId}:`, balanceError);
+              }
+
+              // Get and store recent transactions
+              try {
+                const transactionsResponse = await getTransactions(accountId);
+                const transactions = transactionsResponse?.transactions?.booked || [];
+                if (transactions && transactions.length > 0) {
+                  for (const transaction of transactions.slice(0, 100)) {
+                    try {
+                      const transactionDocId = transaction.transactionId || 
+                                              transaction.internalTransactionId || 
+                                              `${accountId}_${transaction.bookingDate || new Date().toISOString().split('T')[0]}_${Date.now()}`;
+                      
+                      await databases.createDocument(
+                        process.env.APPWRITE_DATABASE_ID as string,
+                        'transactions',
+                        transactionDocId,
+                        {
+                          userId: userId,
+                          accountId: accountId,
+                          transactionId: transaction.transactionId || transaction.internalTransactionId || transactionDocId,
+                          amount: transaction.transactionAmount?.amount || '0',
+                          currency: transaction.transactionAmount?.currency || 'EUR',
+                          bookingDate: transaction.bookingDate || null,
+                          bookingDateTime: transaction.bookingDateTime || null,
+                          valueDate: transaction.valueDate || null,
+                          description: transaction.remittanceInformationUnstructured || transaction.additionalInformation || '',
+                          counterparty: transaction.creditorName || transaction.debtorName || '',
+                          raw: JSON.stringify(transaction),
+                        }
+                      );
+                    } catch (error) {
+                      console.error('Error storing transaction:', error);
+                    }
+                  }
+                }
+              } catch (transactionError) {
+                console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
+              }
+            } catch (error) {
+              console.error('Error storing bank account:', error);
+            }
+          } catch (accountError) {
+            console.error(`Error processing account ${accountId}:`, accountError);
+          }
+        }
+
+      } catch (dbError) {
+        console.error("Error storing data in database:", dbError);
+        // Still return success if GoCardless connection worked
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      status: requisition.status,
+      institutionName: requisition.institution_name,
+      accountCount: requisition.accounts?.length || 0,
+      requisition
+    });
+
+  } catch (err: any) {
+    console.error("Error processing requisition callback:", err);
+    if (err instanceof HttpError) {
+      return NextResponse.json({ ok: false, error: err.message, details: err.details }, { status: err.status });
+    }
+    const status = err?.status || 500;
+    const message = err?.message || "Internal Server Error";
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}
