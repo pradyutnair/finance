@@ -16,7 +16,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const authedUser: any = await requireAuthUser(request);
       authedUserId = (authedUser?.$id || authedUser?.id || null) as string | null;
     } catch (authError) {
-      console.log('🔍 Authentication failed in callback, will use reference parsing:', authError.message);
+      const message = authError instanceof Error ? authError.message : String(authError);
+      console.log('🔍 Authentication failed in callback, will use reference parsing:', message);
       // Not authenticated via JWT/cookie; will fallback to reference parsing
     }
 

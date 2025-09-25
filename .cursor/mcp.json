@@ -6,6 +6,31 @@
         "shadcn@latest",
         "mcp"
       ]
-    }
+    },
+    "appwrite-api": {
+            "command": "uvx",
+            "args": [
+                "mcp-server-appwrite",
+                "--users"
+            ],
+            "env": {
+                "APPWRITE_API_KEY": "standard_0c6432d0a054cf491d52e972231b23b791e14385eae70163be98a8702ec5048c002528bab7fafd8e83c68f88a4c95eaff2e78e7b150502cad3443516c7af113774182f5935be0fb60c0f5c73732db3409f2462e5816807c95ee0ec0b48df657d4d92bee485aea0f56c4ed169f89362753a6d22083ddc3fc64aa8e694312c64ea",
+                "APPWRITE_PROJECT_ID": "68d3cfe5001f03d5c030",
+                "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1"
+            }
+    },
+    "appwrite-docs": {
+      "url": "https://mcp-for-docs.appwrite.io",
+      "headers": {}
+    },
+    "prompt-kit": {
+      "description": "prompt-kit registry",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "shadcn@canary", "registry:mcp"],
+      "env": {
+          "REGISTRY_URL": "https://www.prompt-kit.com/c/registry.json"
+          }
+      }
   }
 }

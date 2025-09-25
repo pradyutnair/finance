@@ -3,9 +3,8 @@
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import CalendarRangeCalendarMultiMonthDemo from "./multi-calendar"
-import DateRangePicker from "./ui/date-range-picker"
 import { ThemeToggle } from "./theme-toggle"
+import { DateRangePicker } from "./date-range-picker"
 
 export function SiteHeader() {
   return (
@@ -18,13 +17,12 @@ export function SiteHeader() {
         />
         <h1 className="text-base font-medium">Dashboard</h1>
         <div className="ml-auto flex items-center gap-2">
-        <DateRangePicker
-            onUpdate={(values) => console.log(values)}
-            initialDateFrom={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)}
-            initialDateTo={new Date()}
-            align="start"
-            locale="en-GB"
-            showCompare={false}
+          <DateRangePicker
+            date={{
+              from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+              to: new Date()
+            }}
+            onDateChange={(values) => console.log(values)}
           />
           <ThemeToggle />
         </div>
