@@ -1,15 +1,15 @@
 import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
-import { DataTable } from "@/components/data-table"
+import { AiChatCard } from "@/components/chat/ai-chat-card"
+import { RecentExpensesTable } from "@/components/dashboard/recent-expenses-table"
+import { ExpenseChart } from "@/components/dashboard/expense-chart"
 import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
 import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-
-import data from "./data.json"
 
 export default function Page() {
   return (
@@ -32,7 +32,19 @@ export default function Page() {
                 <div className="px-4 lg:px-6">
                   <ChartAreaInteractive />
                 </div>
-                <DataTable data={data} />
+                <div className="px-4 lg:px-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 min-h-[400px]">
+                    <div className="md:col-span-2 lg:col-span-1">
+                      <AiChatCard />
+                    </div>
+                    <div className="md:col-span-1 lg:col-span-1">
+                      <RecentExpensesTable />
+                    </div>
+                    <div className="md:col-span-1 lg:col-span-1">
+                      <ExpenseChart />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
