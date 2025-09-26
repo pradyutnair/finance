@@ -32,24 +32,40 @@ export async function GET(request: NextRequest) {
     const databases = new Databases(client);
 
     // Build query filters for expenses only
-    const filters = [
+    const baseFilters = [
       Query.equal("userId", userId),
-      Query.lessThan("amount", "0") // Only expenses (string comparison)
+      Query.lessThan("amount", "0"), // compare as string to match schema
     ];
-    
+
     if (from && to) {
-      filters.push(Query.greaterThanEqual("bookingDate", from));
-      filters.push(Query.lessThanEqual("bookingDate", to));
+      baseFilters.push(Query.greaterThanEqual("bookingDate", from));
+      baseFilters.push(Query.lessThanEqual("bookingDate", to));
     }
 
-    // Fetch expense transactions
-    const transactionsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
-      filters
-    );
+    // Fetch ALL expense transactions in range (paginate)
+    const pageFilters = [
+      ...baseFilters,
+      Query.orderDesc("bookingDate"),
+      Query.limit(100),
+    ];
 
-    const transactions = transactionsResponse.documents as TxDoc[];
+    let cursor: string | undefined = undefined;
+    const transactions: TxDoc[] = [];
+    while (true) {
+      const q = [...pageFilters];
+      if (cursor) q.push(Query.cursorAfter(cursor));
+      const resp = await databases.listDocuments(
+        DATABASE_ID,
+        TRANSACTIONS_COLLECTION_ID,
+        q
+      );
+      const docs = resp.documents as (TxDoc & { $id?: string })[];
+      transactions.push(...docs);
+      if (docs.length < 100) break;
+      const lastId = docs[docs.length - 1]?.$id;
+      if (!lastId) break;
+      cursor = lastId;
+    }
 
     // Group by category
     const categoryData = new Map();
@@ -71,10 +87,11 @@ export async function GET(request: NextRequest) {
       .map(([name, amount]) => ({
         name,
         amount: Math.round(amount * 100) / 100,
-        percent: Math.round((amount / totalExpenses) * 100 * 100) / 100
+        percent: totalExpenses > 0
+          ? Math.round((amount / totalExpenses) * 100 * 100) / 100
+          : 0
       }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 10); // Top 10 categories
+      .sort((a, b) => b.amount - a.amount);
 
     return NextResponse.json(categoriesData);
 

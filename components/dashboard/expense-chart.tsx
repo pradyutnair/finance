@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Pie, PieChart, Cell, ResponsiveContainer } from "recharts"
 import { cn } from "@/lib/utils"
+import { PieChart as PieChartIcon } from "lucide-react"
 
 import {
   Card,
@@ -23,16 +24,44 @@ type Item = {
   fill: string
 }
 
+// More vibrant, carefully selected colors that work well together
 const categoryColors = [
-  "hsl(0 0% 20%)",
-  "hsl(0 0% 45%)", 
-  "hsl(0 0% 25%)",
-  "hsl(0 0% 65%)",
-  "hsl(0 0% 35%)",
-  "hsl(0 0% 55%)",
-  "hsl(0 0% 15%)",
-  "hsl(0 0% 75%)",
+  "hsl(0, 0%, 23%)",  // Dark grey
+  "hsl(0, 0%, 30%)",
+  "hsl(0, 0%, 37%)",
+  "hsl(0, 0%, 44%)",
+  "hsl(0, 0%, 47%)",
+  "hsl(0, 0%, 54%)",
+  "hsl(0, 0%, 61%)",
+  "hsl(0, 0%, 87%)"   // Light grey
 ]
+
+// Currency symbol mapping
+function getCurrencySymbol(currency: string = 'EUR'): string {
+  const symbols: Record<string, string> = {
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+    'JPY': '¥',
+    'CNY': '¥',
+    'INR': '₹',
+    'KRW': '₩',
+    'CAD': 'C$',
+    'AUD': 'A$',
+    'CHF': 'CHF',
+    'SEK': 'kr',
+    'NOK': 'kr',
+    'DKK': 'kr',
+    'PLN': 'zł',
+    'BRL': 'R$',
+    'MXN': '$',
+    'ZAR': 'R',
+    'SGD': 'S$',
+    'HKD': 'HK$',
+    'NZD': 'NZ$'
+  }
+  return symbols[currency] || currency
+}
 
 export function ExpenseChart() {
   const { dateRange, formatDateForAPI } = useDateRange()
@@ -44,21 +73,37 @@ export function ExpenseChart() {
 
   const { data: categoriesData, isLoading, error } = useCategories(dateRangeForAPI)
 
+  // Currency not provided by API yet; assume EUR
+  const currency = 'EUR'
+  const currencySymbol = getCurrencySymbol(currency)
+
   const chartData: Item[] = React.useMemo(() => {
     if (!categoriesData || categoriesData.length === 0) return []
-    
-    return categoriesData.slice(0, 8).map((category: any, index: number) => ({
-      name: category.name,
-      amount: category.amount,
-      percent: category.percent,
+
+    const TOP_N = 8
+    const totalAll = categoriesData.reduce((a, c: any) => a + (c.amount || 0), 0)
+    const top = categoriesData.slice(0, TOP_N).map((c: any, index: number) => ({
+      name: c.name,
+      amount: c.amount,
+      percent: c.percent,
       fill: categoryColors[index % categoryColors.length]
     }))
+    const othersAmount = categoriesData.slice(TOP_N).reduce((a: number, c: any) => a + (c.amount || 0), 0)
+    if (othersAmount > 0) {
+      top.push({
+        name: "Other",
+        amount: Number(othersAmount.toFixed(2)),
+        percent: totalAll > 0 ? Number(((othersAmount / totalAll) * 100).toFixed(2)) : 0,
+        fill: categoryColors[(TOP_N) % categoryColors.length]
+      })
+    }
+    return top
   }, [categoriesData])
 
-  const total = React.useMemo(
-    () => chartData.reduce((a, c) => a + c.amount, 0),
-    [chartData]
-  )
+  const total = React.useMemo(() => {
+    // Sum all categories (server already returns full range totals)
+    return chartData.reduce((a, c) => a + c.amount, 0)
+  }, [chartData])
 
   // Which slice is emphasized (hover) or locked (click)
   const [activeIndex, setActiveIndex] = React.useState<number | null>(null)
@@ -66,16 +111,21 @@ export function ExpenseChart() {
 
   const currentIndex = lockedIndex ?? activeIndex
   const current = typeof currentIndex === "number" ? chartData[currentIndex] : undefined
-  const label = current ? current.name : "Total"
 
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (active && payload?.length) {
       const d: Item = payload[0].payload
       return (
-        <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
-          <p className="text-popover-foreground font-medium">{d.name}</p>
-          <p className="text-muted-foreground">
-            €{d.amount.toLocaleString()} • {d.percent.toFixed(1)}%
+        <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-xl">
+          <div className="flex items-center gap-2 mb-1">
+            <div 
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: d.fill }}
+            />
+            <p className="text-sm font-medium text-popover-foreground">{d.name}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {currencySymbol}{d.amount.toLocaleString()} • {d.percent.toFixed(1)}%
           </p>
         </div>
       )
@@ -86,12 +136,18 @@ export function ExpenseChart() {
   if (isLoading) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Breakdown</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Breakdown</CardTitle>
+          <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent className="flex flex-col flex-1 p-6">
-          <div className="relative flex-1 flex items-center justify-center">
-            <Skeleton className="aspect-square max-h-[260px] w-full rounded-full" />
+          <div className="relative flex-1 flex items-center justify-center min-h-[280px]">
+            <Skeleton className="aspect-square h-[240px] w-[240px] rounded-full" />
+          </div>
+          <div className="mt-4 space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-4 w-full" />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -101,12 +157,17 @@ export function ExpenseChart() {
   if (error || !categoriesData) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Breakdown</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Breakdown</CardTitle>
+          <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-center text-muted-foreground">
-            Failed to load expense breakdown. Please try again.
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+          <PieChartIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
+          <p className="text-sm text-muted-foreground text-center">
+            Unable to load breakdown
+          </p>
+          <p className="text-xs text-muted-foreground/70 text-center mt-1">
+            Please try refreshing
           </p>
         </CardContent>
       </Card>
@@ -116,12 +177,17 @@ export function ExpenseChart() {
   if (!total || chartData.length === 0) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Breakdown</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Breakdown</CardTitle>
+          <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-center text-muted-foreground">
-            No expenses for this period.
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+          <PieChartIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
+          <p className="text-sm text-muted-foreground text-center">
+            No expenses yet
+          </p>
+          <p className="text-xs text-muted-foreground/70 text-center mt-1">
+            Start tracking to see your breakdown
           </p>
         </CardContent>
       </Card>
@@ -130,32 +196,40 @@ export function ExpenseChart() {
 
   return (
     <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Breakdown</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle className="text-base font-medium">Breakdown</CardTitle>
+        <PieChartIcon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
 
       <CardContent className="flex flex-col flex-1 p-6">
         {/* Donut */}
-        <div className="relative flex-1 flex items-center justify-center">
+        <div className="relative flex-1 flex items-center justify-center min-h-[280px]">
           <ChartContainer
             config={{}}
-            className="mx-auto aspect-square max-h-[260px] w-full"
+            className="mx-auto aspect-square h-[240px] w-[240px]"
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <ChartTooltip cursor={false} content={<CustomTooltip />} />
+                <defs>
+                  {chartData.map((entry, idx) => (
+                    <filter key={`shadow-${idx}`} id={`shadow-${idx}`}>
+                      <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15"/>
+                    </filter>
+                  ))}
+                </defs>
                 <Pie
                   data={chartData}
                   dataKey="amount"
                   nameKey="name"
-                  innerRadius={80}
-                  outerRadius={120}
-                  strokeWidth={2}
-                  stroke="hsl(var(--background))"
+                  innerRadius={75}
+                  outerRadius={110}
+                  strokeWidth={0}
                   onMouseLeave={() => setActiveIndex(null)}
                   onMouseEnter={(_, idx) => lockedIndex == null && setActiveIndex(idx)}
                   onClick={(_, idx) => setLockedIndex(lockedIndex === idx ? null : idx)}
-                  isAnimationActive={false}
+                  animationBegin={0}
+                  animationDuration={800}
                 >
                   {chartData.map((entry, idx) => {
                     const isActive = currentIndex === idx
@@ -164,11 +238,14 @@ export function ExpenseChart() {
                         key={entry.name}
                         fill={entry.fill}
                         className={cn(
-                          "transition-all cursor-pointer",
-                          isActive ? "opacity-100" : "opacity-85 hover:opacity-95"
+                          "transition-all duration-200 cursor-pointer",
+                          isActive ? "opacity-100" : "opacity-75 hover:opacity-90"
                         )}
-                        // enlarge active slice subtly
-                        {...(isActive ? { style: { transform: 'scale(1.04)' } } : {})}
+                        style={{
+                          filter: isActive ? `url(#shadow-${idx})` : 'none',
+                          transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                          transformOrigin: 'center'
+                        }}
                       />
                     )
                   })}
@@ -179,25 +256,83 @@ export function ExpenseChart() {
 
           {/* Center stat */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="text-center leading-tight">
-              <div className="text-xs text-muted-foreground">
-                {label}
-              </div>
-              <div className="text-3xl font-bold tabular-nums">
-                {current
-                  ? `€${current.amount.toLocaleString()}`
-                  : `€${total.toLocaleString()}`}
-              </div>
-              {current && (
-                <div className="text-xs text-muted-foreground">
-                  {current.percent.toFixed(1)}%
-                </div>
+            <div className="text-center">
+              {current ? (
+                <>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">
+                    {current.name}
+                  </div>
+                  <div className="text-2xl font-bold tracking-tight">
+                    {currencySymbol}{Math.round(current.amount).toLocaleString()}
+                  </div>
+                  <div className="text-xs font-medium text-muted-foreground/80 mt-0.5">
+                    {current.percent.toFixed(1)}% of total
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">
+                    Total Expenses
+                  </div>
+                  <div className="text-2xl font-bold tracking-tight">
+                    {currencySymbol}{Math.round(total).toLocaleString()}
+                  </div>
+                  <div className="text-xs font-medium text-muted-foreground/80 mt-0.5">
+                    {chartData.length} categories
+                  </div>
+                </>
               )}
             </div>
           </div>
         </div>
 
+        {/* Legend */}
+        <div className="mt-6 grid grid-cols-2 gap-2">
+          {chartData.slice(0, 6).map((item, idx) => (
+            <button
+              key={item.name}
+              onClick={() => setLockedIndex(lockedIndex === idx ? null : idx)}
+              onMouseEnter={() => lockedIndex == null && setActiveIndex(idx)}
+              onMouseLeave={() => setActiveIndex(null)}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all text-left",
+                "hover:bg-muted/50",
+                currentIndex === idx && "bg-muted/60"
+              )}
+              style={{
+                animation: `fadeIn 0.5s ease-out ${idx * 0.05}s backwards`
+              }}
+            >
+              <div 
+                className="w-2 h-2 rounded-full flex-shrink-0 transition-transform"
+                style={{ 
+                  backgroundColor: item.fill,
+                  transform: currentIndex === idx ? 'scale(1.25)' : 'scale(1)'
+                }}
+              />
+              <span className="text-xs font-medium text-muted-foreground truncate flex-1">
+                {item.name}
+              </span>
+              <span className="text-xs font-mono text-muted-foreground/70">
+                {item.percent.toFixed(0)}%
+              </span>
+            </button>
+          ))}
+        </div>
       </CardContent>
+      
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </Card>
   )
 }

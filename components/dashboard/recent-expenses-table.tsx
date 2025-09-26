@@ -4,7 +4,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTransactions } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
+import { TrendingDown, Receipt } from "lucide-react"
 
+// Currency symbol mapping
+function getCurrencySymbol(currency: string): string {
+  const symbols: Record<string, string> = {
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+    'JPY': '¥',
+    'CNY': '¥',
+    'INR': '₹',
+    'KRW': '₩',
+    'CAD': 'C$',
+    'AUD': 'A$',
+    'CHF': 'CHF',
+    'SEK': 'kr',
+    'NOK': 'kr',
+    'DKK': 'kr',
+    'PLN': 'zł',
+    'BRL': 'R$',
+    'MXN': '$',
+    'ZAR': 'R',
+    'SGD': 'S$',
+    'HKD': 'HK$',
+    'NZD': 'NZ$'
+  }
+  return symbols[currency] || currency
+}
 
 function getCategoryColor(category: string): string {
   const colors: Record<string, string> = {
@@ -33,27 +60,25 @@ export function RecentExpensesTable() {
   })
 
   const recentExpenses = transactionsData?.transactions
-    ?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0) // Only expenses
-    ?.slice(0, 5) || [] // Limit to 5 most recent
+    ?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0)
+    ?.slice(0, 5) || []
 
   if (isLoading) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Recent Expenses</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
+          <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent className="p-0">
-          <div className="space-y-1">
+          <div className="px-4 pb-4 space-y-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex ml-2 items-center justify-between p-3 border-b border-border/50">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="w-2 h-2 rounded-full" />
-                  </div>
-                  <Skeleton className="h-3 w-16" />
+              <div key={i} className="flex items-center justify-between py-2">
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-2.5 w-16" />
                 </div>
-                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-20" />
               </div>
             ))}
           </div>
@@ -65,12 +90,17 @@ export function RecentExpensesTable() {
   if (error || !transactionsData) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Recent Expenses</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
+          <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-center text-muted-foreground">
-            Failed to load recent expenses. Please try again.
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+          <Receipt className="h-8 w-8 text-muted-foreground/50 mb-2" />
+          <p className="text-sm text-muted-foreground text-center">
+            Unable to load expenses
+          </p>
+          <p className="text-xs text-muted-foreground/70 text-center mt-1">
+            Please try refreshing
           </p>
         </CardContent>
       </Card>
@@ -80,12 +110,17 @@ export function RecentExpensesTable() {
   if (recentExpenses.length === 0) {
     return (
       <Card className="h-full">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Recent Expenses</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
+          <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="p-6">
-          <p className="text-center text-muted-foreground">
-            No expenses found for the selected period.
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+          <Receipt className="h-8 w-8 text-muted-foreground/50 mb-2" />
+          <p className="text-sm text-muted-foreground text-center">
+            No expenses yet
+          </p>
+          <p className="text-xs text-muted-foreground/70 text-center mt-1">
+            Expenses will appear here once recorded
           </p>
         </CardContent>
       </Card>
@@ -94,46 +129,63 @@ export function RecentExpensesTable() {
 
   return (
     <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Recent Expenses</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
+        <TrendingDown className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent className="p-0">
-        <div className="space-y-1">
+        <div className="px-4 pb-4">
           {recentExpenses.map((expense: any, index: number) => (
             <div 
               key={(expense as any).$id ?? expense.id ?? `${expense.accountId}-${(expense as any).transactionId ?? index}`}
-              className={`flex ml-2 items-center justify-between p-3 hover:bg-muted/50 transition-colors ${
-                index === recentExpenses.length - 1 ? '' : 'border-b border-border/50'
-              }`}
+              className="group flex items-center justify-between py-3 transition-all hover:px-2 rounded-md hover:bg-muted/40"
+              style={{
+                animation: `fadeIn 0.3s ease-out ${index * 0.05}s backwards`
+              }}
             >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="font-medium text-sm truncate">
-                    {expense.description || expense.counterparty || 'Unknown Transaction'}
+              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                <div 
+                  className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ring-2 ring-background transition-transform group-hover:scale-125"
+                  style={{ 
+                    backgroundColor: getCategoryColor(expense.category || 'Uncategorized')
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-tight truncate text-foreground/90 group-hover:text-foreground transition-colors">
+                    {expense.description || expense.counterparty || 'Unknown'}
                   </p>
-                  <div 
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ 
-                      backgroundColor: getCategoryColor(expense.category || 'Uncategorized')
-                    }}
-                  />
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">
+                    {new Date(expense.bookingDate || expense.date).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: new Date(expense.bookingDate || expense.date).getFullYear() !== new Date().getFullYear() 
+                        ? 'numeric' 
+                        : undefined
+                    })}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(expense.bookingDate || expense.date).toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric' 
-                  })}
-                </p>
               </div>
-              <div className="text-right flex-shrink-0">
-                <p className="font-mono text-sm font-medium text-red-600 dark:text-red-400">
-                  -{expense.currency} {Math.abs(parseFloat(String(expense.amount))).toFixed(2)}
+              <div className="text-right flex-shrink-0 pl-2">
+                <p className="font-mono text-sm font-semibold text-destructive/90 group-hover:text-destructive transition-colors">
+                  −{getCurrencySymbol(expense.currency || 'USD')}{Math.abs(parseFloat(String(expense.amount))).toFixed(2)}
                 </p>
               </div>
             </div>
           ))}
         </div>
       </CardContent>
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </Card>
   )
 }
