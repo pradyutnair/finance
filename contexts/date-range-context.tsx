@@ -10,7 +10,7 @@ interface DateRangeContextType {
   formatDateForAPI: (date: Date) => string
 }
 
-const DateRangeContext = createContext<DateRangeContextType | undefined>(undefined)
+export const DateRangeContext = createContext<DateRangeContextType | undefined>(undefined)
 
 export function DateRangeProvider({ children }: { children: React.ReactNode }) {
   // Default to current month

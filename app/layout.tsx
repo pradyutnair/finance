@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
 import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { CurrencyProvider } from "@/contexts/currency-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,8 +40,10 @@ export default function RootLayout({
         >
           <QueryProvider>
             <AuthProvider>
-              {children}
-              <Toaster />
+              <CurrencyProvider>
+                {children}
+                <Toaster />
+              </CurrencyProvider>
             </AuthProvider>
           </QueryProvider>
         </ThemeProvider>

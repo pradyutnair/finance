@@ -32,7 +32,6 @@ const data = {
       title: "Dashboard",
       url: "/dashboard",
       icon: IconDashboard,
-      isActive: true,
     },
     {
       title: "Banks",

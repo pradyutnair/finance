@@ -8,10 +8,37 @@ import { DateRangePicker } from "./date-range-picker"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { usePathname } from "next/navigation"
+import { useContext } from "react"
+import { DateRangeContext } from "@/contexts/date-range-context"
 
 export function SiteHeader() {
-  const { dateRange, setDateRange } = useDateRange()
+  // Check if we're on dashboard page and if DateRangeContext is available
+  const pathname = usePathname()
+  const isDashboard = pathname === "/dashboard"
+  const dateRangeContext = useContext(DateRangeContext)
+  
+  // Only use date range if we're on dashboard and context is available
+  const dateRange = dateRangeContext?.dateRange
+  const setDateRange = dateRangeContext?.setDateRange
+  
   const { baseCurrency, setBaseCurrency, supportedCurrencies } = useCurrency()
+
+  // Get page title based on pathname
+  const getPageTitle = () => {
+    switch (pathname) {
+      case "/dashboard":
+        return "Dashboard"
+      case "/banks":
+        return "Banks"
+      case "/transactions":
+        return "Transactions"
+      case "/profile":
+        return "Profile"
+      default:
+        return "Dashboard"
+    }
+  }
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -21,7 +48,7 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-2 data-[orientation=vertical]:h-4"
         />
-        <h1 className="text-base font-medium">Dashboard</h1>
+        <h1 className="text-base font-medium">{getPageTitle()}</h1>
         <div className="ml-auto flex items-center gap-2">
           <Select value={baseCurrency} onValueChange={setBaseCurrency}>
             <SelectTrigger size="sm" aria-label="Select base currency">
@@ -35,10 +62,12 @@ export function SiteHeader() {
               ))}
             </SelectContent>
           </Select>
-          <DateRangePicker
-            date={dateRange}
-            onDateChange={setDateRange}
-          />
+          {isDashboard && dateRange && setDateRange && (
+            <DateRangePicker
+              date={dateRange}
+              onDateChange={setDateRange}
+            />
+          )}
           <ThemeToggle />
         </div>
       </div>
