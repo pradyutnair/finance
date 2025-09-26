@@ -32,7 +32,9 @@ export function ChartAreaInteractive() {
   const [metric, setMetric] = React.useState<"expenses" | "income" | "savings">("expenses")
   const { useTimeseries } = require("@/lib/api")
   const { useDateRange } = require("@/contexts/date-range-context")
+  const { useCurrency } = require("@/contexts/currency-context")
   const { dateRange, formatDateForAPI } = useDateRange()
+  const { baseCurrency, convertAmount } = useCurrency()
   const dateRangeForAPI = dateRange?.from && dateRange?.to
     ? { from: formatDateForAPI(dateRange.from), to: formatDateForAPI(dateRange.to) }
     : undefined
@@ -40,24 +42,25 @@ export function ChartAreaInteractive() {
   const current = React.useMemo(() => {
     const arr = (data || []).map((d: any) => {
       const date = new Date(d.date).toISOString()
-      if (metric === "expenses") return { date, value: d.expenses }
-      if (metric === "income") return { date, value: d.income }
-      const net = d.income - d.expenses
-      const pct = d.income > 0 ? (net / d.income) * 100 : 0
+      const expenses = convertAmount(d.expenses || 0, 'EUR', baseCurrency)
+      const income = convertAmount(d.income || 0, 'EUR', baseCurrency)
+      if (metric === "expenses") return { date, value: expenses }
+      if (metric === "income") return { date, value: income }
+      const net = income - expenses
+      const pct = income > 0 ? (net / income) * 100 : 0
       return { date, value: Number(pct.toFixed(2)) }
     })
     return arr
-  }, [data, metric])
+  }, [data, metric, baseCurrency, convertAmount])
 
   const nf = React.useMemo(() => {
-    const currency =
-      (data?.[0] && data[0].currency) || "EUR" // adjust depending on your API shape
+    const currency = baseCurrency || "EUR"
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
       maximumFractionDigits: 0,
     })
-  }, [data])
+  }, [baseCurrency])
   
   const valueFormatter = (v: number) =>
     metric === "savings" ? `${v.toFixed(1)}%` : nf.format(v)
@@ -113,15 +116,14 @@ export function ChartAreaInteractive() {
                 if (!payload?.length) return null
 
                 const v = payload[0].value as number
-                const currency =
-                  (data?.[0] && data[0].currency) || "EUR"
+                const currency = baseCurrency || "EUR"
                 const nf = new Intl.NumberFormat(undefined, {
                   style: "currency",
                   currency,
                   maximumFractionDigits: 0,
                 })
 
-                const formattedValue = nf.format(v)
+                const formattedValue = metric === "savings" ? `${v.toFixed(1)}%` : nf.format(v)
 
                 const formattedDate = new Date(label).toLocaleDateString("en-US", {
                   month: "short",

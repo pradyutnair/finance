@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useTransactions } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { TrendingDown, Receipt } from "lucide-react"
+import { useCurrency } from "@/contexts/currency-context"
 
 // Currency symbol mapping
 function getCurrencySymbol(currency: string): string {
@@ -48,6 +49,7 @@ function getCategoryColor(category: string): string {
 
 export function RecentExpensesTable() {
   const { dateRange, formatDateForAPI } = useDateRange()
+  const { baseCurrency, convertAmount, getCurrencySymbol } = useCurrency()
   
   const dateRangeForAPI = dateRange?.from && dateRange?.to ? {
     from: formatDateForAPI(dateRange.from),
@@ -136,7 +138,8 @@ export function RecentExpensesTable() {
       <CardContent className="p-0">
         <div className="px-4 pb-4">
         {recentExpenses.map((tx: any, index: number) => {
-            const amount = parseFloat(String(tx.amount)) || 0
+            const amountOriginal = parseFloat(String(tx.amount)) || 0
+            const amount = convertAmount(amountOriginal, tx.currency || "EUR", baseCurrency)
             const isIncome = amount > 0
             const colorClass = isIncome
               ? "text-gray-200 group-hover:text-green-700"
@@ -177,7 +180,7 @@ export function RecentExpensesTable() {
                 <div className="text-right flex-shrink-0 pl-2">
                   <p className={`font-mono text-sm font-semibold ${colorClass}`}>
                     {isIncome ? "+" : "-"}
-                    {getCurrencySymbol(tx.currency || "EUR")}
+                    {getCurrencySymbol(baseCurrency)}
                     {Math.abs(amount).toFixed(2)}
                   </p>
                 </div>

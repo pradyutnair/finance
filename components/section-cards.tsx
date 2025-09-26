@@ -20,6 +20,7 @@ import { useMetrics } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
+import { useCurrency } from "@/contexts/currency-context"
 
 function formatCurrency(amount: number, currency = "EUR"): string {
   return new Intl.NumberFormat("en-EU", {
@@ -32,6 +33,10 @@ function formatCurrency(amount: number, currency = "EUR"): string {
 
 export function SectionCards() {
   const { dateRange, formatDateForAPI } = useDateRange()
+  const { baseCurrency, convertAmount, rates } = useCurrency()
+  
+  // Debug: log the currency context values
+  console.log('SectionCards render - baseCurrency:', baseCurrency, 'rates loaded:', !!rates)
   
   const dateRangeForAPI = dateRange?.from && dateRange?.to ? {
     from: formatDateForAPI(dateRange.from),
@@ -75,24 +80,35 @@ export function SectionCards() {
   const savingsTarget = 20 // %
   const savingsRate = metrics.savingsRate // e.g. 6.7 (%)
   const savingsProgress = Math.max(0, Math.min(100, (savingsRate / savingsTarget) * 100))
+  // Debug: log the metrics values before conversion
+  console.log('SectionCards - metrics:', { 
+    balance: metrics?.balance, 
+    income: metrics?.income, 
+    expenses: metrics?.expenses 
+  })
+
+  // Test conversion directly
+  const testConversion = convertAmount(1000, 'EUR', baseCurrency)
+  console.log('Test conversion: 1000 EUR ->', testConversion, baseCurrency)
+
   const cards = [
     {
       label: "Balance",
-      value: formatCurrency(metrics.balance),
+      value: formatCurrency(convertAmount(metrics.balance || 0, 'EUR', baseCurrency), baseCurrency),
       icon: <IconWallet className="size-6 text-muted-foreground" />,
       delta: metrics.deltas?.balancePct ?? 0,
       kind: "balance" as const,
     },
     {
       label: "Income",
-      value: formatCurrency(metrics.income),
+      value: formatCurrency(convertAmount(metrics.income || 0, 'EUR', baseCurrency), baseCurrency),
       icon: <IconCoins className="size-6 text-muted-foreground" />,
       delta: metrics.deltas?.incomePct ?? 0,
       kind: "income" as const,
     },
     {
       label: "Expenses",
-      value: formatCurrency(metrics.expenses),
+      value: formatCurrency(convertAmount(metrics.expenses || 0, 'EUR', baseCurrency), baseCurrency),
       icon: <IconCreditCard className="size-6 text-muted-foreground" />,
       delta: metrics.deltas?.expensesPct ?? 0,
       kind: "expenses" as const,

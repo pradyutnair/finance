@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { type ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart"
 import { useCategories } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
+import { useCurrency } from "@/contexts/currency-context"
 
 type Item = {
   name: string
@@ -65,6 +66,7 @@ function getCurrencySymbol(currency: string = 'EUR'): string {
 
 export function ExpenseChart() {
   const { dateRange, formatDateForAPI } = useDateRange()
+  const { baseCurrency, convertAmount, getCurrencySymbol } = useCurrency()
   
   const dateRangeForAPI = dateRange?.from && dateRange?.to ? {
     from: formatDateForAPI(dateRange.from),
@@ -73,22 +75,28 @@ export function ExpenseChart() {
 
   const { data: categoriesData, isLoading, error } = useCategories(dateRangeForAPI)
 
-  // Currency not provided by API yet; assume EUR
-  const currency = 'EUR'
+  const currency = baseCurrency
   const currencySymbol = getCurrencySymbol(currency)
 
   const chartData: Item[] = React.useMemo(() => {
     if (!categoriesData || categoriesData.length === 0) return []
 
     const TOP_N = 8
-    const totalAll = categoriesData.reduce((a, c: any) => a + (c.amount || 0), 0)
-    const top = categoriesData.slice(0, TOP_N).map((c: any, index: number) => ({
+    // Convert each category amount from assumed EUR to baseCurrency
+    const converted = categoriesData.map((c: any) => ({
+      name: c.name,
+      amount: convertAmount(c.amount || 0, 'EUR', baseCurrency),
+      percent: c.percent,
+    }))
+
+    const totalAll = converted.reduce((a, c: any) => a + (c.amount || 0), 0)
+    const top = converted.slice(0, TOP_N).map((c: any, index: number) => ({
       name: c.name,
       amount: c.amount,
       percent: c.percent,
       fill: categoryColors[index % categoryColors.length]
     }))
-    const othersAmount = categoriesData.slice(TOP_N).reduce((a: number, c: any) => a + (c.amount || 0), 0)
+    const othersAmount = converted.slice(TOP_N).reduce((a: number, c: any) => a + (c.amount || 0), 0)
     if (othersAmount > 0) {
       top.push({
         name: "Other",
@@ -98,7 +106,7 @@ export function ExpenseChart() {
       })
     }
     return top
-  }, [categoriesData])
+  }, [categoriesData, baseCurrency, convertAmount])
 
   const total = React.useMemo(() => {
     // Sum all categories (server already returns full range totals)
