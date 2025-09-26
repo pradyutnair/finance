@@ -6,6 +6,7 @@ import { useTransactions } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { TrendingDown, Receipt } from "lucide-react"
 import { useCurrency } from "@/contexts/currency-context"
+import { getCategoryColor } from "@/lib/categories"
 
 // Currency symbol mapping
 function getCurrencySymbol(currency: string): string {
@@ -34,18 +35,7 @@ function getCurrencySymbol(currency: string): string {
   return symbols[currency] || currency
 }
 
-function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    'Food & Drink': '#f97316',
-    'Transport': '#3b82f6',
-    'Shopping': '#8b5cf6',
-    'Bills': '#ef4444',
-    'Entertainment': '#10b981',
-    'Health': '#f59e0b',
-    'Uncategorized': '#6b7280'
-  }
-  return colors[category] || '#6b7280'
-}
+// Colors now imported from shared categories schema
 
 export function RecentExpensesTable() {
   const { dateRange, formatDateForAPI } = useDateRange()

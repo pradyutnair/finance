@@ -87,6 +87,7 @@ const presetRanges = [
 export function DateRangePicker({ className, date, onDateChange }: DateRangePickerProps) {
   const [selectedRange, setSelectedRange] = React.useState<DateRange | undefined>(date)
   const [month, setMonth] = React.useState<Date>(new Date())
+  const [open, setOpen] = React.useState(false)
 
   React.useEffect(() => {
     setSelectedRange(date)
@@ -96,6 +97,7 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
     if (!range) {
       setSelectedRange(undefined)
       onDateChange?.(undefined)
+      setOpen(false)
       return
     }
 
@@ -103,22 +105,26 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
     if (range.from && range.to) {
       setSelectedRange(range)
       onDateChange?.(range)
+      setOpen(false)
     }
     // If only from is set, this is the start of a new selection
     else if (range.from && !range.to) {
       setSelectedRange({ from: range.from, to: undefined })
       onDateChange?.({ from: range.from, to: undefined })
+      setOpen(true)
     }
     // Handle any other edge cases by clearing the selection
     else {
       setSelectedRange(undefined)
       onDateChange?.(undefined)
+      setOpen(false)
     }
   }
 
   const handlePresetSelect = (preset: (typeof presetRanges)[0]) => {
     const range = preset.getValue()
     handleDateSelect(range)
+    setOpen(false)
     if (range.from) {
       setMonth(range.from)
     }
@@ -132,7 +138,7 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
 
   return (
     <div className={cn("grid gap-2", className)}>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id="date"
@@ -176,7 +182,6 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
                 onSelect={handleDateSelect}
                 numberOfMonths={1}
                 className="p-0"
-                key={selectedRange?.from?.getTime() || "no-selection"}
               />
             </div>
           </div>

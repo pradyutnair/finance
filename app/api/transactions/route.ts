@@ -25,6 +25,11 @@ export async function GET(request: Request) {
     if (apiKey) {
       // Use server key via header (supported by Web SDK on server runtime)
       (client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey };
+    } else {
+      // Fallback to JWT from the current session if available
+      const auth = request.headers.get("authorization") || request.headers.get("Authorization");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+      if (token) (client as any).headers = { ...(client as any).headers, 'X-Appwrite-JWT': token };
     }
     const databases = new Databases(client);
 

@@ -153,6 +153,23 @@ export const useTransactions = (params?: {
   });
 };
 
+// Mutations: Update transaction fields
+export const useUpdateTransaction = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: { id: string; category?: string; exclude?: boolean }) => {
+      return apiRequest<{ ok: boolean; transaction: any }>(`/transactions/${args.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ category: args.category, exclude: args.exclude }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+};
+
 // Categories
 export const useCategories = (dateRange?: { from: string; to: string }) => {
   return useQuery({
