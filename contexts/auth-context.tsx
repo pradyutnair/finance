@@ -22,8 +22,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    checkAuth();
+    // Check if this is an app restart by looking at sessionStorage
+    const appSession = sessionStorage.getItem('nexpass-app-session');
+    
+    if (!appSession) {
+      // This is a fresh app start - clear any existing sessions
+      sessionStorage.setItem('nexpass-app-session', 'active');
+      clearSessionOnAppRestart();
+    } else {
+      // App is already running - normal auth check
+      checkAuth();
+    }
   }, []);
+
+  const clearSessionOnAppRestart = async () => {
+    try {
+      // Clear any existing session on app restart
+      await account.deleteSession('current');
+    } catch (error) {
+      // Ignore errors - session might not exist
+    } finally {
+      setUser(null);
+      setLoading(false);
+    }
+  };
 
   const checkAuth = async () => {
     try {
@@ -71,11 +93,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      // Delete current session
       await account.deleteSession('current');
+      
+      // Also delete all sessions to be thorough
+      try {
+        await account.deleteSessions();
+      } catch (error) {
+        // Ignore errors if no other sessions exist
+      }
+      
+      // Clear the app session flag so next visit requires fresh login
+      sessionStorage.removeItem('nexpass-app-session');
+      
       setUser(null);
       router.push('/login');
     } catch (error) {
-      throw error;
+      // Even if logout fails, clear local state and redirect
+      sessionStorage.removeItem('nexpass-app-session');
+      setUser(null);
+      router.push('/login');
     }
   };
 

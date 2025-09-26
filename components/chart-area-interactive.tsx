@@ -182,9 +182,9 @@ export function ChartAreaInteractive() {
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
           >
-            <ToggleGroupItem value="90d">Last 3 months</ToggleGroupItem>
-            <ToggleGroupItem value="30d">Last 30 days</ToggleGroupItem>
-            <ToggleGroupItem value="7d">Last 7 days</ToggleGroupItem>
+            <ToggleGroupItem value="90d">Income</ToggleGroupItem>
+            <ToggleGroupItem value="30d">Expenses</ToggleGroupItem>
+            <ToggleGroupItem value="7d">Savings</ToggleGroupItem>
           </ToggleGroup>
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger
@@ -196,13 +196,13 @@ export function ChartAreaInteractive() {
             </SelectTrigger>
             <SelectContent className="rounded-xl">
               <SelectItem value="90d" className="rounded-lg">
-                Last 3 months
+                Income
               </SelectItem>
               <SelectItem value="30d" className="rounded-lg">
-                Last 30 days
+                Expenses
               </SelectItem>
               <SelectItem value="7d" className="rounded-lg">
-                Last 7 days
+                Savings
               </SelectItem>
             </SelectContent>
           </Select>
