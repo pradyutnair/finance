@@ -7,6 +7,7 @@ type TxDoc = {
   amount?: string | number;
   bookingDate?: string;
 };
+type DocWithId = TxDoc & { $id?: string };
 type BalanceDoc = {
   accountId?: string;
   balanceAmount?: string | number;
@@ -50,28 +51,43 @@ export async function GET(request: NextRequest) {
       filters.push(Query.lessThanEqual("bookingDate", to));
     }
 
-    // Fetch transactions
-    const transactionsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
-      filters
-    );
-
-    const transactions = transactionsResponse.documents as TxDoc[];
+    // Fetch transactions (paginate to include all rows in range)
+    const baseQueries = [
+      ...filters,
+      Query.orderDesc("bookingDate"),
+      Query.limit(100)
+    ];
+    let cursor: string | undefined = undefined;
+    const transactions: TxDoc[] = [];
+    while (true) {
+      const q = [...baseQueries];
+      if (cursor) q.push(Query.cursorAfter(cursor));
+      const resp = await databases.listDocuments(
+        DATABASE_ID,
+        TRANSACTIONS_COLLECTION_ID,
+        q
+      );
+      const docs = resp.documents as DocWithId[];
+      transactions.push(...docs);
+      if (docs.length < 100) break;
+      cursor = docs[docs.length - 1].$id;
+      if (!cursor) break;
+    }
 
     // Calculate metrics from transactions
+    // IMPORTANT: expenses is the sum of negative values (negative result)
     const income = transactions
-      .filter((t) => parseFloat(String(t.amount ?? 0)) > 0)
-      .reduce((sum, t) => sum + parseFloat(String(t.amount ?? 0)), 0);
+      .map((t) => parseFloat(String(t.amount ?? 0)))
+      .filter((v) => v > 0)
+      .reduce((sum, v) => sum + v, 0);
 
-    const expenses = Math.abs(
-      transactions
-        .filter((t) => parseFloat(String(t.amount ?? 0)) < 0)
-        .reduce((sum, t) => sum + parseFloat(String(t.amount ?? 0)), 0)
-    );
+    const expenses = transactions
+      .map((t) => parseFloat(String(t.amount ?? 0)))
+      .filter((v) => v < 0)
+      .reduce((sum, v) => sum + v, 0); // negative number
 
-    const netIncome = income - expenses;
-    const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
+    const netIncome = income + expenses; // since expenses is negative
+    const savingsRate = income > 0 ? (netIncome / income) * 100 : 0;
 
     // Fetch current balances with interimAvailable type only (per specs)
     // Get latest snapshot per account (order by referenceDate desc)
@@ -99,7 +115,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       balance: totalBalance,
       income,
-      expenses,
+      expenses: Math.abs(expenses),
       netIncome,
       savingsRate,
       transactionCount: transactions.length
