@@ -218,7 +218,7 @@ export function ExpenseChart() {
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <ChartTooltip cursor={false} content={<CustomTooltip />} />
+                {/* <ChartTooltip cursor={false} content={<CustomTooltip />} /> */}
                 <defs>
                   {chartData.map((entry, idx) => (
                     <filter key={`shadow-${idx}`} id={`shadow-${idx}`}>
