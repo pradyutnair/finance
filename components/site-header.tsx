@@ -5,8 +5,11 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "./theme-toggle"
 import { DateRangePicker } from "./date-range-picker"
-import { startOfMonth } from "date-fns"
+import { useDateRange } from "@/contexts/date-range-context"
+
 export function SiteHeader() {
+  const { dateRange, setDateRange } = useDateRange()
+
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
@@ -18,11 +21,8 @@ export function SiteHeader() {
         <h1 className="text-base font-medium">Dashboard</h1>
         <div className="ml-auto flex items-center gap-2">
           <DateRangePicker
-            date={{
-              from: startOfMonth(new Date()),
-              to: new Date()
-            }}
-            onDateChange={(values) => console.log(values)}
+            date={dateRange}
+            onDateChange={setDateRange}
           />
           <ThemeToggle />
         </div>

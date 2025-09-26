@@ -22,30 +22,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if this is an app restart by looking at sessionStorage
-    const appSession = sessionStorage.getItem('nexpass-app-session');
-    
-    if (!appSession) {
-      // This is a fresh app start - clear any existing sessions
-      sessionStorage.setItem('nexpass-app-session', 'active');
-      clearSessionOnAppRestart();
-    } else {
-      // App is already running - normal auth check
-      checkAuth();
-    }
+    checkAuth();
   }, []);
 
-  const clearSessionOnAppRestart = async () => {
-    try {
-      // Clear any existing session on app restart
-      await account.deleteSession('current');
-    } catch (error) {
-      // Ignore errors - session might not exist
-    } finally {
-      setUser(null);
-      setLoading(false);
-    }
-  };
+  // Removed session clearing on app restart; preserve Appwrite cookie session
 
   const checkAuth = async () => {
     try {

@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client, Databases, Query } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+type AuthUser = { $id?: string; id?: string };
+type TxDoc = { amount?: string | number; bookingDate?: string; valueDate?: string };
+
+const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
 const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user
-    const user: any = await requireAuthUser(request);
-    const userId = user.$id;
+    const user = (await requireAuthUser(request)) as AuthUser;
+    const userId = user.$id ?? user.id as string;
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -18,8 +21,14 @@ export async function GET(request: NextRequest) {
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    
-    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+    if (apiKey) {
+      (client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey };
+    } else {
+      const auth = request.headers.get("authorization") || request.headers.get("Authorization");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+      if (token) (client as any).headers = { ...(client as any).headers, 'X-Appwrite-JWT': token };
+    }
     const databases = new Databases(client);
 
     // Build query filters
@@ -41,13 +50,13 @@ export async function GET(request: NextRequest) {
       ]
     );
 
-    const transactions = transactionsResponse.documents;
+    const transactions = transactionsResponse.documents as TxDoc[];
 
     // Group transactions by week
     const weeklyData = new Map();
 
-    transactions.forEach(transaction => {
-      const date = new Date(transaction.bookingDate);
+    transactions.forEach((transaction) => {
+      const date = new Date(String(transaction.bookingDate || transaction.valueDate));
       // Get the start of the week (Sunday)
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
@@ -58,10 +67,11 @@ export async function GET(request: NextRequest) {
       }
 
       const weekData = weeklyData.get(weekKey);
-      if (transaction.amount > 0) {
-        weekData.income += transaction.amount;
+      const amount = parseFloat(String(transaction.amount ?? 0));
+      if (amount > 0) {
+        weekData.income += amount;
       } else {
-        weekData.expenses += Math.abs(transaction.amount);
+        weekData.expenses += Math.abs(amount);
       }
     });
 
@@ -80,11 +90,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(timeseriesData);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching timeseries data:", error);
+    const status = (error as { status?: number })?.status || 500;
     return NextResponse.json(
       { error: "Failed to fetch timeseries data" },
-      { status: error.status || 500 }
+      { status }
     );
   }
 }

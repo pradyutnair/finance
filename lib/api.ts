@@ -1,5 +1,6 @@
 // API client for Nexpass backend
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { account } from "@/lib/appwrite";
 
 const API_BASE_URL = "/api";
 
@@ -50,12 +51,30 @@ export interface Account {
 }
 
 // API functions
+async function getAuthHeader(): Promise<Record<string, string>> {
+  try {
+    // Create a short-lived JWT for the current Appwrite session
+    const jwt = await account.createJWT();
+    // Some SDKs return { jwt }, others { token }; support both
+    const token = (jwt as any).jwt || (jwt as any).token;
+    if (typeof token === 'string') {
+      return { Authorization: `Bearer ${token}` };
+    }
+  } catch (e) {
+    // No active session; return empty headers
+  }
+  return {};
+}
+
 async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const authHeader = await getAuthHeader();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...options?.headers,
     },
+    credentials: 'include',
     ...options,
   });
 
@@ -70,17 +89,26 @@ async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T
 export const useSession = () => {
   return useQuery({
     queryKey: ["session"],
-    queryFn: () => apiRequest<{ ok: boolean; user: any }>("/auth/session"),
+    queryFn: () => apiRequest<{ ok: boolean; user: unknown }>("/auth/session"),
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };
 
+export interface DashboardMetrics {
+  balance: number;
+  income: number;
+  expenses: number;
+  netIncome: number;
+  savingsRate: number;
+  transactionCount: number;
+}
+
 // Metrics
 export const useMetrics = (dateRange?: { from: string; to: string }) => {
   return useQuery({
     queryKey: ["metrics", dateRange],
-    queryFn: () => apiRequest<Metrics>(`/metrics${dateRange ? `?from=${dateRange.from}&to=${dateRange.to}` : ""}`),
+    queryFn: () => apiRequest<DashboardMetrics>(`/metrics${dateRange ? `?from=${dateRange.from}&to=${dateRange.to}` : ""}`),
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 };
@@ -100,6 +128,7 @@ export const useTransactions = (params?: {
   offset?: number;
   category?: string;
   accountId?: string;
+  dateRange?: { from: string; to: string };
 }) => {
   return useQuery({
     queryKey: ["transactions", params],
@@ -109,8 +138,10 @@ export const useTransactions = (params?: {
       if (params?.offset) searchParams.set("offset", params.offset.toString());
       if (params?.category) searchParams.set("category", params.category);
       if (params?.accountId) searchParams.set("accountId", params.accountId);
+      if (params?.dateRange?.from) searchParams.set("from", params.dateRange.from);
+      if (params?.dateRange?.to) searchParams.set("to", params.dateRange.to);
       
-      return apiRequest<Transaction[]>(`/transactions?${searchParams.toString()}`);
+      return apiRequest<{ok: boolean; transactions: Transaction[]; total: number}>(`/transactions?${searchParams.toString()}`);
     },
     staleTime: 1 * 60 * 1000, // 1 minute
   });

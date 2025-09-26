@@ -12,6 +12,8 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get("accountId");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -19,17 +21,26 @@ export async function GET(request: Request) {
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    
-    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+    if (apiKey) {
+      // Use server key via header (supported by Web SDK on server runtime)
+      (client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey };
+    }
     const databases = new Databases(client);
 
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
+    const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
     const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
     // Build query
     const queries = [Query.equal('userId', userId)];
     if (accountId) {
       queries.push(Query.equal('accountId', accountId));
+    }
+    
+    // Add date range filtering
+    if (from && to) {
+      queries.push(Query.greaterThanEqual("bookingDate", from));
+      queries.push(Query.lessThanEqual("bookingDate", to));
     }
     
     // Add ordering by booking date (newest first)

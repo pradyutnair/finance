@@ -11,35 +11,53 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import { type ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart"
+import { useCategories } from "@/lib/api"
+import { useDateRange } from "@/contexts/date-range-context"
 
 type Item = {
-  category: "food" | "grocery" | "shopping" | "transport"
+  name: string
   amount: number
-  percentage: number
+  percent: number
   fill: string
 }
 
-const chartData: Item[] = [
-  { category: "food",      amount: 540, percentage: 48, fill: "hsl(0 0% 20%)" },
-  { category: "grocery",   amount: 360, percentage: 32, fill: "hsl(0 0% 45%)" },
-  { category: "shopping",  amount: 146, percentage: 13, fill: "hsl(0 0% 25%)" },
-  { category: "transport", amount: 79,  percentage: 7,  fill: "hsl(0 0% 65%)" },
+const categoryColors = [
+  "hsl(0 0% 20%)",
+  "hsl(0 0% 45%)", 
+  "hsl(0 0% 25%)",
+  "hsl(0 0% 65%)",
+  "hsl(0 0% 35%)",
+  "hsl(0 0% 55%)",
+  "hsl(0 0% 15%)",
+  "hsl(0 0% 75%)",
 ]
 
-const chartConfig = {
-  amount: { label: "Amount" },
-  food:      { label: "Food & Drink", color: "hsl(0 0% 20%)" },
-  grocery:   { label: "Grocery",      color: "hsl(0 0% 45%)" },
-  shopping:  { label: "Shopping",     color: "hsl(0 0% 25%)" },
-  transport: { label: "Transport",    color: "hsl(0 0% 65%)" },
-} satisfies ChartConfig
-
 export function ExpenseChart() {
+  const { dateRange, formatDateForAPI } = useDateRange()
+  
+  const dateRangeForAPI = dateRange?.from && dateRange?.to ? {
+    from: formatDateForAPI(dateRange.from),
+    to: formatDateForAPI(dateRange.to)
+  } : undefined
+
+  const { data: categoriesData, isLoading, error } = useCategories(dateRangeForAPI)
+
+  const chartData: Item[] = React.useMemo(() => {
+    if (!categoriesData || categoriesData.length === 0) return []
+    
+    return categoriesData.slice(0, 8).map((category: any, index: number) => ({
+      name: category.name,
+      amount: category.amount,
+      percent: category.percent,
+      fill: categoryColors[index % categoryColors.length]
+    }))
+  }, [categoriesData])
+
   const total = React.useMemo(
     () => chartData.reduce((a, c) => a + c.amount, 0),
-    []
+    [chartData]
   )
 
   // Which slice is emphasized (hover) or locked (click)
@@ -48,20 +66,16 @@ export function ExpenseChart() {
 
   const currentIndex = lockedIndex ?? activeIndex
   const current = typeof currentIndex === "number" ? chartData[currentIndex] : undefined
-  const label = current
-    ? chartConfig[current.category].label
-    : "Total"
+  const label = current ? current.name : "Total"
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
     if (active && payload?.length) {
       const d: Item = payload[0].payload
-      const label = chartConfig[d.category].label
-      const pct = ((d.amount / total) * 100).toFixed(1)
       return (
         <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
-          <p className="text-popover-foreground font-medium">{label}</p>
+          <p className="text-popover-foreground font-medium">{d.name}</p>
           <p className="text-muted-foreground">
-            ${d.amount.toLocaleString()} • {pct}%
+            €{d.amount.toLocaleString()} • {d.percent.toFixed(1)}%
           </p>
         </div>
       )
@@ -69,13 +83,47 @@ export function ExpenseChart() {
     return null
   }
 
-  if (!total) {
+  if (isLoading) {
     return (
-      <Card className="w-full max-w-md mx-auto">
-        <CardHeader>
-          <CardTitle>Breakdown</CardTitle>
-          <CardDescription>No expenses for this period.</CardDescription>
+      <Card className="h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Breakdown</CardTitle>
         </CardHeader>
+        <CardContent className="flex flex-col flex-1 p-6">
+          <div className="relative flex-1 flex items-center justify-center">
+            <Skeleton className="aspect-square max-h-[260px] w-full rounded-full" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error || !categoriesData) {
+    return (
+      <Card className="h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <p className="text-center text-muted-foreground">
+            Failed to load expense breakdown. Please try again.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!total || chartData.length === 0) {
+    return (
+      <Card className="h-full">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <p className="text-center text-muted-foreground">
+            No expenses for this period.
+          </p>
+        </CardContent>
       </Card>
     )
   }
@@ -83,17 +131,14 @@ export function ExpenseChart() {
   return (
     <Card className="h-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Summary</CardTitle>
-        <CardDescription className="text-sm text-muted-foreground">
-          Data from 1-12 Apr, 2024
-        </CardDescription>
+        <CardTitle className="text-lg">Breakdown</CardTitle>
       </CardHeader>
 
       <CardContent className="flex flex-col flex-1 p-6">
         {/* Donut */}
         <div className="relative flex-1 flex items-center justify-center">
           <ChartContainer
-            config={chartConfig}
+            config={{}}
             className="mx-auto aspect-square max-h-[260px] w-full"
           >
             <ResponsiveContainer width="100%" height="100%">
@@ -102,7 +147,7 @@ export function ExpenseChart() {
                 <Pie
                   data={chartData}
                   dataKey="amount"
-                  nameKey="category"
+                  nameKey="name"
                   innerRadius={80}
                   outerRadius={120}
                   strokeWidth={2}
@@ -116,14 +161,14 @@ export function ExpenseChart() {
                     const isActive = currentIndex === idx
                     return (
                       <Cell
-                        key={entry.category}
+                        key={entry.name}
                         fill={entry.fill}
                         className={cn(
                           "transition-all cursor-pointer",
                           isActive ? "opacity-100" : "opacity-85 hover:opacity-95"
                         )}
                         // enlarge active slice subtly
-                        outerRadius={isActive ? 125 : 120}
+                        {...(isActive ? { style: { transform: 'scale(1.04)' } } : {})}
                       />
                     )
                   })}
@@ -140,12 +185,12 @@ export function ExpenseChart() {
               </div>
               <div className="text-3xl font-bold tabular-nums">
                 {current
-                  ? `$${current.amount.toLocaleString()}`
-                  : `$${total.toLocaleString()}`}
+                  ? `€${current.amount.toLocaleString()}`
+                  : `€${total.toLocaleString()}`}
               </div>
               {current && (
                 <div className="text-xs text-muted-foreground">
-                  {((current.amount / total) * 100).toFixed(1)}%
+                  {current.percent.toFixed(1)}%
                 </div>
               )}
             </div>
