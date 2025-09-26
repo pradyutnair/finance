@@ -17,6 +17,7 @@ import { type ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/
 import { useCategories } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
+import { getCategoryColor } from "@/lib/categories"
 
 type Item = {
   name: string
@@ -25,44 +26,7 @@ type Item = {
   fill: string
 }
 
-// More vibrant, carefully selected colors that work well together
-const categoryColors = [
-  "hsl(0, 0%, 23%)",  // Dark grey
-  "hsl(0, 0%, 30%)",
-  "hsl(0, 0%, 37%)",
-  "hsl(0, 0%, 44%)",
-  "hsl(0, 0%, 47%)",
-  "hsl(0, 0%, 54%)",
-  "hsl(0, 0%, 61%)",
-  "hsl(0, 0%, 87%)"   // Light grey
-]
-
-// Currency symbol mapping
-function getCurrencySymbol(currency: string = 'EUR'): string {
-  const symbols: Record<string, string> = {
-    'USD': '$',
-    'EUR': '€',
-    'GBP': '£',
-    'JPY': '¥',
-    'CNY': '¥',
-    'INR': '₹',
-    'KRW': '₩',
-    'CAD': 'C$',
-    'AUD': 'A$',
-    'CHF': 'CHF',
-    'SEK': 'kr',
-    'NOK': 'kr',
-    'DKK': 'kr',
-    'PLN': 'zł',
-    'BRL': 'R$',
-    'MXN': '$',
-    'ZAR': 'R',
-    'SGD': 'S$',
-    'HKD': 'HK$',
-    'NZD': 'NZ$'
-  }
-  return symbols[currency] || currency
-}
+// Use canonical category colors from lib/categories.ts
 
 export function ExpenseChart() {
   const { dateRange, formatDateForAPI } = useDateRange()
@@ -90,11 +54,11 @@ export function ExpenseChart() {
     }))
 
     const totalAll = converted.reduce((a, c: any) => a + (c.amount || 0), 0)
-    const top = converted.slice(0, TOP_N).map((c: any, index: number) => ({
+    const top = converted.slice(0, TOP_N).map((c: any) => ({
       name: c.name,
       amount: c.amount,
       percent: c.percent,
-      fill: categoryColors[index % categoryColors.length]
+      fill: getCategoryColor(c.name)
     }))
     const othersAmount = converted.slice(TOP_N).reduce((a: number, c: any) => a + (c.amount || 0), 0)
     if (othersAmount > 0) {
@@ -102,7 +66,7 @@ export function ExpenseChart() {
         name: "Other",
         amount: Number(othersAmount.toFixed(2)),
         percent: totalAll > 0 ? Number(((othersAmount / totalAll) * 100).toFixed(2)) : 0,
-        fill: categoryColors[(TOP_N) % categoryColors.length]
+        fill: getCategoryColor('Uncategorized')
       })
     }
     return top

@@ -32,6 +32,7 @@ import { CATEGORY_OPTIONS } from "@/lib/categories"
 type TxRow = {
   id: string
   description: string
+  bankName: string
   category: string
   bookingDate: string
   amount: number
@@ -73,7 +74,7 @@ function categoryToColor(cat: string): string {
 }
 
 export function TransactionsTable() {
-  const pageSize = 11
+  const pageSize = 12
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const offset = pagination.pageIndex * pagination.pageSize
 
@@ -94,6 +95,7 @@ export function TransactionsTable() {
     id: t.$id || t.id,
     description: t.description || t.counterparty || "Unknown",
     category: t.category || "Uncategorized",
+    bankName: t.institutionId || "Unknown",
     bookingDate: t.bookingDate || t.date,
     amount: Number(t.amount) || 0,
     currency: t.currency || "EUR",
@@ -114,11 +116,20 @@ export function TransactionsTable() {
 
   const columns: ColumnDef<TxRow>[] = useMemo(
     () => [
+      
       {
         accessorKey: "bookingDate",
         header: "Date",
         cell: ({ row }) => (
-          <span className="whitespace-nowrap">{new Date(row.original.bookingDate).toLocaleDateString()}</span>
+            <span className="whitespace-nowrap">
+            {(() => {
+              const d = new Date(row.original.bookingDate)
+              const day = d.getDate().toString().padStart(2, "0")   // dd
+              const month = d.toLocaleString("en-GB", { month: "short" }) // MMM
+              const year = d.getFullYear()                          // yyyy
+              return `${day} ${month} ${year}`
+            })()}
+          </span>
         ),
       },
       {
@@ -140,6 +151,15 @@ export function TransactionsTable() {
             {row.original.description}
           </span>
         ),
+      },
+      {
+        accessorKey: "bankName",
+        header: "Bank",
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap">{row.original.bankName}</span>
+        ),
+        enableSorting: false,
+        size: 120,
       },
       {
         accessorKey: "category",
@@ -190,14 +210,7 @@ export function TransactionsTable() {
             <span className={isIncome ? "text-green-600 dark:text-green-400" : "text-destructive"}>{formatted}</span>
           )
         },
-      },
-      {
-        id: "actions",
-        header: () => "",
-        cell: ({ row }) => <RowActions onCategorize={(cat) => handleCategorize(row.original, cat)} />,
-        size: 60,
-        enableHiding: false,
-      },
+      }
     ],
     [baseCurrency, convertAmount, getCurrencySymbol]
   )
