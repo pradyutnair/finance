@@ -1,24 +1,26 @@
 export type CategoryKey =
-  | "Food & Drink"
+  | "Groceries"
+  | "Restaurant"
   | "Transport"
   | "Shopping"
-  | "Bills"
+  | "Utilities"
   | "Entertainment"
   | "Health"
   | "Income"
-  | "Savings"
+  | "Miscellaneous"
   | "Uncategorized"
 
 export const CATEGORIES: Record<CategoryKey, { color: string }> = {
-  "Food & Drink": { color: "#f97316" },
-  Transport: { color: "#3b82f6" },
-  Shopping: { color: "#8b5cf6" },
-  Bills: { color: "#ef4444" },
-  Entertainment: { color: "#10b981" },
-  Health: { color: "#f59e0b" },
-  Income: { color: "#16a34a" },
-  Savings: { color: "#22c55e" },
-  Uncategorized: { color: "#6b7280" },
+  Groceries: { color: "#f97316" },       // orange
+  Restaurant: { color: "#e11d48" },      // rose/red
+  Transport: { color: "#3b82f6" },       // blue
+  Shopping: { color: "#8b5cf6" },        // purple
+  Utilities: { color: "#ef4444" },       // red
+  Entertainment: { color: "#10b981" },   // green
+  Health: { color: "#f59e0b" },          // amber
+  Income: { color: "#16a34a" },          // darker green
+  Miscellaneous: { color: "#000080" },   // navy blue
+  Uncategorized: { color: "#6b7280" },   // gray
 }
 
 export function getCategoryColor(category?: string): string {

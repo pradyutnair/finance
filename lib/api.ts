@@ -163,6 +163,33 @@ export const useUpdateTransaction = () => {
         body: JSON.stringify({ category: args.category, exclude: args.exclude }),
       });
     },
+    onMutate: async (args) => {
+      await queryClient.cancelQueries({ queryKey: ["transactions"] });
+      const previous = queryClient.getQueriesData<{ ok: boolean; transactions: any[]; total: number }>({
+        queryKey: ["transactions"],
+      });
+
+      previous.forEach(([key, data]) => {
+        if (!data) return;
+        const updated = {
+          ...data,
+          transactions: data.transactions.map((t) =>
+            (t.$id || t.id) === args.id
+              ? { ...t, ...(typeof args.category === "string" ? { category: args.category } : {}), ...(typeof args.exclude === "boolean" ? { exclude: args.exclude } : {}) }
+              : t
+          ),
+        };
+        queryClient.setQueryData(key, updated);
+      });
+
+      return { previous };
+    },
+    onError: (_err, _args, context) => {
+      if (!context) return;
+      context.previous?.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["categories"] });

@@ -73,7 +73,7 @@ function categoryToColor(cat: string): string {
 }
 
 export function TransactionsTable() {
-  const pageSize = 10
+  const pageSize = 11
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const offset = pagination.pageIndex * pagination.pageSize
 
@@ -108,6 +108,7 @@ export function TransactionsTable() {
   }
 
   function handleCategorize(tx: TxRow, category: string) {
+    // optimistic set via mutation; additionally adjust local row to reflect immediately
     updateTx.mutate({ id: tx.id, category })
   }
 

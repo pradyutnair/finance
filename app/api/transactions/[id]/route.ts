@@ -4,11 +4,11 @@ import { NextResponse } from "next/server"
 import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases } from "appwrite"
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuthUser(request)
     const userId = (user as any).$id || (user as any).id
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const client = new Client()
