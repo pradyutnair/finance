@@ -19,6 +19,7 @@ import {
 import { useMetrics } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 
 function formatCurrency(amount: number, currency = "EUR"): string {
   return new Intl.NumberFormat("en-EU", {
@@ -71,7 +72,9 @@ export function SectionCards() {
       </div>
     )
   }
-
+  const savingsTarget = 20 // %
+  const savingsRate = metrics.savingsRate // e.g. 6.7 (%)
+  const savingsProgress = Math.max(0, Math.min(100, (savingsRate / savingsTarget) * 100))
   const cards = [
     {
       label: "Balance",
@@ -96,11 +99,14 @@ export function SectionCards() {
     },
     {
       label: "Savings",
+      // value is unused for savings now
       value: `${metrics.savingsRate.toFixed(1)}%`,
       icon: <IconPigMoney className="size-6 text-muted-foreground" />,
       delta: metrics.deltas?.savingsPct ?? 0,
       kind: "savings" as const,
-    },
+      rate: savingsRate,
+      progress: savingsProgress,
+    }
   ]
 
   return (
@@ -119,44 +125,77 @@ export function SectionCards() {
           "
         >
           <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <div className="bg-muted rounded-md p-1.5">{card.icon}</div>
-              <CardDescription className="font-medium text-muted-foreground">
-                {card.label}
-              </CardDescription>
-            </div>
-            <div className="mt-4 flex items-baseline justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-muted rounded-md p-1.5">{card.icon}</div>
+            <CardDescription className="font-medium text-muted-foreground">
+              {card.label}
+            </CardDescription>
+          </div>
+
+          {card.kind !== "savings" ? (
+            // --- Income / Expenses / Balance (delta below value) ---
+            <div className="mt-4 flex flex-col items-start">
               <CardTitle className="text-3xl font-bold tabular-nums">
                 {card.value}
               </CardTitle>
               {(() => {
-                const d = Number(card.delta || 0);
-                const ad = Math.abs(d);
-                const disp = `${isFinite(ad) ? ad.toFixed(1) : '0.0'}%`;
-                const isZero = Math.round(d * 10) === 0;
-                const isPos = d > 0;
-                const isExpenses = card.kind === "expenses";
-                // color rules
+                const d = Number(card.delta || 0)
+                const ad = Math.abs(d)
+                const disp = `${isFinite(ad) ? ad.toFixed(1) : "0.0"}%`
+                const isZero = Math.round(d * 10) === 0
+                const isPos = d > 0
+                const isExpenses = card.kind === "expenses"
                 const color = isZero
                   ? "text-muted-foreground"
                   : isExpenses
                     ? (isPos ? "text-red-600" : "text-green-600")
-                    : (isPos ? "text-green-600" : "text-red-600");
+                    : (isPos ? "text-green-600" : "text-red-600")
                 return (
-                  <div className="flex items-center gap-1 text-sm">
-                    {!isZero && (
-                      isPos ? (
+                  <div className="flex items-center gap-1 text-sm mt-1">
+                    {!isZero &&
+                      (isPos ? (
                         <IconArrowUpRight className={`size-4 ${color}`} />
                       ) : (
                         <IconArrowDownRight className={`size-4 ${color}`} />
-                      )
-                    )}
+                      ))}
                     <span className={`font-medium ${color}`}>{disp}</span>
                   </div>
                 )
               })()}
             </div>
-          </CardHeader>
+          ) : (
+            // --- Savings: show percent like other cards + minimal progress ---
+            <div className="mt-4 space-y-2">
+              <div className="flex items-baseline justify-between">
+                <CardTitle className="text-3xl font-bold tabular-nums">
+                  {card.value}
+                </CardTitle>
+                {/* {(() => {
+                  const d = Number(card.delta || 0)
+                  const ad = Math.abs(d)
+                  const disp = `${isFinite(ad) ? ad.toFixed(1) : "0.0"}%`
+                  const isZero = Math.round(d * 10) === 0
+                  const isPos = d > 0
+                  const color = isZero
+                    ? "text-muted-foreground"
+                    : (isPos ? "text-green-600" : "text-red-600")
+                  return (
+                    <div className="flex items-center gap-1 text-sm">
+                      {!isZero &&
+                        (isPos ? (
+                          <IconArrowUpRight className={`size-4 ${color}`} />
+                        ) : (
+                          <IconArrowDownRight className={`size-4 ${color}`} />
+                        ))}
+                      <span className={`font-medium ${color}`}></span>
+                    </div>
+                  )
+                })()} */}
+              </div>
+              <Progress value={card.progress} className="h-2 mt-3" />
+            </div>
+          )}
+        </CardHeader>
         </Card>
       ))}
     </div>

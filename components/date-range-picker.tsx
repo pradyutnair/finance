@@ -52,16 +52,9 @@ const presetRanges = [
     }),
   },
   {
-    label: "Last 7 Days",
+    label: "Last 2 Weeks",
     getValue: () => ({
-      from: subDays(new Date(), 6),
-      to: new Date(),
-    }),
-  },
-  {
-    label: "Last 28 Days",
-    getValue: () => ({
-      from: subDays(new Date(), 27),
+      from: subDays(new Date(), 13),
       to: new Date(),
     }),
   },

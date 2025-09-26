@@ -121,8 +121,7 @@ export function ChartAreaInteractive() {
                   maximumFractionDigits: 0,
                 })
 
-                const formattedValue =
-                  metric === "savings" ? `${v.toFixed(1)}%` : nf.format(v)
+                const formattedValue = nf.format(v)
 
                 const formattedDate = new Date(label).toLocaleDateString("en-US", {
                   month: "short",
