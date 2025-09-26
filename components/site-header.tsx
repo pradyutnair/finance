@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "./theme-toggle"
 import { DateRangePicker } from "./date-range-picker"
-
+import { startOfMonth } from "date-fns"
 export function SiteHeader() {
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -19,7 +19,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <DateRangePicker
             date={{
-              from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+              from: startOfMonth(new Date()),
               to: new Date()
             }}
             onDateChange={(values) => console.log(values)}

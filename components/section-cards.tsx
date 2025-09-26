@@ -1,102 +1,99 @@
-import { IconTrendingDown, IconTrendingUp } from "@tabler/icons-react"
+import {
+  IconArrowUpRight,
+  IconArrowDownRight,
+  IconWallet,
+  IconPigMoney,
+  IconCreditCard,
+  IconCoins,
+} from "@tabler/icons-react"
 
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
-  CardAction,
-  CardDescription,
-  CardFooter,
   CardHeader,
+  CardDescription,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card"
+
+const cards = [
+  {
+    label: "Balance",
+    value: "€12,500",
+    icon: <IconWallet className="size-6 text-muted-foreground" />,
+    change: "+3.2%",
+    changeType: "up",
+    changeColor: "text-green-600",
+    subtext: "compared to last month",
+  },
+  {
+    label: "Income",
+    value: "€8,200",
+    icon: <IconCoins className="size-6 text-muted-foreground" />,
+    change: "+8.5%",
+    changeType: "up",
+    changeColor: "text-green-600",
+    subtext: "compared to last month",
+  },
+  {
+    label: "Expenses",
+    value: "€4,100",
+    icon: <IconCreditCard className="size-6 text-muted-foreground" />,
+    change: "-2.1%",
+    changeType: "down",
+    changeColor: "text-red-600",
+    subtext: "compared to last month",
+  },
+  {
+    label: "Savings",
+    value: "50%",
+    icon: <IconPigMoney className="size-6 text-muted-foreground" />,
+    change: "+5.0%",
+    changeType: "up",
+    changeColor: "text-green-600",
+    subtext: "compared to last month",
+  },
+]
 
 export function SectionCards() {
   return (
-    <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Total Revenue</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            $1,250.00
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingUp />
-              +12.5%
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Trending up this month <IconTrendingUp className="size-4" />
-          </div>
-          <div className="text-muted-foreground">
-            Visitors for the last 6 months
-          </div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>New Customers</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            1,234
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingDown />
-              -20%
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Down 20% this period <IconTrendingDown className="size-4" />
-          </div>
-          <div className="text-muted-foreground">
-            Acquisition needs attention
-          </div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Active Accounts</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            45,678
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingUp />
-              +12.5%
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Strong user retention <IconTrendingUp className="size-4" />
-          </div>
-          <div className="text-muted-foreground">Engagement exceed targets</div>
-        </CardFooter>
-      </Card>
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Growth Rate</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            4.5%
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline">
-              <IconTrendingUp />
-              +4.5%
-            </Badge>
-          </CardAction>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            Steady performance increase <IconTrendingUp className="size-4" />
-          </div>
-          <div className="text-muted-foreground">Meets growth projections</div>
-        </CardFooter>
-      </Card>
+    <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+      {cards.map((card) => (
+        <Card
+        key={card.label}
+        className="
+          relative overflow-hidden rounded-2xl border border-border
+          bg-background/60 shadow-none transition-shadow
+          hover:shadow-sm
+          before:absolute before:inset-0 before:rounded-[inherit]
+          before:pointer-events-none
+          before:bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_55%,transparent_100%),linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0.02)_100%)]
+          dark:before:bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_55%,transparent_100%),linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)]
+        "
+      >
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <div className="bg-muted rounded-md p-1.5">{card.icon}</div>
+              <CardDescription className="font-medium text-muted-foreground">
+                {card.label}
+              </CardDescription>
+            </div>
+            <CardTitle className="mt-4 text-3xl font-bold tabular-nums">
+              {card.value}
+            </CardTitle>
+          </CardHeader>
+          <CardFooter className="pt-0">
+            <div className="flex items-center gap-1 text-sm">
+              {card.changeType === "up" ? (
+                <IconArrowUpRight className={`size-4 ${card.changeColor}`} />
+              ) : (
+                <IconArrowDownRight className={`size-4 ${card.changeColor}`} />
+              )}
+              <span className={`font-medium ${card.changeColor}`}>{card.change}</span>
+              <span className="text-muted-foreground ml-1">{card.subtext}</span>
+            </div>
+          </CardFooter>
+        </Card>
+      ))}
     </div>
   )
 }

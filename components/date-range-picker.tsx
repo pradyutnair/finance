@@ -69,7 +69,7 @@ const presetRanges = [
     label: "This Month",
     getValue: () => ({
       from: startOfMonth(new Date()),
-      to: endOfMonth(new Date()),
+      to: new Date(),
     }),
   },
   {
@@ -86,7 +86,7 @@ const presetRanges = [
     label: "This Year",
     getValue: () => ({
       from: startOfYear(new Date()),
-      to: endOfYear(new Date()),
+      to: new Date(),
     }),
   },
 ]
