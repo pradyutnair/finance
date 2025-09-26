@@ -51,6 +51,10 @@ export async function GET(request: NextRequest) {
       Query.greaterThanEqual("bookingDate", startStr),
       Query.lessThanEqual("bookingDate", endStr),
       Query.orderAsc("bookingDate"),
+      Query.or([
+        Query.equal("exclude", false),
+        Query.isNull("exclude"),
+      ]),
       Query.limit(100)
     ];
     let cursor: string | undefined = undefined;

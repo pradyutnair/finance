@@ -64,6 +64,10 @@ export async function GET(request: NextRequest) {
 
     const filters = [Query.equal("userId", userId),
                      Query.greaterThanEqual("bookingDate", startStr),
+                     Query.or([
+                      Query.equal("exclude", false),
+                      Query.isNull("exclude"),
+                      ]),
                      Query.lessThanEqual("bookingDate", endStr)];
 
     // Fetch transactions (paginate to include all rows in range)
