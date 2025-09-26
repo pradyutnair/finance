@@ -208,7 +208,7 @@ export function SectionCards() {
                   )
                 })()} */}
               </div>
-              <Progress value={card.progress} className="h-2 mt-3" />
+              <Progress value={card.progress} className="h-2 mt-3 opacity-60" />
             </div>
           )}
         </CardHeader>

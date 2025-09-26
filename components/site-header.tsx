@@ -22,7 +22,7 @@ export function SiteHeader() {
   const dateRange = dateRangeContext?.dateRange
   const setDateRange = dateRangeContext?.setDateRange
   
-  const { baseCurrency, setBaseCurrency, supportedCurrencies } = useCurrency()
+  const { baseCurrency, setBaseCurrency, preferredCurrencies } = useCurrency()
 
   // Get page title based on pathname
   const getPageTitle = () => {
@@ -55,7 +55,7 @@ export function SiteHeader() {
               <SelectValue placeholder="EUR" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
-              {supportedCurrencies.map((c) => (
+              {preferredCurrencies.map((c) => (
                 <SelectItem key={c} value={c} className="rounded-lg">
                   {c}
                 </SelectItem>

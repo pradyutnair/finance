@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { useAuth } from "./auth-context"
 
 type Rates = Record<string, number>
 
@@ -12,6 +13,8 @@ type CurrencyContextValue = {
   formatAmount: (amount: number, currency?: string, options?: Intl.NumberFormatOptions) => string
   getCurrencySymbol: (currency: string) => string
   supportedCurrencies: string[]
+  preferredCurrencies: string[]
+  updatePreferredCurrencies: (currencies: string[]) => Promise<void>
 }
 
 const CurrencyContext = createContext<CurrencyContextValue | undefined>(undefined)
@@ -25,6 +28,7 @@ const PREFERRED = ["EUR", "USD", "INR", "GBP"]
 
 const LOCAL_STORAGE_KEY = "nexpass_fx_rates_v2"
 const LOCAL_STORAGE_BASE_KEY = "nexpass_base_currency_v1"
+const LOCAL_STORAGE_PREFS_KEY = "nexpass_preferred_currencies_v1"
 
 type StoredRates = {
   date: string // YYYY-MM-DD (UTC today)
@@ -102,8 +106,10 @@ function getCurrencySymbolInternal(currency: string): string {
 }
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
   const [baseCurrency, setBaseCurrency] = useState<string>("EUR")
   const [rates, setRates] = useState<Rates | null>(null)
+  const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(PREFERRED)
   
   // Debug: log when rates change
   useEffect(() => {
@@ -151,12 +157,15 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Load preferred base currency from localStorage
+  // Load preferences from localStorage
   useEffect(() => {
     try {
-      const saved = typeof window !== "undefined" ? window.localStorage.getItem(LOCAL_STORAGE_BASE_KEY) : null
-      if (saved) {
-        setBaseCurrency(saved)
+      const savedBase = typeof window !== "undefined" ? window.localStorage.getItem(LOCAL_STORAGE_BASE_KEY) : null
+      if (savedBase) setBaseCurrency(savedBase)
+      const savedPrefs = typeof window !== "undefined" ? window.localStorage.getItem(LOCAL_STORAGE_PREFS_KEY) : null
+      if (savedPrefs) {
+        const parsed = JSON.parse(savedPrefs)
+        if (Array.isArray(parsed) && parsed.length > 0) setPreferredCurrencies(parsed)
       }
     } catch {
       // ignore
@@ -223,6 +232,18 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     return results
   }, [])
 
+  const updatePreferredCurrencies = useCallback(async (currencies: string[]) => {
+    setPreferredCurrencies(currencies)
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LOCAL_STORAGE_PREFS_KEY, JSON.stringify(currencies))
+      }
+    } catch {}
+    if (!currencies.includes(baseCurrency)) {
+      setBaseCurrency(currencies[0])
+    }
+  }, [baseCurrency])
+
   const value = useMemo<CurrencyContextValue>(() => ({
     baseCurrency,
     setBaseCurrency,
@@ -231,7 +252,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     formatAmount,
     getCurrencySymbol: getCurrencySymbolInternal,
     supportedCurrencies,
-  }), [baseCurrency, rates, convertAmount, formatAmount, supportedCurrencies])
+    preferredCurrencies,
+    updatePreferredCurrencies,
+  }), [baseCurrency, rates, convertAmount, formatAmount, supportedCurrencies, preferredCurrencies, updatePreferredCurrencies])
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>
 }
