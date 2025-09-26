@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/app-sidebar"
-import { CurrencyProvider } from "@/contexts/currency-context"
+// Uses global CurrencyProvider from app/layout.tsx
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,9 +13,59 @@ import { ProfileService, UserProfile } from "@/lib/profile-service"
 // Avatar upload intentionally removed
 // Inline name editing implemented locally on this page
 import { CurrencyPreferences } from "@/components/profile-page/currency-preferences"
-import { Mail, Calendar, Settings } from "lucide-react"
+import { Mail, Calendar, Settings, Pencil } from "lucide-react"
 import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { useRef } from "react"
+import { Camera, Wand2 } from "lucide-react"
+import Image from "next/image"
+import { cn } from "@/lib/utils"
 
+const gradients = [
+  "from-pink-500 via-red-500 to-yellow-500",
+  "from-purple-500 via-indigo-500 to-blue-500",
+  "from-green-400 via-emerald-500 to-teal-600",
+  "from-orange-400 via-pink-500 to-rose-600",
+  "from-sky-400 via-cyan-500 to-blue-600",
+]
+
+  function pickGradient(seed: string) {
+    let hash = 0
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return gradients[Math.abs(hash) % gradients.length]
+  }
+
+  export function GradientAvatar({
+    name,
+    className,
+  }: {
+    name?: string | null
+    className?: string
+  }) {
+    const initials =
+      (name ?? "U")
+        .trim()
+        .split(/\s+/)
+        .map((s) => s[0]?.toUpperCase())
+        .slice(0, 2)
+        .join("") || "U"
+
+    const gradient = pickGradient(name || "user")
+
+    return (
+      <div
+        className={cn(
+          "flex h-20 w-20 items-center justify-center rounded-full text-white font-semibold text-lg shadow-md bg-gradient-to-br",
+          gradient,
+          className
+        )}
+      >
+        {initials}
+      </div>
+    )
+  }
 export default function ProfilePage() {
   const { user } = useAuth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -64,7 +114,6 @@ export default function ProfilePage() {
 
   return (
     <AuthGuard requireAuth={true}>
-      <CurrencyProvider>
         <SidebarProvider
           style={
             {
@@ -77,10 +126,10 @@ export default function ProfilePage() {
           <SidebarInset>
             <div className="flex-1 p-4 lg:p-6">
               {/* Page title (kept tiny + quiet) */}
-              <div className="mb-4">
+              {/* <div className="mb-4">
                 <h1 className="text-xl font-semibold tracking-tight">Profile</h1>
                 <p className="text-sm text-muted-foreground">Manage your account</p>
-              </div>
+              </div> */}
 
               {isLoading ? (
                 <div className="grid gap-4 md:gap-6">
@@ -111,101 +160,97 @@ export default function ProfilePage() {
                   <Card className="rounded-2xl border-border/60 bg-background/60">
                     <CardContent className="p-6">
                       <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
+                        {/* LEFT: name + meta */}
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            {isEditingName ? (
+                          {/* LEFT: avatar + name + meta */}
+                          <div className="flex items-center gap-4">
+                            <GradientAvatar name={profile?.name || user?.name} />
+
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <input
-                                  className="h-9 rounded-md border px-3 text-sm bg-background"
-                                  value={pendingName}
-                                  onChange={(e) => setPendingName(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') saveName()
-                                    if (e.key === 'Escape') cancelEditName()
-                                  }}
-                                  autoFocus
-                                />
-                                <button
-                                  className="h-9 rounded-md bg-primary px-3 text-sm text-primary-foreground"
-                                  onClick={saveName}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  className="h-9 rounded-md px-3 text-sm"
-                                  onClick={cancelEditName}
-                                >
-                                  Cancel
-                                </button>
+                                {!isEditingName ? (
+                                  <p className="text-xl font-semibold leading-none">
+                                    {profile?.name || user?.name || "Unnamed"}
+                                  </p>
+                                ) : (
+                                  <input
+                                    className="h-9 rounded-md border px-3 text-sm bg-background"
+                                    value={pendingName}
+                                    onChange={(e) => setPendingName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") saveName()
+                                      if (e.key === "Escape") cancelEditName()
+                                    }}
+                                    autoFocus
+                                  />
+                                )}
+                                <Badge variant="secondary" className="rounded-full">
+                                  {profile?.role || "Member"}
+                                </Badge>
                               </div>
-                            ) : (
-                              <>
-                                <p className="text-xl font-semibold leading-none">
-                                  {profile?.name || user?.name || "Unnamed"}
-                                </p>
-                                <button
-                                  className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-                                  onClick={startEditName}
-                                >
-                                  Edit name
-                                </button>
-                              </>
-                            )}
-                            <Badge variant="secondary" className="rounded-full">
-                              {profile?.role || "Member"}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                            <span className="inline-flex items-center gap-1">
-                              <Mail className="h-4 w-4" />
-                              {user?.email ?? "No email"}
-                            </span>
-                            <span className="inline-flex items-center gap-1 ">
-                              <Calendar className="h-4 w-4" />
-                              Joined{" "}
-                              {user?.$createdAt
-                                ? new Date(user.$createdAt).toLocaleDateString(undefined, {
-                                    month: "long",
-                                    year: "numeric",
-                                  })
-                                : "—"}
-                            </span>
+
+                              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <Mail className="h-4 w-4" />
+                                  {user?.email ?? "No email"}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <Calendar className="h-4 w-4" />
+                                  Joined{" "}
+                                  {user?.$createdAt
+                                    ? new Date(user.$createdAt).toLocaleDateString(undefined, {
+                                        month: "long",
+                                        year: "numeric",
+                                      })
+                                    : "—"}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        {/* Inline name editor used above; external component removed */}
-                      </div>
-                    </CardContent>
-                  </Card>
+
+                      {/* RIGHT: action buttons */}
+                      {!isEditingName ? (
+                        <Button
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => {
+                            setPendingName(profile?.name || user?.name || "")
+                            setIsEditingName(true)
+                          }}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit Profile
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" className="rounded-xl" onClick={saveName}>
+                            Save
+                          </Button>
+                          <Button size="sm" variant="outline" className="rounded-xl" onClick={cancelEditName}>
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
 
                   {/* --- Simple settings cards --- */}
                   <div className="grid gap-4 ">
 
-                    <Card className="rounded-2xl">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Settings className="h-4 w-4" />
-                          Currency preferences
-                        </CardTitle>
-                        <CardDescription>
-                          Choose the currencies you care about
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pt-0">
                         <CurrencyPreferences
                           preferredCurrencies={
                             profile?.preferredCurrencies || ["EUR", "USD", "GBP"]
                           }
                           onCurrencyPreferencesUpdate={handleCurrencyPreferencesUpdate}
                         />
-                      </CardContent>
-                    </Card>
                   </div>
                 </div>
               )}
             </div>
           </SidebarInset>
         </SidebarProvider>
-      </CurrencyProvider>
     </AuthGuard>
   )
 }

@@ -19,7 +19,7 @@ export function CurrencyPreferences({
   preferredCurrencies, 
   onCurrencyPreferencesUpdate 
 }: CurrencyPreferencesProps) {
-  const { supportedCurrencies, baseCurrency, setBaseCurrency, getCurrencySymbol } = useCurrency()
+  const { supportedCurrencies, baseCurrency, setBaseCurrency, getCurrencySymbol, updatePreferredCurrencies } = useCurrency()
   const [selectedCurrencies, setSelectedCurrencies] = useState(preferredCurrencies)
   const [selectedBase, setSelectedBase] = useState(baseCurrency)
   const [newCurrency, setNewCurrency] = useState('')
@@ -62,6 +62,9 @@ export function CurrencyPreferences({
     setIsLoading(true)
 
     try {
+      // Update global context (persists to localStorage)
+      await updatePreferredCurrencies(selectedCurrencies)
+      // Also notify parent if provided (keeps its local state in sync)
       await onCurrencyPreferencesUpdate(selectedCurrencies)
       // Apply base currency immediately across the app
       setBaseCurrency(selectedBase)
