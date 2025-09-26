@@ -102,6 +102,12 @@ export interface DashboardMetrics {
   netIncome: number;
   savingsRate: number;
   transactionCount: number;
+  deltas?: {
+    balancePct: number;
+    incomePct: number;
+    expensesPct: number;
+    savingsPct: number;
+  };
 }
 
 // Metrics

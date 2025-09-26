@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState } from "react"
 import { DateRange } from "react-day-picker"
-import { subDays } from "date-fns"
+import { startOfMonth } from "date-fns"
 
 interface DateRangeContextType {
   dateRange: DateRange | undefined
@@ -13,9 +13,9 @@ interface DateRangeContextType {
 const DateRangeContext = createContext<DateRangeContextType | undefined>(undefined)
 
 export function DateRangeProvider({ children }: { children: React.ReactNode }) {
-  // Default to last 30 days
+  // Default to current month
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 30),
+    from: startOfMonth(new Date()),
     to: new Date(),
   })
 

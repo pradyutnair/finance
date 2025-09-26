@@ -1,6 +1,6 @@
 import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/app-sidebar"
-import { ChartAreaInteractive } from "@/components/chart-area-interactive"
+import { ChartAreaInteractive } from "@/components/dashboard/chart-area-interactive"
 import { AiChatCard } from "@/components/chat/ai-chat-card"
 import { RecentExpensesTable } from "@/components/dashboard/recent-expenses-table"
 import { ExpenseChart } from "@/components/dashboard/expense-chart"

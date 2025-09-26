@@ -77,37 +77,29 @@ export function SectionCards() {
       label: "Balance",
       value: formatCurrency(metrics.balance),
       icon: <IconWallet className="size-6 text-muted-foreground" />,
-      change: "+3.2%", // TODO: Calculate from historical data
-      changeType: "up" as const,
-      changeColor: "text-green-600",
-      subtext: "compared to last period",
+      delta: metrics.deltas?.balancePct ?? 0,
+      kind: "balance" as const,
     },
     {
       label: "Income",
       value: formatCurrency(metrics.income),
       icon: <IconCoins className="size-6 text-muted-foreground" />,
-      change: "+8.5%", // TODO: Calculate from historical data
-      changeType: "up" as const,
-      changeColor: "text-green-600",
-      subtext: "compared to last period",
+      delta: metrics.deltas?.incomePct ?? 0,
+      kind: "income" as const,
     },
     {
       label: "Expenses",
       value: formatCurrency(metrics.expenses),
       icon: <IconCreditCard className="size-6 text-muted-foreground" />,
-      change: "-2.1%", // TODO: Calculate from historical data
-      changeType: "down" as const,
-      changeColor: "text-red-600",
-      subtext: "compared to last period",
+      delta: metrics.deltas?.expensesPct ?? 0,
+      kind: "expenses" as const,
     },
     {
       label: "Savings",
       value: `${metrics.savingsRate.toFixed(1)}%`,
       icon: <IconPigMoney className="size-6 text-muted-foreground" />,
-      change: "+5.0%", // TODO: Calculate from historical data
-      changeType: "up" as const,
-      changeColor: "text-green-600",
-      subtext: "compared to last period",
+      delta: metrics.deltas?.savingsPct ?? 0,
+      kind: "savings" as const,
     },
   ]
 
@@ -133,21 +125,38 @@ export function SectionCards() {
                 {card.label}
               </CardDescription>
             </div>
-            <CardTitle className="mt-4 text-3xl font-bold tabular-nums">
-              {card.value}
-            </CardTitle>
-          </CardHeader>
-          <CardFooter className="pt-0">
-            <div className="flex items-center gap-1 text-sm">
-              {card.changeType === "up" ? (
-                <IconArrowUpRight className={`size-4 ${card.changeColor}`} />
-              ) : (
-                <IconArrowDownRight className={`size-4 ${card.changeColor}`} />
-              )}
-              <span className={`font-medium ${card.changeColor}`}>{card.change}</span>
-              <span className="text-muted-foreground ml-1">{card.subtext}</span>
+            <div className="mt-4 flex items-baseline justify-between">
+              <CardTitle className="text-3xl font-bold tabular-nums">
+                {card.value}
+              </CardTitle>
+              {(() => {
+                const d = Number(card.delta || 0);
+                const ad = Math.abs(d);
+                const disp = `${isFinite(ad) ? ad.toFixed(1) : '0.0'}%`;
+                const isZero = Math.round(d * 10) === 0;
+                const isPos = d > 0;
+                const isExpenses = card.kind === "expenses";
+                // color rules
+                const color = isZero
+                  ? "text-muted-foreground"
+                  : isExpenses
+                    ? (isPos ? "text-red-600" : "text-green-600")
+                    : (isPos ? "text-green-600" : "text-red-600");
+                return (
+                  <div className="flex items-center gap-1 text-sm">
+                    {!isZero && (
+                      isPos ? (
+                        <IconArrowUpRight className={`size-4 ${color}`} />
+                      ) : (
+                        <IconArrowDownRight className={`size-4 ${color}`} />
+                      )
+                    )}
+                    <span className={`font-medium ${color}`}>{disp}</span>
+                  </div>
+                )
+              })()}
             </div>
-          </CardFooter>
+          </CardHeader>
         </Card>
       ))}
     </div>

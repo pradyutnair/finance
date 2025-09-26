@@ -4,6 +4,7 @@ import { requireAuthUser } from "@/lib/auth";
 
 type AuthUser = { $id?: string; id?: string };
 type TxDoc = { amount?: string | number; bookingDate?: string; valueDate?: string };
+type DocWithId = TxDoc & { $id?: string };
 
 const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
 const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
@@ -16,6 +17,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+
+    // Date helpers
+    const msDay = 24 * 60 * 60 * 1000;
+    const toUTCDate = (s: string) => new Date(`${s}T00:00:00.000Z`);
+    const ymd = (d: Date) => {
+      const y = d.getUTCFullYear();
+      const m = `${d.getUTCMonth() + 1}`.padStart(2, '0');
+      const da = `${d.getUTCDate()}`.padStart(2, '0');
+      return `${y}-${m}-${da}`;
+    };
+    const addDays = (s: string, days: number) => ymd(new Date(toUTCDate(s).getTime() + days * msDay));
+    const endStr = to || ymd(new Date());
+    const startStr = from || addDays(endStr, -29);
 
     // Create Appwrite client
     const client = new Client()
@@ -31,62 +45,48 @@ export async function GET(request: NextRequest) {
     }
     const databases = new Databases(client);
 
-    // Build query filters
-    const filters = [Query.equal("userId", userId)];
-    
-    if (from && to) {
-      filters.push(Query.greaterThanEqual("bookingDate", from));
-      filters.push(Query.lessThanEqual("bookingDate", to));
+    // Fetch transactions for the range with pagination
+    const base = [
+      Query.equal("userId", userId),
+      Query.greaterThanEqual("bookingDate", startStr),
+      Query.lessThanEqual("bookingDate", endStr),
+      Query.orderAsc("bookingDate"),
+      Query.limit(100)
+    ];
+    let cursor: string | undefined = undefined;
+    const txs: TxDoc[] = [];
+    while (true) {
+      const q = [...base];
+      if (cursor) q.push(Query.cursorAfter(cursor));
+      const resp = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, q);
+      const docs = resp.documents as DocWithId[];
+      txs.push(...docs);
+      if (docs.length < 100) break;
+      cursor = docs[docs.length - 1].$id;
+      if (!cursor) break;
     }
 
-    // Fetch transactions
-    const transactionsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
-      [
-        ...filters,
-        Query.orderDesc("bookingDate"),
-        Query.limit(1000) // Limit for performance
-      ]
-    );
+    // Initialize daily buckets (ensure continuous dates)
+    const daily: Record<string, { income: number; expenses: number }> = {};
+    let d = toUTCDate(startStr);
+    const end = toUTCDate(endStr);
+    while (d.getTime() <= end.getTime()) {
+      daily[ymd(d)] = { income: 0, expenses: 0 };
+      d = new Date(d.getTime() + msDay);
+    }
 
-    const transactions = transactionsResponse.documents as TxDoc[];
+    // Accumulate
+    for (const t of txs) {
+      const day = String(t.bookingDate || t.valueDate);
+      if (!day || !daily[day]) continue;
+      const amt = parseFloat(String(t.amount ?? 0));
+      if (amt > 0) daily[day].income += amt;
+      else daily[day].expenses += Math.abs(amt);
+    }
 
-    // Group transactions by week
-    const weeklyData = new Map();
-
-    transactions.forEach((transaction) => {
-      const date = new Date(String(transaction.bookingDate || transaction.valueDate));
-      // Get the start of the week (Sunday)
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - date.getDay());
-      const weekKey = weekStart.toISOString().split('T')[0];
-
-      if (!weeklyData.has(weekKey)) {
-        weeklyData.set(weekKey, { income: 0, expenses: 0 });
-      }
-
-      const weekData = weeklyData.get(weekKey);
-      const amount = parseFloat(String(transaction.amount ?? 0));
-      if (amount > 0) {
-        weekData.income += amount;
-      } else {
-        weekData.expenses += Math.abs(amount);
-      }
-    });
-
-    // Convert to array and sort by date
-    const timeseriesData = Array.from(weeklyData.entries())
-      .map(([date, data]) => ({
-        date: new Date(date).toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric' 
-        }),
-        income: Math.round(data.income * 100) / 100,
-        expenses: Math.round(data.expenses * 100) / 100
-      }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-8); // Last 8 weeks
+    const timeseriesData = Object.entries(daily)
+      .map(([date, v]) => ({ date, income: Number(v.income.toFixed(2)), expenses: Number(v.expenses.toFixed(2)) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     return NextResponse.json(timeseriesData);
 
