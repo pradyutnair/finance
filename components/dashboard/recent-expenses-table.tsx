@@ -60,8 +60,8 @@ export function RecentExpensesTable() {
   })
 
   const recentExpenses = transactionsData?.transactions
-    ?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0)
-    ?.slice(0, 5) || []
+    //?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0)
+    ?.slice(0, 6) || []
 
   if (isLoading) {
     return (
@@ -135,43 +135,55 @@ export function RecentExpensesTable() {
       </CardHeader>
       <CardContent className="p-0">
         <div className="px-4 pb-4">
-          {recentExpenses.map((expense: any, index: number) => (
-            <div 
-              key={(expense as any).$id ?? expense.id ?? `${expense.accountId}-${(expense as any).transactionId ?? index}`}
-              className="group flex items-center justify-between py-3 transition-all hover:px-2 rounded-md hover:bg-muted/40"
-              style={{
-                animation: `fadeIn 0.3s ease-out ${index * 0.05}s backwards`
-              }}
-            >
-              <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                <div 
-                  className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ring-2 ring-background transition-transform group-hover:scale-125"
-                  style={{ 
-                    backgroundColor: getCategoryColor(expense.category || 'Uncategorized')
-                  }}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium leading-tight truncate text-foreground/90 group-hover:text-foreground transition-colors">
-                    {expense.description || expense.counterparty || 'Unknown'}
-                  </p>
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">
-                    {new Date(expense.bookingDate || expense.date).toLocaleDateString('en-US', { 
-                      month: 'short', 
-                      day: 'numeric',
-                      year: new Date(expense.bookingDate || expense.date).getFullYear() !== new Date().getFullYear() 
-                        ? 'numeric' 
-                        : undefined
-                    })}
+        {recentExpenses.map((tx: any, index: number) => {
+            const amount = parseFloat(String(tx.amount)) || 0
+            const isIncome = amount > 0
+            const colorClass = isIncome
+              ? "text-gray-200 group-hover:text-green-700"
+              : "text-gray-500 group-hover:text-destructive"
+
+            return (
+              <div
+                key={tx.$id ?? tx.id ?? `${tx.accountId}-${tx.transactionId ?? index}`}
+                className="group flex items-center justify-between py-3 transition-all hover:px-2 rounded-md hover:bg-muted/40"
+                style={{
+                  animation: `fadeIn 0.3s ease-out ${index * 0.05}s backwards`,
+                }}
+              >
+                <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                  <div
+                    className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ring-2 ring-background transition-transform group-hover:scale-125"
+                    style={{
+                      backgroundColor: getCategoryColor(tx.category || "Uncategorized"),
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium leading-tight truncate text-foreground/90 group-hover:text-foreground transition-colors">
+                      {tx.description || tx.counterparty || "Unknown"}
+                    </p>
+                    <p className="text-xs text-muted-foreground/70 mt-0.5">
+                      {new Date(tx.bookingDate || tx.date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year:
+                          new Date(tx.bookingDate || tx.date).getFullYear() !==
+                          new Date().getFullYear()
+                            ? "numeric"
+                            : undefined,
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0 pl-2">
+                  <p className={`font-mono text-sm font-semibold ${colorClass}`}>
+                    {isIncome ? "+" : "-"}
+                    {getCurrencySymbol(tx.currency || "EUR")}
+                    {Math.abs(amount).toFixed(2)}
                   </p>
                 </div>
               </div>
-              <div className="text-right flex-shrink-0 pl-2">
-                <p className="font-mono text-sm font-semibold text-destructive/90 group-hover:text-destructive transition-colors">
-                  −{getCurrencySymbol(expense.currency || 'USD')}{Math.abs(parseFloat(String(expense.amount))).toFixed(2)}
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </CardContent>
       <style jsx>{`
