@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
-import { getRequisition, listRequisitions, getAccounts, getBalances, getTransactions, HttpError } from "@/lib/gocardless";
+import { getRequisition, listRequisitions, getAccounts, getBalances, getTransactions, getInstitution, HttpError } from "@/lib/gocardless";
 import { Client, Databases, ID, Query } from "appwrite";
 import { createAppwriteClient } from "@/lib/auth";
 
@@ -96,7 +96,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const databases = new Databases(client);
 
       try {
-        // Store requisition in database first
+        // Fetch institution metadata (logo, transaction_total_days, max_access_valid_for_days)
+        let logoUrl: string | null = null;
+        let transactionTotalDays: number | null = null;
+        let maxAccessValidForDays: number | null = null;
+        try {
+          const institution = await getInstitution(requisition.institution_id);
+          logoUrl = (institution && (institution.logo as string)) || null;
+          const ttlRaw = institution && (institution.transaction_total_days as any);
+          const ttlNum = ttlRaw !== undefined && ttlRaw !== null ? Number(ttlRaw) : null;
+          transactionTotalDays = Number.isFinite(ttlNum as number) ? (ttlNum as number) : null;
+          const maxAccessRaw = institution && (institution.max_access_valid_for_days as any);
+          const maxAccessNum = maxAccessRaw !== undefined && maxAccessRaw !== null ? Number(maxAccessRaw) : null;
+          maxAccessValidForDays = Number.isFinite(maxAccessNum as number) ? (maxAccessNum as number) : null;
+        } catch {
+          // proceed without institution metadata
+        }
+
+        // Store requisition in database (after metadata ready)
         try {
           await databases.createDocument(
             DATABASE_ID,
@@ -109,7 +126,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               institutionName: requisition.institution_name || 'Unknown Bank',
               status: requisition.status,
               reference: requisition.reference,
-              // Some schemas require redirectUri; prefer value from requisition, else env
               redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
             }
           );
@@ -130,6 +146,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               institutionName: requisition.institution_name || 'Unknown Bank',
               status: 'active',
               requisitionId: requisition.id,
+              // Institution metadata on connections only - match your Appwrite fields exactly
+              logoUrl: logoUrl || undefined,
+              transactionTotalDays: (transactionTotalDays ?? undefined) as any,
+              maxAccessValidforDays: (maxAccessValidForDays ?? (typeof (requisition as any)?.max_access_valid_for_days !== 'undefined'
+                ? Number((requisition as any).max_access_valid_for_days)
+                : undefined)) as any,
             }
           );
           connectionDocId = connectionDoc.$id;
@@ -228,36 +250,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (transactions && transactions.length > 0) {
                   for (const transaction of transactions.slice(0, 100)) {
                     try {
-                      // Use the actual transaction ID from GoCardless as a field, but generate unique doc ID
-                      const goCardlessTransactionId = transaction.transactionId || transaction.internalTransactionId;
-                      
-                      // Check if transaction already exists to avoid duplicates
-                      if (goCardlessTransactionId) {
-                        try {
-                          const existingTransactions = await databases.listDocuments(
-                            DATABASE_ID,
-                            TRANSACTIONS_COLLECTION_ID,
-                            [
-                              Query.equal('transactionId', goCardlessTransactionId),
-                              Query.equal('accountId', accountId)
-                            ]
-                          );
-                          
-                          if (existingTransactions.documents.length > 0) {
-                            console.log(`Transaction ${goCardlessTransactionId} already exists, skipping`);
-                            continue;
-                          }
-                        } catch (queryError) {
-                          console.log('Error checking existing transaction, proceeding with creation');
-                        }
-                      }
-                      
-                      // Use ID.unique() to generate a unique document ID
+                      // Use the provider transaction id when available, else fallback to internal id
+                      const goCardlessTransactionId: string | undefined =
+                        transaction.transactionId || transaction.internalTransactionId || undefined;
+
+                      // Create a deterministic document id per (accountId, transactionId)
+                      const baseId = goCardlessTransactionId
+                        ? `${accountId}_${goCardlessTransactionId}`
+                        : `${accountId}_${
+                            (transaction.bookingDate || '') + '_' +
+                            (transaction.transactionAmount?.amount || '') + '_' +
+                            (transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')
+                          }`;
+                      const docId = baseId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+
                       await databases.createDocument(
                         DATABASE_ID,
                         TRANSACTIONS_COLLECTION_ID,
                         ID.unique(),
-                        {
+                          {
                           userId: userId,
                           accountId: accountId,
                           transactionId: goCardlessTransactionId || `generated_${accountId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -272,9 +283,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         }
                       );
                     } catch (error: any) {
-                      // Log error but continue processing other transactions
-                      if (error.message?.includes('already exists')) {
-                        console.log('Transaction already exists, skipping');
+                      // Ignore duplicates silently; continue processing
+                      if (error?.message?.includes('already exists') || error?.code === 409) {
+                        // duplicate id -> already stored
                       } else {
                         console.error('Error storing transaction:', error);
                       }

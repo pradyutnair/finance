@@ -260,7 +260,10 @@ export const useCategories = (dateRange?: { from: string; to: string }) => {
 export const useAccounts = () => {
   return useQuery({
     queryKey: ["accounts"],
-    queryFn: () => apiRequest<Account[]>("/accounts"),
+    queryFn: async () => {
+      const res = await apiRequest<{ ok: boolean; accounts: any[] }>("/accounts");
+      return Array.isArray((res as any).accounts) ? (res as any).accounts : [];
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 };

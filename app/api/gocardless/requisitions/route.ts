@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { createRequisition, HttpError } from "@/lib/gocardless";
-import { Client, Databases } from "appwrite";
+// No DB writes here; requisitions are persisted only after successful authorization in the callback
 
 export async function POST(request: Request) {
   try {
@@ -45,40 +45,7 @@ export async function POST(request: Request) {
       agreementId,
     });
 
-    // Store requisition in Appwrite database
-    try {
-      const client = new Client()
-        .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-        .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-      
-      // Set API key for server-side operations
-      client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
-      const databases = new Databases(client);
-
-      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-      const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
-
-      // Store requisition with initial status
-      await databases.createDocument(
-        DATABASE_ID,
-        REQUISITIONS_COLLECTION_ID,
-        data.id, // Use GoCardless requisition ID as document ID
-        {
-          userId: userId,
-          requisitionId: data.id,
-          institutionId: data.institution_id,
-          institutionName: data.institution_name || 'Unknown Bank',
-          status: data.status || 'CREATED',
-          reference: finalReference,
-          redirectUri: data.redirect,
-        }
-      );
-
-      console.log('✅ Stored requisition in Appwrite:', data.id);
-    } catch (dbError) {
-      console.error('Error storing requisition in database:', dbError);
-      // Don't fail the request if DB storage fails
-    }
+    // Do not persist requisition yet. Persist only after successful authorization in callback.
 
     return NextResponse.json(data, { status: 201 });
   } catch (err: any) {

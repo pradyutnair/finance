@@ -168,6 +168,14 @@ export async function listInstitutions(countryCode: string): Promise<any> {
     method: "GET",
   });
 }
+export async function getInstitution(institutionId: string): Promise<any> {
+  if (!institutionId) {
+    throw new HttpError("'institutionId' is required", 400);
+  }
+  return fetchWithAuth(`/institutions/${encodeURIComponent(institutionId)}/`, {
+    method: "GET",
+  });
+}
 
 export async function createEndUserAgreement({
   institutionId,

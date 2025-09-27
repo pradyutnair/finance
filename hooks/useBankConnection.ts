@@ -48,7 +48,7 @@ export function useBankConnection() {
         try {
           const connectionsResponse = await databases.listDocuments(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-            'bank_connections', // Collection ID
+            process.env.NEXT_PUBLIC_APPWRITE_BANK_CONNECTIONS_COLLECTION_ID as string,
             [Query.equal('userId', currentUser.$id)]
           );
           connections = connectionsResponse.documents as unknown as BankConnection[];
@@ -62,7 +62,7 @@ export function useBankConnection() {
         try {
           const requisitionsResponse = await databases.listDocuments(
             process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-            'requisitions', // Collection ID
+            process.env.NEXT_PUBLIC_APPWRITE_REQUISITIONS_COLLECTION_ID as string,
             [Query.equal('userId', currentUser.$id)]
           );
           reqs = requisitionsResponse.documents as unknown as Requisition[];

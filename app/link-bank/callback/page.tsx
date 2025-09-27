@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
+import { Account } from 'appwrite';
+import { createAppwriteClient } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ClientOnly } from '@/components/ClientOnly';
 
@@ -40,9 +42,21 @@ function BankCallbackContent() {
         // The 'ref' parameter should contain the requisition ID
         console.log('🔄 Processing GoCardless callback with ref:', ref);
         
+        // Attach Appwrite JWT so server can resolve current user
+        let jwtToken: string | null = null;
+        try {
+          const client = createAppwriteClient();
+          const account = new Account(client);
+          const jwt = await account.createJWT();
+          jwtToken = jwt?.jwt || null;
+        } catch {}
+        const authHeaders: Record<string, string> = jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {};
+
         // Try direct requisition lookup with the ref parameter
         response = await fetch(`/api/gocardless/requisitions/${ref}`, {
           method: 'GET',
+          headers: authHeaders,
+          credentials: 'include',
         });
 
         // If direct lookup fails, the ref might be our custom reference instead of requisition ID
@@ -53,6 +67,8 @@ function BankCallbackContent() {
           try {
             const referenceResponse = await fetch(`/api/gocardless/requisitions/by-reference/${ref}`, {
               method: 'GET',
+              headers: authHeaders,
+              credentials: 'include',
             });
             
             if (referenceResponse.ok) {
@@ -63,6 +79,8 @@ function BankCallbackContent() {
               // Retry with the actual GoCardless requisition ID
               response = await fetch(`/api/gocardless/requisitions/${requisitionId}`, {
                 method: 'GET',
+                headers: authHeaders,
+                credentials: 'include',
               });
             } else {
               console.log('❌ Reference lookup failed. This may be an invalid or expired callback.');
