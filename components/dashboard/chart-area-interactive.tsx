@@ -144,7 +144,7 @@ export function ChartAreaInteractive() {
 
             <Bar
               dataKey="value"
-              fill="var(--primary)"
+              fill="var(--chart-1)"
               radius={0}
             />
           </BarChart>

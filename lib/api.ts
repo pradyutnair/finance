@@ -51,19 +51,69 @@ export interface Account {
 }
 
 // API functions
+
+// Robust JWT caching to ensure every request includes a valid Appwrite JWT.
+// This avoids relying on cookies on our own domain, which don't include Appwrite's session cookie.
+let cachedJwtToken: string | null = null;
+let cachedJwtExpiresAtMs = 0; // epoch ms
+let inflightJwtPromise: Promise<string> | null = null;
+
+function decodeJwtExpirationMs(token: string): number | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payloadJson = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(payloadJson || "{}");
+    if (typeof payload.exp === "number") {
+      return payload.exp * 1000;
+    }
+  } catch (_err) {
+    // ignore decode errors; we'll fallback to default TTL
+  }
+  return null;
+}
+
+async function fetchFreshJwt(): Promise<string> {
+  // Ensure there is an active Appwrite session in the browser
+  await account.get();
+  const jwt = await account.createJWT();
+  const token = (jwt as any).jwt || (jwt as any).token;
+  if (typeof token !== "string" || token.length < 10) {
+    throw new Error("Invalid JWT token returned by Appwrite");
+  }
+  const expMs = decodeJwtExpirationMs(token) ?? (Date.now() + 10 * 60 * 1000);
+  cachedJwtToken = token;
+  // Refresh 60s before expiry
+  cachedJwtExpiresAtMs = expMs - 60 * 1000;
+  return token;
+}
+
+async function ensureJwt(): Promise<string> {
+  const now = Date.now();
+  if (cachedJwtToken && now < cachedJwtExpiresAtMs) {
+    return cachedJwtToken;
+  }
+  if (inflightJwtPromise) {
+    return inflightJwtPromise;
+  }
+  inflightJwtPromise = (async () => {
+    try {
+      return await fetchFreshJwt();
+    } finally {
+      inflightJwtPromise = null;
+    }
+  })();
+  return inflightJwtPromise;
+}
+
 async function getAuthHeader(): Promise<Record<string, string>> {
   try {
-    // Create a short-lived JWT for the current Appwrite session
-    const jwt = await account.createJWT();
-    // Some SDKs return { jwt }, others { token }; support both
-    const token = (jwt as any).jwt || (jwt as any).token;
-    if (typeof token === 'string') {
-      return { Authorization: `Bearer ${token}` };
-    }
-  } catch (e) {
-    // No active session; return empty headers
+    const token = await ensureJwt();
+    return { Authorization: `Bearer ${token}` };
+  } catch (_e) {
+    // No active session; return empty headers so server returns 401 cleanly
+    return {};
   }
-  return {};
 }
 
 async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {

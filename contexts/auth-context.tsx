@@ -12,6 +12,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,6 +39,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refresh = async () => {
+    try {
+      const currentUser = await account.get();
+      setUser(currentUser);
+    } catch (error) {
+      setUser(null);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     try {
       await account.createEmailPasswordSession(email, password);
@@ -51,11 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = async () => {
     try {
-      // Create OAuth2 session with Google
-      await account.createOAuth2Session(
+      // Use OAuth2 Token flow: Appwrite redirects back with userId & secret
+      await account.createOAuth2Token(
         OAuthProvider.Google,
-        `${window.location.origin}/dashboard`, // Success URL
-        `${window.location.origin}/login` // Failure URL
+        `${window.location.origin}/auth/callback`,
+        `${window.location.origin}/login`
       );
     } catch (error) {
       throw error;
@@ -97,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

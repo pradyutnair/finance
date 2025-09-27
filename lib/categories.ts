@@ -12,7 +12,7 @@ export type CategoryKey =
   | "Uncategorized"
 
 export const CATEGORIES: Record<CategoryKey, { color: string }> = {
-  Groceries: { color: "#e5e7eb" },       // light gray
+  Groceries: { color: "rgb(209, 221, 235)" },       // light gray
   Restaurant: { color: "#ef4444" },      // red
   Transport: { color: "#3b82f6" },       // blue
   Travel: { color: "#06b6d4" },          // cyan/teal
