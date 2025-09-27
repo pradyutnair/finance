@@ -104,6 +104,9 @@ One per consented institution per user; stores tokens + status.
   - `accessExpiresAt` (datetime)
   - `refreshExpiresAt` (datetime)
   - `lastSyncedAt` (datetime)
+  - `logoUrl` (string; optional)
+  - `transactionTotalDays` (number; optional)
+  - `maxAccessValidforDays` (number; optional)
   - `createdAt` / `updatedAt` (datetime)
 - **Indexes**
   - `idx_conn_user` on `userId`

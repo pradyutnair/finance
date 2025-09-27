@@ -11,17 +11,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
-import { Banknote, Building2, ArrowRight, RefreshCw, AlertCircle } from "lucide-react"
+import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
+import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
+import { ChartContainer } from "@/components/ui/chart"
 
 type BankAccountDoc = {
   $id: string
   accountId?: string
+  institutionId?: string
   institutionName?: string
   accountName?: string
   currency?: string
   status?: string
   iban?: string | null
+  logoUrl?: string | null
+  maxAccessValidforDays?: number | null
+  connectionCreatedAt?: string | null
 }
 
 function maskIban(iban?: string | null): string {
@@ -31,31 +38,99 @@ function maskIban(iban?: string | null): string {
   return `${clean.slice(0, 4)} •••• •••• ${clean.slice(-4)}`
 }
 
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+}
+
+function AccessGauge({ remainingDays, maxDays }: { remainingDays: number; maxDays: number }) {
+  const pctRemaining = Math.max(0, Math.min(100, Math.round((remainingDays / maxDays) * 100)))
+  
+  // Color based on remaining percentage
+  const getColor = (pct: number) => {
+    if (pct > 60) return "#10b981" // green
+    if (pct > 30) return "#f59e0b" // amber
+    return "#ef4444" // red
+  }
+
+  const chartData = [{ value: pctRemaining }]
+  const color = getColor(pctRemaining)
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="relative w-28 h-28 cursor-help">
+            <ChartContainer
+              config={{ value: { color } }}
+              className="w-full h-full"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <RadialBarChart
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="60%"
+                  outerRadius="95%"
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <RadialBar
+                    dataKey="value"
+                    cornerRadius={5}
+                    fill={color}
+                    background={{ fill: "#e5e7eb" }}
+                  />
+                </RadialBarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+            {/* Center text */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="text-[12px] font-semibold leading-none">{remainingDays}</div>
+              <div className="text-[10px] opacity-60 leading-none mt-0.5">days</div>
+            </div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{remainingDays} days remaining until access to the bank needs to be renewed</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function AccountCard({ account }: { account: BankAccountDoc }) {
   const id = account.accountId || account.$id
   const { data, isLoading, isError, refetch, isFetching } = useAccountDetails(id)
   const { formatAmount, convertAmount, baseCurrency } = useCurrency()
 
+  // Compute access validity
+  const createdAt = account.connectionCreatedAt ? new Date(account.connectionCreatedAt) : null
+  const maxDays = account.maxAccessValidforDays ?? null
+  const lastValidDate = createdAt && maxDays ? new Date(createdAt.getTime() + maxDays * 24 * 60 * 60 * 1000) : null
+  const today = new Date()
+  const remainingDays = lastValidDate ? Math.max(0, Math.ceil((lastValidDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000))) : null
+
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
+      <Card className="group transition-all duration-200 hover:shadow-lg py-4">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
                 <Building2 className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-base">Loading account…</CardTitle>
-                <CardDescription>Fetching balances</CardDescription>
+                <Skeleton className="h-4 w-28 mb-2" />
+                <Skeleton className="h-3 w-16" />
               </div>
             </div>
-            <Skeleton className="h-6 w-28" />
           </div>
         </CardHeader>
-        <CardContent>
-          <Skeleton className="h-4 w-48 mb-2" />
-          <Skeleton className="h-3 w-24" />
+        <CardContent className="pt-0">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-3.5 w-32" />
+            <Skeleton className="h-6 w-14" />
+          </div>
         </CardContent>
       </Card>
     )
@@ -63,19 +138,26 @@ function AccountCard({ account }: { account: BankAccountDoc }) {
 
   if (isError || !data) {
     return (
-      <Card>
-        <CardHeader>
+      <Card className="group transition-all duration-200 hover:shadow-lg py-4">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center">
                 <AlertCircle className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-base">{account.accountName || account.institutionName || "Bank account"}</CardTitle>
+                <CardTitle className="text-base font-semibold">
+                  {account.accountName || account.institutionName || "Bank account"}
+                </CardTitle>
                 <CardDescription>Failed to load balance</CardDescription>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => refetch()} className="gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => refetch()} 
+              className="gap-2"
+            >
               <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
               Retry
             </Button>
@@ -94,43 +176,76 @@ function AccountCard({ account }: { account: BankAccountDoc }) {
   const nativeCurrency = String(primary?.balanceAmount?.currency || account.currency || "EUR")
   const baseAmount = convertAmount(nativeAmount, nativeCurrency, baseCurrency)
 
+  const isActive = account.status === "active"
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-              <Banknote className="w-5 h-5" />
-            </div>
-            <div>
-              <CardTitle className="text-base">{account.accountName || account.institutionName || "Bank account"}</CardTitle>
-              <CardDescription>{account.institutionName}</CardDescription>
+    <Card className="group transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 py-4">
+      <CardHeader className="relative pb-1">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {account.logoUrl ? (
+              <div className="w-16 h-16 rounded-lg overflow-hidden shadow-sm border">
+                <img
+                  src={account.logoUrl}
+                  alt={account.institutionName || "Bank"}
+                  className="w-full h-full object-contain p-1"
+                />
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
+                <Banknote className="w-5 h-5" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-base font-semibold truncate">
+                {account.accountName || account.institutionName || "Bank account"}
+              </CardTitle>
+              <div className="flex items-center gap-2 mt-0.5">
+                <Badge className={`w-fit text-[10px] font-medium px-2 py-0.5 ${
+                  isActive
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    : 'bg-gray-100 text-gray-700 border-gray-200'
+                }`}>
+                  {capitalizeFirst(account.status || "active")}
+                </Badge>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-xl font-semibold">{formatAmount(nativeAmount, nativeCurrency)}</div>
-            {nativeCurrency.toUpperCase() !== baseCurrency?.toUpperCase() ? (
-              <div className="text-xs text-muted-foreground">{formatAmount(baseAmount)}</div>
-            ) : null}
+
+          <div className="flex items-center gap-3 flex-shrink-0 ml-6">
+            {remainingDays !== null && maxDays ? (
+              <AccessGauge remainingDays={remainingDays} maxDays={maxDays} />
+            ) : (
+              <div className="text-xs opacity-50">Access info unavailable</div>
+            )}
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-sm text-muted-foreground">
-            {maskIban(account.iban)}
+
+      <CardContent className="relative">
+        <div className="flex items-start justify-between pt-2 border-t">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+            <div className="flex flex-col items-start min-w-[110px]">
+              <div className="text-2xl font-bold leading-tight">
+                {formatAmount(nativeAmount, nativeCurrency)}
+              </div>
+              {nativeCurrency.toUpperCase() !== baseCurrency?.toUpperCase() && (
+                <div className="text-xs opacity-70 mt-0.5">
+                  {formatAmount(baseAmount)}
+                </div>
+              )}
+            </div>
+            <div className="text-xs font-medium opacity-70 sm:ml-4 ml-0">
+              {maskIban(account.iban)}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={account.status === "active" ? "default" : "secondary"}>
-              {account.status || "active"}
-            </Badge>
-            <Link href={`/transactions?accountId=${encodeURIComponent(id)}`} className="inline-flex">
-              <Button variant="ghost" size="sm" className="gap-1">
-                View activity
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
+          <Button
+            variant="outline"
+            className="ml-4 px-3 py-1.5 text-xs font-semibold dark:hover:text-red-600"
+            type="button"
+          >
+            Revoke Access
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -155,63 +270,68 @@ export default function BanksPage() {
           <SiteHeader />
           <div className="flex flex-1 flex-col">
             <div className="@container/main flex flex-1 flex-col gap-2">
-              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
                 <div className="px-4 lg:px-6">
-                  <div className="flex items-center justify-between mb-2">
-                    
+                  {/* Header Section */}
+                  <div className="flex items-center justify-end mb-4">
                     <Link href="/link-bank" className="inline-flex">
-                      <Button>Connect bank</Button>
+                      <Button className="gap-2 shadow-lg hover:shadow-xl transition-all duration-200 px-5 py-2.5 text-sm">
+                        <Plus className="h-4 w-4" />
+                        Connect Bank
+                      </Button>
                     </Link>
                   </div>
 
+                  {/* Content */}
                   {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {Array.from({ length: 3 }).map((_, i) => (
-                        <Card key={i}>
-                          <CardHeader>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <Skeleton className="w-10 h-10 rounded-lg" />
-                                <div>
-                                  <Skeleton className="h-5 w-36 mb-2" />
-                                  <Skeleton className="h-3 w-24" />
-                                </div>
+                        <Card key={i} className="py-4">
+                          <CardHeader className="pb-2">
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="w-10 h-10 rounded-lg" />
+                              <div className="flex-1">
+                                <Skeleton className="h-4 w-32 mb-2" />
+                                <Skeleton className="h-3 w-20" />
                               </div>
-                              <Skeleton className="h-6 w-24" />
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <Skeleton className="h-4 w-40" />
+                            <Skeleton className="h-3.5 w-32" />
                           </CardContent>
                         </Card>
                       ))}
                     </div>
                   ) : Array.isArray(accounts) && accounts.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {(accounts as BankAccountDoc[]).map((acc) => (
                         <AccountCard key={acc.$id} account={acc} />
                       ))}
                     </div>
                   ) : (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Connected Banks</CardTitle>
-                        <CardDescription>No banks connected yet</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between">
-                          <div className="text-muted-foreground">
-                            Connect your first bank account to get started.
+                    <div className="flex items-center justify-center min-h-[400px]">
+                      <Card className="max-w-md w-full shadow-lg">
+                        <CardHeader className="text-center pb-4">
+                          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center">
+                            <Building2 className="w-8 h-8" />
                           </div>
+                          <CardTitle className="text-xl font-semibold">
+                            No Banks Connected
+                          </CardTitle>
+                          <CardDescription>
+                            Connect your first bank account to start tracking your finances
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="text-center">
                           <Link href="/link-bank" className="inline-flex">
-                            <Button className="gap-2">
-                              <Building2 className="h-4 w-4" />
-                              Connect bank
+                            <Button className="gap-2 shadow-lg hover:shadow-xl transition-all duration-200 px-8 py-3">
+                              <Plus className="h-4 w-4" />
+                              Connect Your First Bank
                             </Button>
                           </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
+                    </div>
                   )}
                 </div>
               </div>
