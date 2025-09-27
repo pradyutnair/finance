@@ -210,7 +210,7 @@ export function ExpenseChart() {
                         key={entry.name}
                         fill={entry.fill}
                         className={cn(
-                          "transition-all duration-200 cursor-pointer",
+                          "glass transition-all duration-200 cursor-pointer",
                           isActive ? "opacity-100" : "opacity-75 hover:opacity-90"
                         )}
                         style={{
