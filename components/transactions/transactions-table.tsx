@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight } from "lucide-react"
-import type { ColumnDef, PaginationState } from "@tanstack/react-table"
+import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
   flexRender,
   getCoreRowModel,
@@ -19,10 +19,13 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useTransactions } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
@@ -76,6 +79,8 @@ function categoryToColor(cat: string): string {
 export function TransactionsTable() {
   const pageSize = 12
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const offset = pagination.pageIndex * pagination.pageSize
 
   const { dateRange, formatDateForAPI } = useDateRange()
@@ -104,6 +109,8 @@ export function TransactionsTable() {
   }))
 
   const totalCount = data?.total || rows.length
+
+  const bankOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.bankName).filter(Boolean))).sort(), [rows])
 
   function handleToggleExclude(tx: TxRow) {
     updateTx.mutate({ id: tx.id, exclude: !tx.exclude })
@@ -144,7 +151,8 @@ export function TransactionsTable() {
         ),
       },
       {
-        accessorKey: "details",
+        accessorFn: (row) => row.description,
+        id: "details",
         header: "Description",
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm truncate max-w-[360px]">
@@ -197,6 +205,11 @@ export function TransactionsTable() {
         ),
         enableSorting: false,
         size: 60,
+        filterFn: (row, _columnId, value: string) => {
+          if (!value || value === "all") return true
+          const isExcluded = Boolean(row.original.exclude)
+          return value === "true" ? isExcluded : !isExcluded
+        },
       },
       {
         accessorKey: "amount",
@@ -209,6 +222,13 @@ export function TransactionsTable() {
           return (
             <span className={isIncome ? "text-green-600 dark:text-green-400" : "text-destructive"}>{formatted}</span>
           )
+        },
+        filterFn: (row, columnId, value: { min?: number; max?: number }) => {
+          const original = Number(row.getValue(columnId))
+          const converted = convertAmount(original, row.original.currency, baseCurrency)
+          if (typeof value?.min === "number" && !Number.isNaN(value.min) && converted < value.min) return false
+          if (typeof value?.max === "number" && !Number.isNaN(value.max) && converted > value.max) return false
+          return true
         },
       }
     ],
@@ -223,7 +243,9 @@ export function TransactionsTable() {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onPaginationChange: setPagination,
-    state: { pagination },
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    state: { pagination, columnFilters, columnVisibility },
     manualPagination: true,
     pageCount: Math.max(1, Math.ceil(totalCount / pageSize)),
   })
@@ -238,6 +260,118 @@ export function TransactionsTable() {
 
   return (
     <div className="border rounded-md overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b bg-muted/30">
+        <Input
+          placeholder="Filter transaction..."
+          value={(table.getColumn("description")?.getFilterValue() as string) ?? ""}
+          onChange={(e) => table.getColumn("description")?.setFilterValue(e.target.value)}
+          className="h-9 w-48"
+        />
+
+        <Select
+          value={(table.getColumn("bankName")?.getFilterValue() as string) ?? "all"}
+          onValueChange={(val) => table.getColumn("bankName")?.setFilterValue(val === "all" ? "" : val)}
+        >
+          <SelectTrigger className="h-9 w-44">
+            <SelectValue placeholder="Bank" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All banks</SelectItem>
+            {bankOptions.map((b) => (
+              <SelectItem key={b} value={b}>{b}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={(table.getColumn("category")?.getFilterValue() as string) ?? "all"}
+          onValueChange={(val) => table.getColumn("category")?.setFilterValue(val === "all" ? "" : val)}
+        >
+          <SelectTrigger className="h-9 w-48">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {CATEGORY_OPTIONS.map((cat) => (
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={(table.getColumn("exclude")?.getFilterValue() as string) ?? "all"}
+          onValueChange={(val) => table.getColumn("exclude")?.setFilterValue(val)}
+        >
+          <SelectTrigger className="h-9 w-40">
+            <SelectValue placeholder="Excluded" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="false">Included only</SelectItem>
+            <SelectItem value="true">Excluded only</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            placeholder="Min amount"
+            className="h-9 w-36"
+            value={(() => {
+              const v = table.getColumn("amount")?.getFilterValue() as { min?: number; max?: number } | undefined
+              return v?.min ?? ""
+            })()}
+            onChange={(e) => {
+              const current = (table.getColumn("amount")?.getFilterValue() as { min?: number; max?: number }) || {}
+              const val = e.target.value
+              const min = val === "" ? undefined : Number(val)
+              table.getColumn("amount")?.setFilterValue({ ...current, min })
+            }}
+          />
+          <span className="text-muted-foreground text-sm">to</span>
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            placeholder="Max amount"
+            className="h-9 w-36"
+            value={(() => {
+              const v = table.getColumn("amount")?.getFilterValue() as { min?: number; max?: number } | undefined
+              return v?.max ?? ""
+            })()}
+            onChange={(e) => {
+              const current = (table.getColumn("amount")?.getFilterValue() as { min?: number; max?: number }) || {}
+              const val = e.target.value
+              const max = val === "" ? undefined : Number(val)
+              table.getColumn("amount")?.setFilterValue({ ...current, max })
+            }}
+          />
+        </div>
+
+        <div className="ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9">Columns</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table.getAllLeafColumns().filter((column) => column.getCanHide()).map((column) => {
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(Boolean(value))}
+                  >
+                    {column.id}
+                  </DropdownMenuCheckboxItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (

@@ -1,10 +1,10 @@
 import { AuthGuard } from "@/components/auth-guard"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { ChartAreaInteractive } from "@/components/dashboard/chart-area-interactive"
 import { AiChatCard } from "@/components/chat/ai-chat-card"
 import { RecentExpensesTable } from "@/components/dashboard/recent-expenses-table"
 import { ExpenseChart } from "@/components/dashboard/expense-chart"
-import { SectionCards } from "@/components/section-cards"
+import { SectionCards } from "@/components/dashboard/section-cards"
 import { SiteHeader } from "@/components/site-header"
 import { DateRangeProvider } from "@/contexts/date-range-context"
 import {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { AuthGuard } from "@/components/auth-guard"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/sidebar/app-sidebar"
 // Uses global CurrencyProvider from app/layout.tsx
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"

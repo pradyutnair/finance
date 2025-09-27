@@ -1,5 +1,5 @@
 import { AuthGuard } from "@/components/auth-guard"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { CurrencyProvider } from "@/contexts/currency-context"
 import { DateRangeProvider } from "@/contexts/date-range-context"
