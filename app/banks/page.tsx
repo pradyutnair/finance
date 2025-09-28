@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
 import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
 import { ChartContainer } from "@/components/ui/chart"
@@ -30,6 +31,9 @@ type BankAccountDoc = {
   maxAccessValidforDays?: number | null
   connectionCreatedAt?: string | null
 }
+
+// Test toggle: simulate expired access by default in dev when enabled
+// To test, set NEXT_PUBLIC_SIMULATE_EXPIRED=1 in .env.local or append ?simulateExpired=1
 
 function maskIban(iban?: string | null): string {
   if (!iban) return ""
@@ -98,7 +102,7 @@ function AccessGauge({ remainingDays, maxDays }: { remainingDays: number; maxDay
   )
 }
 
-function AccountCard({ account }: { account: BankAccountDoc }) {
+function AccountCard({ account, forceExpired }: { account: BankAccountDoc; forceExpired?: boolean }) {
   const id = account.accountId || account.$id
   const { data, isLoading, isError, refetch, isFetching } = useAccountDetails(id)
   const { formatAmount, convertAmount, baseCurrency } = useCurrency()
@@ -177,6 +181,7 @@ function AccountCard({ account }: { account: BankAccountDoc }) {
   const baseAmount = convertAmount(nativeAmount, nativeCurrency, baseCurrency)
 
   const isActive = account.status === "active"
+  const isExpiredAccess = Boolean(forceExpired) || (account.maxAccessValidforDays === 0) || (remainingDays !== null && remainingDays <= 0)
 
   return (
     <Card className="group transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 py-4">
@@ -239,13 +244,34 @@ function AccountCard({ account }: { account: BankAccountDoc }) {
               {maskIban(account.iban)}
             </div>
           </div>
-          <Button
-            variant="outline"
-            className="ml-4 px-3 py-1.5 text-xs font-semibold dark:hover:text-red-600"
-            type="button"
-          >
-            Revoke Access
-          </Button>
+          {isExpiredAccess ? (
+            <Link
+              href={{
+                pathname: "/link-bank",
+                query: {
+                  institutionId: account.institutionId || "",
+                  institutionName: account.institutionName || account.accountName || "",
+                  autoConnect: "1",
+                },
+              }}
+              className="ml-4"
+            >
+              <Button
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 shadow-md hover:opacity-90"
+                type="button"
+              >
+                Renew Access
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              className="ml-4 px-3 py-1.5 text-xs font-semibold dark:hover:text-red-600"
+              type="button"
+            >
+              Revoke Access
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -254,6 +280,8 @@ function AccountCard({ account }: { account: BankAccountDoc }) {
 
 export default function BanksPage() {
   const { data: accounts, isLoading } = useAccounts()
+  const searchParams = useSearchParams()
+  const simulateExpired = (process.env.NEXT_PUBLIC_SIMULATE_EXPIRED === '1') || (searchParams?.get('simulateExpired') === '1')
 
   return (
     <AuthGuard requireAuth={true}>
@@ -305,7 +333,7 @@ export default function BanksPage() {
                   ) : Array.isArray(accounts) && accounts.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {(accounts as BankAccountDoc[]).map((acc) => (
-                        <AccountCard key={acc.$id} account={acc} />
+                        <AccountCard key={acc.$id} account={acc} forceExpired={Boolean(simulateExpired)} />
                       ))}
                     </div>
                   ) : (

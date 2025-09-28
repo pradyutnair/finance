@@ -167,24 +167,42 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             // Get account details
             const accountDetails = await getAccounts(accountId);
             
-            // Store bank account in database
+            // Store bank account in database (skip if $id exists)
             try {
-              const accountDoc = await databases.createDocument(
-                DATABASE_ID,
-                BANK_ACCOUNTS_COLLECTION_ID,
-                accountId,
-                {
-                  userId: userId,
-                  accountId: accountId,
-                  institutionId: requisition.institution_id,
-                  institutionName: requisition.institution_name || 'Unknown Bank',
-                  iban: accountDetails.iban || null,
-                  accountName: accountDetails.name || null,
-                  currency: accountDetails.currency || 'EUR',
-                  status: 'active',
-                  raw: JSON.stringify(accountDetails),
+              let exists = false;
+              try {
+                await databases.getDocument(
+                  DATABASE_ID,
+                  BANK_ACCOUNTS_COLLECTION_ID,
+                  accountId
+                );
+                exists = true;
+                console.log(`Bank account ${accountId} already exists, skipping create.`);
+              } catch (checkErr: any) {
+                const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
+                if (code && code !== 404) {
+                  console.warn('Error checking existing bank account, will attempt create:', checkErr);
                 }
-              );
+              }
+
+              if (!exists) {
+                await databases.createDocument(
+                  DATABASE_ID,
+                  BANK_ACCOUNTS_COLLECTION_ID,
+                  accountId,
+                  {
+                    userId: userId,
+                    accountId: accountId,
+                    institutionId: requisition.institution_id,
+                    institutionName: requisition.institution_name || 'Unknown Bank',
+                    iban: accountDetails.iban || null,
+                    accountName: accountDetails.name || null,
+                    currency: accountDetails.currency || 'EUR',
+                    status: 'active',
+                    raw: JSON.stringify(accountDetails),
+                  }
+                );
+              }
 
               // Get and store balances
               try {
@@ -296,7 +314,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
               }
             } catch (error) {
-              console.error('Error storing bank account:', error);
+              const code = (error && (error as any).code) as number | undefined;
+              if (code === 409) {
+                console.log(`Bank account ${accountId} already exists (409), skipping.`);
+              } else {
+                console.error('Error storing bank account:', error);
+              }
             }
           } catch (accountError) {
             console.error(`Error processing account ${accountId}:`, accountError);

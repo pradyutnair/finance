@@ -103,8 +103,30 @@ function BankCallbackContent() {
         
         if (data.status === 'LINKED' || data.status === 'LN') {
           setStatus('success');
-          setMessage('Bank connected successfully! Fetching your account data...');
-          
+          setMessage('Bank connected successfully! Finalizing renewal...');
+
+          // Call renew API to update requisitionId mapping in Appwrite dev tables
+          try {
+            const renewRes = await fetch('/api/gocardless/requisitions/renew', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}),
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                requisitionId,
+                institutionId: data?.requisition?.institution_id,
+                institutionName: data?.requisition?.institution_name,
+              }),
+            });
+            if (!renewRes.ok) {
+              console.warn('Renew endpoint failed to update requisition mapping');
+            }
+          } catch (e) {
+            console.warn('Renew call error (non-blocking):', e);
+          }
+
           // Wait a moment then redirect to dashboard
           setTimeout(() => {
             router.push('/dashboard');

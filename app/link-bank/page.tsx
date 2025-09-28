@@ -48,6 +48,11 @@ export default function LinkBankPage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState('');
   const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
+  const searchParams = (typeof window !== 'undefined') ? new URLSearchParams(window.location.search) : null;
+  const preInstitutionId = searchParams?.get('institutionId') || '';
+  const preInstitutionName = searchParams?.get('institutionName') || '';
+  const autoConnect = searchParams?.get('autoConnect') === '1';
+  const simulateRenew = (typeof window !== 'undefined') && (new URLSearchParams(window.location.search).get('simulateRenew') === '1');
   
   const { bankConnections, hasConnectedBanks, user } = useBankConnection();
 
@@ -120,6 +125,23 @@ export default function LinkBankPage() {
       setFilteredInstitutions(filtered);
     }
   }, [searchTerm, institutions]);
+
+  // Preselect institution from query params and optionally auto-connect
+  useEffect(() => {
+    if (!preInstitutionId) return;
+    // If we already have institutions loaded, try to select it
+    const list = institutions.length ? institutions : filteredInstitutions;
+    if (list && list.length) {
+      const found = list.find(i => i.id === preInstitutionId) || null;
+      if (found) {
+        setSelectedInstitution(found);
+        if (autoConnect || simulateRenew) {
+          handleInstitutionSelect(found);
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preInstitutionId, institutions, filteredInstitutions]);
 
   const handleInstitutionSelect = async (institution: Institution) => {
     if (!user) {
