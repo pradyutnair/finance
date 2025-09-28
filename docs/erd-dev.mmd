@@ -1,0 +1,85 @@
+erDiagram
+    REQUISITIONS_DEV {
+        string id
+        string userId
+        string requisitionId
+        string institutionId
+        string institutionName
+        string status
+        string reference
+        string redirectUri
+    }
+
+    BANK_CONNECTIONS_DEV {
+        string id
+        string userId
+        string institutionId
+        string institutionName
+        string status
+        string requisitionId
+        string logoUrl
+        int transactionTotalDays
+        int maxAccessValidforDays
+    }
+
+    BANK_ACCOUNTS_DEV {
+        string id
+        string userId
+        string accountId
+        string institutionId
+        string institutionName
+        string iban
+        string accountName
+        string currency
+        string status
+        string raw
+    }
+
+    BALANCES_DEV {
+        string id
+        string userId
+        string accountId
+        string balanceAmount
+        string currency
+        string balanceType
+        string referenceDate
+    }
+
+    TRANSACTIONS_DEV {
+        string id
+        string userId
+        string accountId
+        string transactionId
+        string amount
+        string currency
+        string bookingDate
+        string bookingDateTime
+        string valueDate
+        string description
+        string counterparty
+        string raw
+        bool exclude
+        string category
+    }
+
+    PREFERENCES_BUDGETS_DEV {
+        string id
+        string userId
+        string baseCurrency
+        double groceriesBudget
+        double restaurantsBudget
+        double transportBudget
+        double travelBudget
+        double shoppingBudget
+        double utilitiesBudget
+        double entertainmentBudget
+        double healthBudget
+        double miscellaneousBudget
+    }
+
+    REQUISITIONS_DEV ||--o{ BANK_CONNECTIONS_DEV : via requisitionId
+    BANK_CONNECTIONS_DEV ||--o{ BANK_ACCOUNTS_DEV : by userId and institutionId
+    BANK_ACCOUNTS_DEV ||--o{ BALANCES_DEV : accountId
+    BANK_ACCOUNTS_DEV ||--o{ TRANSACTIONS_DEV : accountId
+
+
