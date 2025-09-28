@@ -231,16 +231,16 @@ export function BudgetSettingsCard() {
               Set your monthly spending limits for different categories
             </CardDescription>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-right justify-end">
             {savingState === 'saving' && (
               <RefreshCw className="w-4 h-4 animate-spin" />
             )}
             {savingState === 'saved' && (
               <Check className="w-4 h-4 text-emerald-500" />
             )}
-            <Badge variant="secondary" className="text-sm">
+            {/* <Badge variant="secondary" className="text-sm">
               Total: {budgetData.baseCurrency} {totalBudget.toFixed(2)}
-            </Badge>
+            </Badge> */}
           </div>
         </div>
       </CardHeader>
