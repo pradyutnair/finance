@@ -46,6 +46,55 @@ export async function POST(request: Request) {
     const databases = new Databases(client);
 
     // Tool implementation the model can call
+    function tokenize(s: string): string[] {
+      return s
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+    }
+
+    function levenshtein(a: string, b: string): number {
+      const m = a.length, n = b.length;
+      const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+      for (let i = 0; i <= m; i++) dp[i][0] = i;
+      for (let j = 0; j <= n; j++) dp[0][j] = j;
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(
+            dp[i - 1][j] + 1,
+            dp[i][j - 1] + 1,
+            dp[i - 1][j - 1] + cost
+          );
+        }
+      }
+      return dp[m][n];
+    }
+
+    function fuzzyMatch(text: string, query: string, mode: 'any' | 'all' = 'any', enableFuzzy = true): boolean {
+      const hay = tokenize(text);
+      const q = tokenize(query);
+      if (q.length === 0) return true;
+      let matched = 0;
+      for (const token of q) {
+        const hasExact = hay.some(w => w.includes(token));
+        if (hasExact) {
+          matched++;
+          continue;
+        }
+        if (enableFuzzy) {
+          const near = hay.some(w => {
+            if (Math.abs(w.length - token.length) > 2) return false;
+            return levenshtein(w, token) <= 2;
+          });
+          if (near) matched++;
+        }
+      }
+      if (mode === 'all') return matched === q.length;
+      return matched > 0;
+    }
+
     async function queryTransactionsTool(args: any) {
       const msDay = 24 * 60 * 60 * 1000;
       const ymd = (d: Date) => `${d.getUTCFullYear()}-${`${d.getUTCMonth() + 1}`.padStart(2, "0")}-${`${d.getUTCDate()}`.padStart(2, "0")}`;
@@ -56,6 +105,8 @@ export async function POST(request: Request) {
       const limit = Math.max(1, Math.min(300, Number(args?.limit) || 150));
       const category = typeof args?.category === "string" ? args.category : undefined;
       const search = typeof args?.search === "string" ? args.search : undefined;
+      const searchMode: 'any' | 'all' = args?.searchMode === 'all' ? 'all' : 'any';
+      const fuzzy = args?.fuzzy !== false; // default true
       const accountId = typeof args?.accountId === "string" ? args.accountId : undefined;
 
       const base = [
@@ -67,10 +118,9 @@ export async function POST(request: Request) {
       ];
       if (category) base.push(Query.equal("category", category));
       if (accountId) base.push(Query.equal("accountId", accountId));
-      if (search) base.push(Query.search("description", search));
 
       type TxDoc = { $id?: string; amount?: string | number; currency?: string; bookingDate?: string; description?: string; counterparty?: string; category?: string | null };
-      const txs: TxDoc[] = [];
+      let txs: TxDoc[] = [];
       let cursor: string | undefined = undefined;
       while (txs.length < limit) {
         const pageLimit = Math.min(100, limit - txs.length);
@@ -82,6 +132,15 @@ export async function POST(request: Request) {
         if (docs.length < pageLimit) break;
         cursor = docs[docs.length - 1]?.$id;
         if (!cursor) break;
+      }
+
+      // If search provided but no fulltext index, filter in memory (case-insensitive)
+      if (search) {
+        const q = String(search);
+        txs = txs.filter(t => {
+          const text = `${t.description || ''} ${t.counterparty || ''}`;
+          return fuzzyMatch(text, q, searchMode, fuzzy);
+        });
       }
 
       const round2 = (n: number) => Number(n.toFixed(2));
@@ -147,7 +206,18 @@ export async function POST(request: Request) {
           let args: any = {};
           try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
           const result = await queryTransactionsTool(args);
-          msgs.push({ role: "assistant", content: "" });
+          // Reflect assistant tool call with proper metadata
+          msgs.push({
+            role: "assistant",
+            tool_calls: [
+              {
+                id: tc.id,
+                type: "function",
+                function: { name: "query_transactions", arguments: JSON.stringify(args) }
+              }
+            ]
+          });
+          // Provide tool result
           msgs.push({ role: "tool", tool_call_id: tc.id, name: "query_transactions", content: JSON.stringify(result) });
         }
       }
@@ -159,7 +229,7 @@ export async function POST(request: Request) {
         const encoder = new TextEncoder();
         const send = (s: string) => controller.enqueue(encoder.encode(`data: ${s}\n\n`));
         try {
-          const completion = await openai.chat.completions.create({ model, messages: msgs as any, stream: true });
+          const completion = await openai.chat.completions.create({ model, messages: msgs as any, tools: tools as any, stream: true });
           for await (const part of completion) {
             const delta = part.choices?.[0]?.delta?.content;
             if (delta) send(delta);
@@ -167,8 +237,22 @@ export async function POST(request: Request) {
           send("[DONE]");
           controller.close();
         } catch (err: any) {
-          send(`ERROR: ${err?.message || "stream failed"}`);
-          controller.close();
+          // Fallback: try a quick heuristic answer to avoid total failure
+          try {
+            const fallback = await queryTransactionsTool({ days: 31, search: /cab|uber|lyft/i.test(userMessage) ? "cab" : undefined, limit: 150 });
+            const lines: string[] = [];
+            lines.push("Here’s a quick summary:");
+            const count = Array.isArray(fallback.sample) ? fallback.sample.filter((t:any)=> t.a > 0).length : 0;
+            lines.push(`- Payments count: ${count}`);
+            if (fallback.cats?.length) lines.push(`- Top categories: ${fallback.cats.slice(0,3).map((c:any)=>`${c[0]} ${Math.round(Math.abs(c[1]))}`).join(', ')}`);
+            const text = lines.join("\n");
+            send(text);
+            send("[DONE]");
+            controller.close();
+          } catch (_e) {
+            send(`ERROR: ${err?.message || "stream failed"}`);
+            controller.close();
+          }
         }
       }
     });

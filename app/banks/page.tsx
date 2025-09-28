@@ -190,7 +190,7 @@ function AccountCard({ account, forceExpired }: { account: BankAccountDoc; force
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {account.logoUrl ? (
-              <div className="w-16 h-16 rounded-lg overflow-hidden shadow-sm border">
+              <div className="w-14 h-14 rounded-md shadow-sm overflow-hidden bg-white">
                 <img
                   src={account.logoUrl}
                   alt={account.institutionName || "Bank"}
@@ -265,13 +265,17 @@ function AccountCard({ account, forceExpired }: { account: BankAccountDoc; force
               </Button>
             </Link>
           ) : (
-            <Button
-              variant="outline"
-              className="ml-4 px-3 py-1.5 text-xs font-semibold dark:hover:text-red-600"
-              type="button"
-            >
-              Revoke Access
-            </Button>
+            // Do nothing
+            <div></div> 
+
+            // <Button
+            //   variant="outline"
+            //   className="ml-4 px-3 py-1.5 text-xs font-semibold dark:hover:text-red-600"
+            //   type="button"
+            // >
+            //   Revoke Access
+            // </Button>
+          //</CardContent>)}
           )}
         </div>
       </CardContent>

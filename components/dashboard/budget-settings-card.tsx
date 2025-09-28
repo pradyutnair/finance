@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal } from "lucide-react"
+import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check } from "lucide-react"
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
 
@@ -61,12 +61,22 @@ export function BudgetSettingsCard() {
   const [categorySpend, setCategorySpend] = useState<Record<string, number>>({})
   const [isLoadingSpend, setIsLoadingSpend] = useState(true)
   const [jwt, setJwt] = useState<string | null>(null)
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(false)
+  const [savePending, setSavePending] = useState(false)
+  const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const budgetRef = React.useRef<Partial<BudgetData>>(budgetData)
 
   // budgets are saved server-side for the authenticated user
 
   useEffect(() => {
     refreshAll()
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [])
+
+  useEffect(() => {
+    budgetRef.current = budgetData
+  }, [budgetData])
 
   const authHeaders = async (): Promise<HeadersInit> => {
     // Try to use a short-lived Appwrite JWT for server verification
@@ -99,6 +109,7 @@ export function BudgetSettingsCard() {
       setError('Failed to load budget data')
     } finally {
       setIsLoading(false)
+      setAutoSaveEnabled(true)
     }
   }
 
@@ -131,16 +142,17 @@ export function BudgetSettingsCard() {
     }
   }
 
-  const saveBudgets = async () => {
+  const saveBudgets = async (payload?: Partial<BudgetData>) => {
     try {
       setIsSaving(true)
+      setSavingState('saving')
       setError(null)
 
       const response = await fetch('/api/budgets', {
         method: 'POST',
         headers: await authHeaders(),
         body: JSON.stringify({
-          ...budgetData,
+          ...(payload ?? budgetRef.current),
         }),
       })
 
@@ -148,8 +160,8 @@ export function BudgetSettingsCard() {
         throw new Error('Failed to save budgets')
       }
 
-      // Refresh spend after save
-      await fetchBudgets()
+      setSavingState('saved')
+      setTimeout(() => setSavingState('idle'), 5500)
     } catch (error) {
       console.error('Failed to save budgets:', error)
       setError('Failed to save budget data')
@@ -163,11 +175,21 @@ export function BudgetSettingsCard() {
       ...prev,
       [key]: value,
     }))
+    if (autoSaveEnabled) {
+      setSavePending(true)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(async () => {
+        setSavePending(false)
+        await saveBudgets(budgetRef.current)
+      }, 5000)
+    }
   }
 
   const totalBudget = Object.entries(budgetData)
     .filter(([key, value]) => key.endsWith('Budget') && typeof value === 'number')
     .reduce((sum, [, value]) => sum + (value as number), 0)
+  const totalSpent = Object.values(categorySpend).reduce((sum, v) => sum + (v || 0), 0)
+  const totalPct = totalBudget > 0 ? Math.min(100, Math.max(0, (totalSpent / totalBudget) * 100)) : 0
 
   if (isLoading) {
     return (
@@ -209,9 +231,17 @@ export function BudgetSettingsCard() {
               Set your monthly spending limits for different categories
             </CardDescription>
           </div>
-          <Badge variant="secondary" className="text-sm">
-            Total: {budgetData.baseCurrency} {totalBudget.toFixed(2)}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {savingState === 'saving' && (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            )}
+            {savingState === 'saved' && (
+              <Check className="w-4 h-4 text-emerald-500" />
+            )}
+            <Badge variant="secondary" className="text-sm">
+              Total: {budgetData.baseCurrency} {totalBudget.toFixed(2)}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -221,6 +251,17 @@ export function BudgetSettingsCard() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
+        {/* Overall progress */}
+        <div className="rounded-lg border bg-card p-3 sm:p-4">
+          <div className="flex items-center justify-between text-xs sm:text-sm">
+            <span className="font-medium">Overall</span>
+            <span className="font-mono">
+              {budgetData.baseCurrency} {totalSpent.toFixed(2)} / {budgetData.baseCurrency} {totalBudget.toFixed(2)}
+            </span>
+          </div>
+          <Progress className="mt-2 [&>div]:bg-[#40221a] dark:[&>div]:bg-white" value={totalPct} />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {budgetCategories.map((category) => {
@@ -256,7 +297,7 @@ export function BudgetSettingsCard() {
                       <span className="opacity-50">/</span>
                       <input
                         inputMode="decimal"
-                        className="w-24 sm:w-28 rounded-md border bg-transparent px-2 py-1 text-right text-xs sm:text-sm"
+                        className="w-24 sm:w-28 rounded-md border bg-transparent px-2 py-1 text-right text-xs sm:text-sm font-mono"
                         value={Number.isFinite(total) ? String(total) : ''}
                         onChange={(e) => updateBudget(category.key as keyof BudgetData, parseFloat(e.target.value) || 0)}
                         placeholder="0.00"
@@ -302,23 +343,6 @@ export function BudgetSettingsCard() {
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
-            </Button>
-            <Button
-              onClick={saveBudgets}
-              disabled={isSaving}
-              className="min-w-[100px]"
-            >
-              {isSaving ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Budgets
-                </>
-              )}
             </Button>
           </div>
         </div>
