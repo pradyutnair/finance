@@ -108,15 +108,15 @@ export function ExpenseChart() {
   if (isLoading) {
     return (
       <Card className="h-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent className="flex flex-col flex-1 p-6">
-          <div className="relative flex-1 flex items-center justify-center min-h-[280px]">
+          <div className="relative flex-1 flex items-center justify-center min-h-[280px] mt-0">
             <Skeleton className="aspect-square h-[240px] w-[240px] rounded-full" />
           </div>
-          <div className="mt-4 space-y-2">
+          <div className="mt-3 space-y-2">
             {[...Array(3)].map((_, i) => (
               <Skeleton key={i} className="h-4 w-full" />
             ))}
@@ -129,7 +129,7 @@ export function ExpenseChart() {
   if (error || !categoriesData) {
     return (
       <Card className="h-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
@@ -149,7 +149,7 @@ export function ExpenseChart() {
   if (!total || chartData.length === 0) {
     return (
       <Card className="h-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
@@ -168,17 +168,17 @@ export function ExpenseChart() {
 
   return (
     <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px]">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base font-medium">Breakdown</CardTitle>
         <PieChartIcon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
 
-      <CardContent className="flex flex-col flex-1 p-6">
+      <CardContent className="flex flex-col flex-1 pb-4">
         {/* Donut */}
-        <div className="relative flex-1 flex items-center justify-center min-h-[280px]">
+        <div className="relative flex-1 flex items-center justify-center min-h-[280px] mt-0 mb-2">
           <ChartContainer
             config={{}}
-            className="mx-auto aspect-square h-[240px] w-[240px]"
+            className="mx-auto aspect-square h-[280px] w-[360px]"
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -195,7 +195,7 @@ export function ExpenseChart() {
                   dataKey="amount"
                   nameKey="name"
                   innerRadius={75}
-                  outerRadius={110}
+                  outerRadius={120}
                   strokeWidth={0}
                   onMouseLeave={() => setActiveIndex(null)}
                   onMouseEnter={(_, idx) => lockedIndex == null && setActiveIndex(idx)}
@@ -259,8 +259,10 @@ export function ExpenseChart() {
         </div>
 
         {/* Legend */}
-        <div className="mt-6 grid grid-cols-2 gap-2">
-          {chartData.slice(0, 6).map((item, idx) => (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {chartData
+            .filter((_, idx) => idx < 6) // Only show top 6 categories
+            .map((item, idx) => (
             <button
               key={item.name}
               onClick={() => setLockedIndex(lockedIndex === idx ? null : idx)}

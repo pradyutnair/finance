@@ -53,7 +53,7 @@ export function RecentExpensesTable() {
 
   const recentExpenses = transactionsData?.transactions
     //?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0)
-    ?.slice(0, 6) || []
+    ?.slice(0, 7) || []
 
   if (isLoading) {
     return (
