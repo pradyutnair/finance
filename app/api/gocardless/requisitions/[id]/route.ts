@@ -268,28 +268,33 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (transactions && transactions.length > 0) {
                   for (const transaction of transactions.slice(0, 100)) {
                     try {
-                      // Use the provider transaction id when available, else fallback to internal id
-                      const goCardlessTransactionId: string | undefined =
-                        transaction.transactionId || transaction.internalTransactionId || undefined;
+                      // Use provider transactionId as the Appwrite $id to prevent duplicates
+                      const providerTransactionId: string | undefined = transaction.transactionId || undefined;
+                      const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${(transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')}`;
+                      const docId = (providerTransactionId || fallbackIdBase).toString().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
 
-                      // Create a deterministic document id per (accountId, transactionId)
-                      const baseId = goCardlessTransactionId
-                        ? `${accountId}_${goCardlessTransactionId}`
-                        : `${accountId}_${
-                            (transaction.bookingDate || '') + '_' +
-                            (transaction.transactionAmount?.amount || '') + '_' +
-                            (transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')
-                          }`;
-                      const docId = baseId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+                      // Skip if already exists
+                      let exists = false;
+                      try {
+                        await databases.getDocument(
+                          DATABASE_ID,
+                          TRANSACTIONS_COLLECTION_ID,
+                          docId
+                        );
+                        exists = true;
+                      } catch (_nf) {
+                        // Not found -> proceed
+                      }
+                      if (exists) continue;
 
                       await databases.createDocument(
                         DATABASE_ID,
                         TRANSACTIONS_COLLECTION_ID,
-                        ID.unique(),
-                          {
+                        docId,
+                        {
                           userId: userId,
                           accountId: accountId,
-                          transactionId: goCardlessTransactionId || `generated_${accountId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                          transactionId: providerTransactionId || transaction.internalTransactionId || docId,
                           amount: transaction.transactionAmount?.amount || '0',
                           currency: transaction.transactionAmount?.currency || 'EUR',
                           bookingDate: transaction.bookingDate || null,
