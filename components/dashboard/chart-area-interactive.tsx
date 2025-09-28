@@ -59,7 +59,7 @@ export function ChartAreaInteractive() {
     from.setHours(0, 0, 0, 0);
     const to = new Date(dateRange.to);
     to.setHours(23, 59, 59, 999);
-    const today = new Date(2025, 8, 28); // September 28, 2025
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const dataMap = new Map();
@@ -279,7 +279,7 @@ export function ChartAreaInteractive() {
               const labelPrefix = isProjected ? "Projected " : ""
               const tooltipContent = isProjected 
                 ? `${labelPrefix}Total: ${formattedCum}`
-                : `Daily: ${formattedDaily}\nTotal: ${formattedCum}`
+                : `Daily: ${formattedDaily}\nCumulative: ${formattedCum}`
 
               const formattedDate = new Date(label).toLocaleDateString("en-US", {
                 month: "short",
@@ -289,7 +289,7 @@ export function ChartAreaInteractive() {
 
               return (
                 <div className="rounded-lg bg-popover p-2 shadow-md">
-                  <div className="font-bold text-2xl text-foreground whitespace-pre-wrap">
+                  <div className="font-bold text-xl text-foreground whitespace-pre-wrap">
                     {tooltipContent}
                   </div>
                   <div className="text-xs text-muted-foreground">{formattedDate}</div>
