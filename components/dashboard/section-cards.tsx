@@ -136,7 +136,7 @@ export function SectionCards() {
             hover:shadow-sm
             before:absolute before:inset-0 before:rounded-[inherit]
             before:pointer-events-none
-            before:bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_55%,transparent_100%),linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0.02)_100%)]
+            before:bg-[radial-gradient(120%_120%_at_0%_0%,rgba(64,34,26,0.08)_0%,rgba(64,34,26,0.03)_55%,transparent_100%),linear-gradient(180deg,rgba(64,34,26,0.04)_0%,rgba(64,34,26,0.01)_100%)]
             dark:before:bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_55%,transparent_100%),linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_100%)]
           "
         >
