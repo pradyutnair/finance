@@ -161,7 +161,7 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
                   <Button
                     key={preset.label}
                     variant="ghost"
-                    className="justify-start text-sm font-normal h-8 px-3 sm:px-2 whitespace-nowrap text-muted-foreground hover:text-foreground hover:bg-accent"
+                    className="justify-start text-sm font-normal h-8 px-3 sm:px-2 whitespace-nowrap text-muted-foreground hover:text-white hover:bg-accent"
                     onClick={() => handlePresetSelect(preset)}
                   >
                     {preset.label}

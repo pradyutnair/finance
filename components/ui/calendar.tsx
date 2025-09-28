@@ -110,7 +110,7 @@ function Calendar({
         range_middle: cn("rounded-none", defaultClassNames.range_middle),
         range_end: cn("rounded-r-md bg-accent", defaultClassNames.range_end),
         today: cn(
-          "bg-accent text-accent-foreground rounded-md data-[selected=true]:rounded-none",
+          "bg-accent text-accent-foreground rounded-md data-[selected=true]:rounded-md light:bg-chart-1",
           defaultClassNames.today
         ),
         outside: cn(
@@ -201,7 +201,67 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 dark:hover:text-accent-foreground flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] data-[range-end=true]:rounded-md data-[range-end=true]:rounded-r-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md data-[range-start=true]:rounded-l-md [&>span]:text-xs [&>span]:opacity-70",
+        // Highlight single selected day with chart-1 background and primary foreground
+        "data-[selected-single=true]:bg-[--chart-1]", // single selected day background
+        "data-[selected-single=true]:text-primary-foreground", // single selected day text color
+
+        // Highlight days in the middle of a range with accent color
+        "data-[range-middle=true]:bg-chart-1/50", // range middle background (light)
+        "dark:data-[range-middle=true]:bg-accent", // range middle background (dark)
+        //"data-[range-middle=true]:bg-chart-1/40", // range middle background
+        "data-[range-middle=true]:text-accent-foreground", // range middle text color
+
+        // Highlight range start with chart-1/80 background and primary foreground
+        "data-[range-start=true]:bg-chart-1", // range start background
+        "data-[range-start=true]:text-primary-foreground", // range start text color
+
+        // Highlight range end with chart-1/80 background and primary foreground
+        "data-[range-end=true]:bg-chart-1", // range end background
+        "data-[range-end=true]:text-primary-foreground", // range end text color
+
+        // Dark mode: override backgrounds for selected, range start, and range end
+        "dark:data-[selected-single=true]:bg-primary", // dark mode single selected
+        "dark:data-[range-start=true]:bg-primary", // dark mode range start
+        "dark:data-[range-end=true]:bg-primary", // dark mode range end
+
+        // Focused day: border and ring
+        "group-data-[focused=true]/day:border-ring", // border on focused day
+        "group-data-[focused=true]/day:ring-ring", // ring color on focused day
+
+        // Dark mode: hover text color for accent foreground
+        //"dark:hover:text-accent-foreground", // dark mode hover text
+
+        // Layout and sizing
+        "flex", // flex layout
+        "aspect-square", // square aspect ratio
+        "size-auto", // auto size
+        "w-full", // full width
+        "min-w-(--cell-size)", // minimum width from CSS variable
+        "flex-col", // flex direction column
+        "gap-1", // gap between elements
+        "leading-none", // no extra line height
+        "font-normal", // normal font weight
+
+        // Focused day: relative positioning, z-index, and ring thickness
+        "group-data-[focused=true]/day:relative", // relative position for focused
+        "group-data-[focused=true]/day:z-10", // z-index for focused
+        "group-data-[focused=true]/day:ring-[3px]", // ring thickness for focused
+
+        // Range border radius and increased size for selected start/end dates
+        "data-[range-end=true]:rounded-md", // rounded for range end
+        "data-[range-end=true]:rounded-r-md", // rounded right for range end
+        "data-[range-middle=true]:rounded-none", // no rounding for range middle
+        "data-[range-start=true]:rounded-md", // rounded for range start
+        "data-[range-start=true]:rounded-l-md", // rounded left for range start
+
+        // Increase size for selected start and end dates
+        "data-[range-start=true]:scale-110", // scale up start date
+        "data-[range-end=true]:scale-110",   // scale up end date
+        "transition-transform",              // smooth scaling transition
+
+        // Child span styling
+        "[&>span]:text-xs", // child span text size
+        "[&>span]:opacity-70", // child span opacity
         defaultClassNames.day,
         className
       )}

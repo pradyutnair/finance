@@ -20,52 +20,9 @@ import { useRef } from "react"
 import { Camera, Wand2 } from "lucide-react"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
+import { GradientAvatar } from "@/components/profile-page/gradient-avatar"
 
-const gradients = [
-  "from-pink-500 via-red-500 to-yellow-500",
-  "from-purple-500 via-indigo-500 to-blue-500",
-  "from-green-400 via-emerald-500 to-teal-600",
-  "from-orange-400 via-pink-500 to-rose-600",
-  "from-sky-400 via-cyan-500 to-blue-600",
-]
 
-  function pickGradient(seed: string) {
-    let hash = 0
-    for (let i = 0; i < seed.length; i++) {
-      hash = seed.charCodeAt(i) + ((hash << 5) - hash)
-    }
-    return gradients[Math.abs(hash) % gradients.length]
-  }
-
-  export function GradientAvatar({
-    name,
-    className,
-  }: {
-    name?: string | null
-    className?: string
-  }) {
-    const initials =
-      (name ?? "U")
-        .trim()
-        .split(/\s+/)
-        .map((s) => s[0]?.toUpperCase())
-        .slice(0, 2)
-        .join("") || "U"
-
-    const gradient = pickGradient(name || "user")
-
-    return (
-      <div
-        className={cn(
-          "flex h-20 w-20 items-center justify-center rounded-full text-white font-semibold text-lg shadow-md bg-gradient-to-br",
-          gradient,
-          className
-        )}
-      >
-        {initials}
-      </div>
-    )
-  }
 export default function ProfilePage() {
   const { user } = useAuth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
