@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { getRequisition, listRequisitions, getAccounts, getBalances, getTransactions, getInstitution, HttpError } from "@/lib/gocardless";
 import { Client, Databases, ID, Query } from "appwrite";
+import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -287,6 +288,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       }
                       if (exists) continue;
 
+                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || ''
+                      const existingCategory = await findExistingCategory(
+                        databases,
+                        DATABASE_ID,
+                        TRANSACTIONS_COLLECTION_ID,
+                        userId,
+                        txDescription
+                      )
+                      const category = existingCategory || await suggestCategory(
+                        txDescription,
+                        transaction.creditorName || transaction.debtorName || '',
+                        transaction.transactionAmount?.amount,
+                        transaction.transactionAmount?.currency
+                      )
+
                       await databases.createDocument(
                         DATABASE_ID,
                         TRANSACTIONS_COLLECTION_ID,
@@ -302,6 +318,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                           valueDate: transaction.valueDate || null,
                           description: transaction.remittanceInformationUnstructured || transaction.additionalInformation || '',
                           counterparty: transaction.creditorName || transaction.debtorName || '',
+                          category,
                           raw: JSON.stringify(transaction),
                         }
                       );

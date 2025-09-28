@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap } from "lucide-react"
+import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap, Sparkles } from "lucide-react"
 import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
   flexRender,
@@ -30,6 +30,7 @@ import { useTransactions } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
 import { useUpdateTransaction } from "@/lib/api"
+import { useAutoCategorize } from "@/lib/api"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
 
 type TxRow = {
@@ -88,6 +89,7 @@ export function TransactionsTable() {
   const { dateRange, formatDateForAPI } = useDateRange()
   const { baseCurrency, convertAmount, getCurrencySymbol } = useCurrency()
   const updateTx = useUpdateTransaction()
+  const autoCategorize = useAutoCategorize()
 
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -327,7 +329,19 @@ export function TransactionsTable() {
           )}
         </div>
 
-        <DropdownMenu>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2"
+            onClick={() => autoCategorize.mutate(undefined)}
+            disabled={autoCategorize.isPending}
+          >
+            <Sparkles className="h-4 w-4" />
+            {autoCategorize.isPending ? "Categorizing..." : "Auto-categorize"}
+          </Button>
+
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-9 gap-2">
               <Zap className="h-4 w-4" />
@@ -348,7 +362,8 @@ export function TransactionsTable() {
               )
             })}
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Expandable Filters */}

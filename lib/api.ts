@@ -256,6 +256,24 @@ export const useCategories = (dateRange?: { from: string; to: string }) => {
   });
 };
 
+// Manual auto-categorization trigger
+export const useAutoCategorize = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args?: { limit?: number }) => {
+      return apiRequest<{ ok: boolean; execution?: any }>(`/transactions/auto-categorize`, {
+        method: "POST",
+        body: JSON.stringify({ limit: args?.limit ?? 200 }),
+      });
+    },
+    onSuccess: () => {
+      // Refresh transactions and categories after categorization
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    }
+  });
+};
+
 // Accounts
 export const useAccounts = () => {
   return useQuery({
