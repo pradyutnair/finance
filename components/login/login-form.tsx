@@ -104,7 +104,11 @@ export function LoginForm({
             required 
           />
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button
+          type="submit"
+          className="w-full bg-chart-1 text-white hover:bg-chart-1/80 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
+          disabled={loading}
+        >
           {loading ? 'Loading...' : (isSignUp ? 'Sign up' : 'Login')}
         </Button>
         <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">

@@ -1,7 +1,7 @@
 import { GalleryVerticalEnd } from "lucide-react"
 import { AuthGuard } from "@/components/auth-guard"
 import { LoginForm } from "@/components/login/login-form"
-
+import Image from "next/image"
 export default function LoginPage() {
   return (
     <AuthGuard requireAuth={false}>
@@ -10,9 +10,9 @@ export default function LoginPage() {
           <div className="flex justify-center gap-2 md:justify-start">
             <a href="#" className="flex items-center gap-2 font-medium">
               <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-                <GalleryVerticalEnd className="size-4" />
+                <Image src="/favicon.ico" alt="NexPass" width={24} height={24} />
               </div>
-              Nexpass
+              NexPass
             </a>
           </div>
           <div className="flex flex-1 items-center justify-center">
@@ -23,7 +23,7 @@ export default function LoginPage() {
         </div>
         <div className="bg-muted relative hidden lg:block">
           <img
-            src="/placeholder.svg"
+            src="/login-placeholder.png"
             alt="Image"
             className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
           />
