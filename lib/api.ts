@@ -106,7 +106,7 @@ async function ensureJwt(): Promise<string> {
   return inflightJwtPromise;
 }
 
-async function getAuthHeader(): Promise<Record<string, string>> {
+export async function getAuthHeader(): Promise<Record<string, string>> {
   try {
     const token = await ensureJwt();
     return { Authorization: `Bearer ${token}` };

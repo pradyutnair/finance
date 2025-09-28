@@ -151,9 +151,16 @@ export function SectionCards() {
           {card.kind !== "savings" ? (
             // --- Income / Expenses / Balance (delta below value) ---
             <div className="mt-4 flex flex-col items-start">
-              <CardTitle className="text-3xl font-bold tabular-nums">
-                {card.value}
-              </CardTitle>
+              <CardTitle
+                  className="
+                    text-3xl font-bold tabular-nums 
+                    text-[#40221a]
+                    dark:text-white
+                  "
+                >
+                  {card.value}
+                </CardTitle>
+
               {(() => {
                 const d = Number(card.delta || 0)
                 const ad = Math.abs(d)
@@ -183,7 +190,7 @@ export function SectionCards() {
             // --- Savings: show percent like other cards + minimal progress ---
             <div className="mt-4 space-y-2">
               <div className="flex items-baseline justify-between">
-                <CardTitle className="text-3xl font-bold tabular-nums">
+                <CardTitle className="text-3xl font-bold tabular-nums text-[#40221a] dark:text-white">
                   {card.value}
                 </CardTitle>
                 {/* {(() => {

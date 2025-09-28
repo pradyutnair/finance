@@ -206,7 +206,7 @@ function CalendarDayButton({
         "data-[selected-single=true]:text-primary-foreground", // single selected day text color
 
         // Highlight days in the middle of a range with accent color
-        "data-[range-middle=true]:bg-chart-1/50", // range middle background (light)
+        "data-[range-middle=true]:bg-chart-1/70", // range middle background (light)
         "dark:data-[range-middle=true]:bg-accent", // range middle background (dark)
         //"data-[range-middle=true]:bg-chart-1/40", // range middle background
         "data-[range-middle=true]:text-accent-foreground", // range middle text color

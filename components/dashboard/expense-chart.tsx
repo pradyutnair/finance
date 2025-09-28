@@ -167,7 +167,7 @@ export function ExpenseChart() {
   }
 
   return (
-    <Card className="h-full">
+    <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px]">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-base font-medium">Breakdown</CardTitle>
         <PieChartIcon className="h-4 w-4 text-muted-foreground" />

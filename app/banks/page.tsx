@@ -17,6 +17,7 @@ import { useSearchParams } from "next/navigation"
 import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
 import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
 import { ChartContainer } from "@/components/ui/chart"
+import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
 
 type BankAccountDoc = {
   $id: string
@@ -361,6 +362,13 @@ export default function BanksPage() {
                       </Card>
                     </div>
                   )}
+                </div>
+
+                {/* Budget Settings Section */}
+                <div className="px-4 lg:px-6">
+                  <div className="w-full">
+                    <BudgetSettingsCard />
+                  </div>
                 </div>
               </div>
             </div>
