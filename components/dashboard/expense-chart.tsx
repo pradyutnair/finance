@@ -211,7 +211,7 @@ export function ExpenseChart() {
                         fill={entry.fill}
                         className={cn(
                           "glass transition-all duration-200 cursor-pointer",
-                          isActive ? "opacity-100" : "opacity-75 hover:opacity-90"
+                          isActive ? "opacity-100" : "opacity-95 hover:opacity-90"
                         )}
                         style={{
                           filter: isActive ? `url(#shadow-${idx})` : 'none',

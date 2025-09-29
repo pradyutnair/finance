@@ -132,7 +132,7 @@ export function RecentExpensesTable() {
             const amount = convertAmount(amountOriginal, tx.currency || "EUR", baseCurrency)
             const isIncome = amount > 0
             const colorClass = isIncome
-              ? "text-gray-700 dark:text-gray-300 group-hover:text-green-700 dark:group-hover:text-green-700"
+              ? "text-chart-1 dark:text-gray-300 group-hover:text-green-700 dark:group-hover:text-green-700"
               : "text-gray-500 dark:text-gray-400 group-hover:text-destructive dark:group-hover:text-destructive"
 
             return (

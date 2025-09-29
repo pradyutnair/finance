@@ -298,7 +298,38 @@ export function ChartAreaInteractive() {
             <Scatter
               data={[lastPoint]}
               dataKey="cumulative"
-              shape={<circle r={4} fill="var(--chart-1)" stroke="#fff" strokeWidth={1} />}
+              shape={(props: any) => {
+                const {
+                  cx,
+                  cy,
+                  onMouseEnter,
+                  onMouseLeave,
+                  onClick,
+                  className,
+                  style,
+                  transform,
+                  clipPath,
+                  opacity,
+                } = props;
+                return (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={4}
+                    fill="var(--chart-1)"
+                    stroke="#fff"
+                    strokeWidth={1}
+                    onMouseEnter={onMouseEnter}
+                    onMouseLeave={onMouseLeave}
+                    onClick={onClick}
+                    className={className}
+                    style={style}
+                    transform={transform}
+                    clipPath={clipPath}
+                    opacity={opacity}
+                  />
+                );
+              }}
               legendType="none"
             />
           )}
@@ -400,7 +431,38 @@ export function ChartAreaInteractive() {
               data={[lastPoint]}
               dataKey="cumulative"
               yAxisId="right"
-              shape={<circle r={4} fill="var(--chart-2)" stroke="#fff" strokeWidth={1} />}
+              shape={(props: any) => {
+                const {
+                  cx,
+                  cy,
+                  onMouseEnter,
+                  onMouseLeave,
+                  onClick,
+                  className,
+                  style,
+                  transform,
+                  clipPath,
+                  opacity,
+                } = props;
+                return (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={4}
+                    fill="var(--chart-2)"
+                    stroke="#fff"
+                    strokeWidth={1}
+                    onMouseEnter={onMouseEnter}
+                    onMouseLeave={onMouseLeave}
+                    onClick={onClick}
+                    className={className}
+                    style={style}
+                    transform={transform}
+                    clipPath={clipPath}
+                    opacity={opacity}
+                  />
+                );
+              }}
               legendType="none"
             />
           )}
