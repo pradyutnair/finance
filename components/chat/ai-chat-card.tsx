@@ -5,17 +5,22 @@ import { Button } from "@/components/ui/button"
 import { PromptInputTextarea } from "@/components/ui/prompt-input"
 import { Send, Sparkles, Bot, User } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
+import { useAuth } from "@/contexts/auth-context"
+
+const STORAGE_KEY_PREFIX = "nexpass_ai_chat_v1"
+
+type ChatMessage = { id: string; type: "ai" | "user"; content: string }
+
+function getStorageKey(userId?: string | null): string {
+  const uid = typeof userId === "string" && userId.length > 0 ? userId : "anon"
+  return `${STORAGE_KEY_PREFIX}:${uid}`
+}
 
 export function AiChatCard() {
+  const { user } = useAuth()
   const [message, setMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [messages, setMessages] = useState([
-    {
-      id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
-      type: "ai",
-      content: "Hi! I can help with budgeting, investments, and financial planning. "
-    }
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   const generateId = () =>
@@ -31,11 +36,56 @@ export function AiChatCard() {
     scrollToBottom()
   }, [messages])
 
+  // Load persisted chat on mount or when user changes
+  useEffect(() => {
+    try {
+      const key = getStorageKey(user?.$id)
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as { input?: string; messages?: ChatMessage[] }
+        if (Array.isArray(parsed?.messages) && parsed.messages.length > 0) {
+          setMessages(parsed.messages)
+        } else {
+          // seed with intro message
+          setMessages([
+            {
+              id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
+              type: "ai",
+              content: "Hi! I can help with budgeting, investments, and financial planning. "
+            }
+          ])
+        }
+        if (typeof parsed?.input === 'string') setMessage(parsed.input)
+      } else {
+        setMessages([
+          {
+            id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
+            type: "ai",
+            content: "Hi! I can help with budgeting, investments, and financial planning. "
+          }
+        ])
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.$id])
+
+  // Persist chat state on change (throttled lightly via setTimeout microtask merging)
+  useEffect(() => {
+    const key = getStorageKey(user?.$id)
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(key, JSON.stringify({ input: message, messages }))
+      }
+    } catch {}
+  }, [user?.$id, message, messages])
+
   const handleSubmit = async () => {
     if (!message.trim() || isLoading) return
     
     const text = message
-    const userMessage = {
+    const userMessage: ChatMessage = {
       id: generateId(),
       type: "user",
       content: text
@@ -96,7 +146,7 @@ export function AiChatCard() {
         }
       }
     } catch (e) {
-      const aiResponse = {
+      const aiResponse: ChatMessage = {
         id: generateId(),
         type: "ai" as const,
         content: "There was an error contacting the AI service. Please try again."

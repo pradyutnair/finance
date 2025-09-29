@@ -53,18 +53,32 @@ export async function GET(request: Request) {
     queries.push(Query.limit(limit));
     queries.push(Query.offset(offset));
 
-    // Get user's transactions
+    // Simple in-memory TTL cache for this serverless instance
+    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset });
+    const now = Date.now();
+    const globalAny = globalThis as any;
+    globalAny.__tx_cache = globalAny.__tx_cache || new Map<string, { ts: number; payload: any }>();
+    const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+    const cached = globalAny.__tx_cache.get(cacheKey);
+    if (cached && now - cached.ts < CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload);
+    }
+
+    // Get user's transactions (cache miss)
     const transactionsResponse = await databases.listDocuments(
       DATABASE_ID,
       TRANSACTIONS_COLLECTION_ID,
       queries
     );
 
-    return NextResponse.json({
+    const payload = {
       ok: true,
       transactions: transactionsResponse.documents,
-      total: transactionsResponse.total
-    });
+      total: transactionsResponse.total,
+    };
+    globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
+
+    return NextResponse.json(payload);
 
   } catch (err: any) {
     console.error('Error fetching transactions:', err);
