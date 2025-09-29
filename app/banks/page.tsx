@@ -4,7 +4,7 @@ import React from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
-import { useAccounts, useAccountDetails } from "@/lib/api"
+import { useAccounts, getAuthHeader } from "@/lib/api"
 import { useCurrency } from "@/contexts/currency-context"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +18,7 @@ import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
 import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
 import { ChartContainer } from "@/components/ui/chart"
 import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
+import { useQueries } from "@tanstack/react-query"
 
 type BankAccountDoc = {
   $id: string
@@ -103,9 +104,35 @@ function AccessGauge({ remainingDays, maxDays }: { remainingDays: number; maxDay
   )
 }
 
-function AccountCard({ account, forceExpired }: { account: BankAccountDoc; forceExpired?: boolean }) {
+function AccountCard({ account, forceExpired, groupAccountIds }: { account: BankAccountDoc; forceExpired?: boolean; groupAccountIds?: string[] }) {
   const id = account.accountId || account.$id
-  const { data, isLoading, isError, refetch, isFetching } = useAccountDetails(id)
+  const idsToFetch = (Array.isArray(groupAccountIds) && groupAccountIds.length > 0) ? groupAccountIds : [id]
+
+  const detailQueries = useQueries({
+    queries: idsToFetch.map((accountId) => ({
+      queryKey: ["account-details", accountId],
+      queryFn: async () => {
+        const headers = await getAuthHeader()
+        const res = await fetch(`/api/gocardless/accounts/${accountId}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          credentials: "include",
+        })
+        if (!res.ok) {
+          throw new Error(`API Error: ${res.status}`)
+        }
+        return res.json()
+      },
+      staleTime: 60 * 1000,
+    }))
+  })
+  const isLoading = detailQueries.some((q) => q.isLoading)
+  const isFetching = detailQueries.some((q) => q.isFetching)
+  const hasData = detailQueries.some((q) => !!q.data)
+  const isError = !isLoading && !hasData
+  const refetchAll = () => detailQueries.forEach((q) => q.refetch())
   const { formatAmount, convertAmount, baseCurrency } = useCurrency()
 
   // Compute access validity
@@ -141,7 +168,7 @@ function AccountCard({ account, forceExpired }: { account: BankAccountDoc; force
     )
   }
 
-  if (isError || !data) {
+  if (isError) {
     return (
       <Card className="group transition-all duration-200 hover:shadow-lg py-4">
         <CardHeader className="pb-2">
@@ -160,7 +187,7 @@ function AccountCard({ account, forceExpired }: { account: BankAccountDoc; force
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => refetch()} 
+              onClick={() => refetchAll()} 
               className="gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
@@ -172,13 +199,23 @@ function AccountCard({ account, forceExpired }: { account: BankAccountDoc; force
     )
   }
 
-  const balancesArray: any[] = Array.isArray((data as any)?.balances?.balances)
-    ? (data as any).balances.balances
-    : []
-  const closing = balancesArray.find((b) => (b.balanceType || "").toLowerCase() === "closingbooked")
-  const primary = closing || balancesArray[0]
-  const nativeAmount = Number(primary?.balanceAmount?.amount ?? 0)
-  const nativeCurrency = String(primary?.balanceAmount?.currency || account.currency || "EUR")
+  const details = detailQueries.map((q) => q.data).filter(Boolean) as any[]
+  const perAccountAmounts = details.map((d) => {
+    const arr: any[] = Array.isArray((d as any)?.balances?.balances) ? (d as any).balances.balances : []
+    const closing = arr.find((b) => (b.balanceType || "").toLowerCase() === "closingbooked")
+    const primary = closing || arr[0]
+    const amt = Number(primary?.balanceAmount?.amount ?? 0)
+    const cur = String(primary?.balanceAmount?.currency || account.currency || "EUR")
+    return { amount: amt, currency: cur }
+  })
+
+  const uniqueCurrencies = new Set(perAccountAmounts.map((x) => x.currency.toUpperCase()))
+  const totalBaseAmount = perAccountAmounts.reduce((sum, x) => sum + convertAmount(x.amount, x.currency, baseCurrency), 0)
+
+  const nativeCurrency = uniqueCurrencies.size === 1 ? perAccountAmounts[0]?.currency || account.currency || "EUR" : baseCurrency
+  const nativeAmount = uniqueCurrencies.size === 1
+    ? perAccountAmounts.reduce((sum, x) => sum + x.amount, 0)
+    : totalBaseAmount
   const baseAmount = convertAmount(nativeAmount, nativeCurrency, baseCurrency)
 
   const isActive = account.status === "active"
@@ -288,6 +325,22 @@ export default function BanksPage() {
   const searchParams = useSearchParams()
   const simulateExpired = (process.env.NEXT_PUBLIC_SIMULATE_EXPIRED === '1') || (searchParams?.get('simulateExpired') === '1')
 
+  const grouped = React.useMemo(() => {
+    if (!Array.isArray(accounts)) return [] as { representative: BankAccountDoc; ids: string[] }[]
+    const map = new Map<string, { representative: BankAccountDoc; ids: string[] }>()
+    for (const acc of (accounts as BankAccountDoc[])) {
+      const key = acc.institutionId || `acc:${acc.$id}`
+      const id = acc.accountId || acc.$id
+      const existing = map.get(key)
+      if (!existing) {
+        map.set(key, { representative: acc, ids: [id] })
+      } else {
+        if (!existing.ids.includes(id)) existing.ids.push(id)
+      }
+    }
+    return Array.from(map.values())
+  }, [accounts])
+
   return (
     <AuthGuard requireAuth={true}>
       <SidebarProvider
@@ -337,8 +390,13 @@ export default function BanksPage() {
                     </div>
                   ) : Array.isArray(accounts) && accounts.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {(accounts as BankAccountDoc[]).map((acc) => (
-                        <AccountCard key={acc.$id} account={acc} forceExpired={Boolean(simulateExpired)} />
+                      {grouped.map(({ representative, ids }) => (
+                        <AccountCard
+                          key={representative.institutionId || representative.$id}
+                          account={representative}
+                          groupAccountIds={ids}
+                          forceExpired={Boolean(simulateExpired)}
+                        />
                       ))}
                     </div>
                   ) : (

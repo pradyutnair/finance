@@ -80,7 +80,7 @@ function categoryToColor(cat: string): string {
 }
 
 export function TransactionsTable() {
-  const pageSize = 12
+  const pageSize = 10
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({

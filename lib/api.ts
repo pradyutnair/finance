@@ -323,7 +323,7 @@ export const useAccounts = () => {
       const res = await apiRequest<{ ok: boolean; accounts: any[] }>("/accounts");
       return Array.isArray((res as any).accounts) ? (res as any).accounts : [];
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 3 * 60 * 1000, // 3 minutes
   });
 };
 
