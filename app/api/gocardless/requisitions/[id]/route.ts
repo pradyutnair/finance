@@ -5,7 +5,8 @@ import { requireAuthUser } from "@/lib/auth";
 import { getRequisition, listRequisitions, getAccounts, getBalances, getTransactions, getInstitution, HttpError } from "@/lib/gocardless";
 import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
-import { createAppwriteClient } from "@/lib/auth";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { encryptForPublicKey, computeBlindIndex } from "@/lib/crypto/e2ee";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -95,6 +96,61 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       // Set API key for server-side operations manually
       client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
       const databases = new Databases(client);
+
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      let supabase: ReturnType<typeof createSupabaseClient> | null = null;
+      let userCrypto: { publicKey: string; blindIndexSecret: string } | null = null;
+
+      if (supabaseUrl && supabaseServiceRole) {
+        supabase = createSupabaseClient(supabaseUrl, supabaseServiceRole, {
+          auth: { autoRefreshToken: false, persistSession: false },
+          global: { headers: { "X-Client-Info": "nexpass-e2ee" } },
+        });
+
+        try {
+          const { data: keyRow, error: keyError } = await supabase
+            .from("user_keys")
+            .select("publicKey, blindIndexSecret")
+            .eq("userId", userId)
+            .maybeSingle();
+
+          if (keyError) {
+            console.warn("⚠️ Failed to fetch user key for Supabase encryption", keyError);
+          } else if (keyRow?.publicKey && keyRow?.blindIndexSecret) {
+            userCrypto = {
+              publicKey: keyRow.publicKey as string,
+              blindIndexSecret: keyRow.blindIndexSecret as string,
+            };
+          } else {
+            console.warn("⚠️ No user key found for Supabase encryption; skipping encrypted storage for user", userId);
+          }
+        } catch (keyFetchErr) {
+          console.error("Error retrieving user encryption key", keyFetchErr);
+        }
+      } else {
+        console.warn("⚠️ Supabase env vars missing; skipping Supabase storage for transactions");
+      }
+
+      const shouldUseSupabase = Boolean(supabase && userCrypto);
+
+      const supabaseRows: Array<Record<string, any>> = [];
+
+      const encryptField = (value: unknown): string | null => {
+        if (!userCrypto?.publicKey) return null;
+        if (value === null || value === undefined) {
+          return encryptForPublicKey(userCrypto.publicKey, null);
+        }
+        const asString = typeof value === "string" ? value : String(value);
+        return encryptForPublicKey(userCrypto.publicKey, asString);
+      };
+
+      const resolveExistingCategory = async (
+        description: string | null | undefined,
+        _descHmac: string | null
+      ): Promise<string | null> => {
+        return null;
+      };
 
       try {
         // Fetch institution metadata (logo, transaction_total_days, max_access_valid_for_days)
@@ -271,63 +327,84 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                     try {
                       // Use provider transactionId as the Appwrite $id to prevent duplicates
                       const providerTransactionId: string | undefined = transaction.transactionId || undefined;
-                      const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${(transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')}`;
-                      const docId = (providerTransactionId || fallbackIdBase).toString().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+                      const fallbackIdBase =
+                        transaction.internalTransactionId ||
+                        `${accountId}_${transaction.bookingDate || ""}_${transaction.transactionAmount?.amount || ""}_${transaction.remittanceInformationUnstructured || transaction.additionalInformation || ""}`;
+                      const docId = (providerTransactionId || fallbackIdBase)
+                        .toString()
+                        .replace(/[^a-zA-Z0-9_-]/g, "_")
+                        .slice(0, 128);
 
-                      // Skip if already exists
-                      let exists = false;
-                      try {
-                        await databases.getDocument(
+                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || "";
+                      const txCounterparty = transaction.creditorName || transaction.debtorName || "";
+
+                      const descHmac = shouldUseSupabase
+                        ? computeBlindIndex(userCrypto!.blindIndexSecret, txDescription)
+                        : null;
+                      const cpHmac = shouldUseSupabase
+                        ? computeBlindIndex(userCrypto!.blindIndexSecret, txCounterparty)
+                        : null;
+
+                      let category = await resolveExistingCategory(txDescription, descHmac);
+                      if (!category) {
+                        category = await suggestCategory(
+                          txDescription,
+                          txCounterparty,
+                          transaction.transactionAmount?.amount,
+                          transaction.transactionAmount?.currency
+                        );
+                      }
+
+                      const amountNumber = Number(transaction.transactionAmount?.amount ?? 0);
+                      const sanitizedAmount = Number.isFinite(amountNumber) ? amountNumber : 0;
+                      const payloadRaw = JSON.stringify(transaction);
+
+                      if (shouldUseSupabase) {
+                        const transactionIdPlain = providerTransactionId || transaction.internalTransactionId || docId;
+                        supabaseRows.push({
+                          userid: userId,
+                          accountid: encryptField(accountId),
+                          transactionid_enc: encryptField(transactionIdPlain),
+                          amount_enc: encryptField(sanitizedAmount),
+                          currency_enc: encryptField(transaction.transactionAmount?.currency || "EUR"),
+                          bookingdate_enc: encryptField(transaction.bookingDate || null),
+                          bookingdatetime_enc: encryptField(transaction.bookingDateTime || null),
+                          valuedate_enc: encryptField(transaction.valueDate || null),
+                          category_enc: encryptField(category),
+                          exclude_enc: encryptField(false),
+                          description_enc: encryptField(txDescription),
+                          counterparty_enc: encryptField(txCounterparty),
+                          raw_enc: encryptField(payloadRaw),
+                          desc_hmac: descHmac,
+                          cp_hmac: cpHmac,
+                        });
+                      } else {
+                        await databases.createDocument(
                           DATABASE_ID,
                           TRANSACTIONS_COLLECTION_ID,
-                          docId
+                          docId,
+                          {
+                            userId: userId,
+                            accountId: accountId,
+                            transactionId: providerTransactionId || transaction.internalTransactionId || docId,
+                            amount: transaction.transactionAmount?.amount || "0",
+                            currency: transaction.transactionAmount?.currency || "EUR",
+                            bookingDate: transaction.bookingDate || null,
+                            bookingDateTime: transaction.bookingDateTime || null,
+                            valueDate: transaction.valueDate || null,
+                            description: txDescription,
+                            counterparty: txCounterparty,
+                            category,
+                            raw: JSON.stringify(transaction),
+                          }
                         );
-                        exists = true;
-                      } catch (_nf) {
-                        // Not found -> proceed
                       }
-                      if (exists) continue;
-
-                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || ''
-                      const existingCategory = await findExistingCategory(
-                        databases,
-                        DATABASE_ID,
-                        TRANSACTIONS_COLLECTION_ID,
-                        userId,
-                        txDescription
-                      )
-                      const category = existingCategory || await suggestCategory(
-                        txDescription,
-                        transaction.creditorName || transaction.debtorName || '',
-                        transaction.transactionAmount?.amount,
-                        transaction.transactionAmount?.currency
-                      )
-
-                      await databases.createDocument(
-                        DATABASE_ID,
-                        TRANSACTIONS_COLLECTION_ID,
-                        docId,
-                        {
-                          userId: userId,
-                          accountId: accountId,
-                          transactionId: providerTransactionId || transaction.internalTransactionId || docId,
-                          amount: transaction.transactionAmount?.amount || '0',
-                          currency: transaction.transactionAmount?.currency || 'EUR',
-                          bookingDate: transaction.bookingDate || null,
-                          bookingDateTime: transaction.bookingDateTime || null,
-                          valueDate: transaction.valueDate || null,
-                          description: transaction.remittanceInformationUnstructured || transaction.additionalInformation || '',
-                          counterparty: transaction.creditorName || transaction.debtorName || '',
-                          category,
-                          raw: JSON.stringify(transaction),
-                        }
-                      );
                     } catch (error: any) {
                       // Ignore duplicates silently; continue processing
-                      if (error?.message?.includes('already exists') || error?.code === 409) {
+                      if (error?.message?.includes("already exists") || error?.code === 409) {
                         // duplicate id -> already stored
                       } else {
-                        console.error('Error storing transaction:', error);
+                        console.error("Error storing transaction:", error);
                       }
                     }
                   }
@@ -345,6 +422,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
           } catch (accountError) {
             console.error(`Error processing account ${accountId}:`, accountError);
+          }
+        }
+
+        if (shouldUseSupabase && supabaseRows.length > 0) {
+          try {
+            const chunkSize = 200;
+            for (let i = 0; i < supabaseRows.length; i += chunkSize) {
+              const chunk = supabaseRows.slice(i, i + chunkSize);
+              const { error: insertError } = await supabase!
+                .from("transactions_dev")
+                .upsert(chunk, { onConflict: "userid,transactionid" });
+              if (insertError) {
+                console.error("Supabase upsert error", insertError);
+              }
+            }
+          } catch (supabaseWriteErr) {
+            console.error("Failed to insert transactions into Supabase", supabaseWriteErr);
           }
         }
 
