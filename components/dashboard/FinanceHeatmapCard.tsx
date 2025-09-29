@@ -350,7 +350,7 @@ export function FinanceHeatmapCard() {
   // Loading and error states
   if (isLoading) {
     return (
-      <Card className="h-full flex flex-col">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="pb-3 px-4">
           <CardTitle className="text-base font-semibold">Heatmap</CardTitle>
         </CardHeader>
@@ -370,7 +370,7 @@ export function FinanceHeatmapCard() {
 
   if (error) {
     return (
-      <Card className="h-full flex flex-col">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="pb-3 px-4">
           <CardTitle className="text-base font-semibold">Heatmap</CardTitle>
         </CardHeader>
@@ -448,7 +448,7 @@ export function FinanceHeatmapCard() {
   }
 
   return (
-    <Card className="h-full min-h-[420px] max-h-[640px] flex flex-col">
+    <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
         <CardTitle className="text-base font-medium">Heatmap</CardTitle>
         <Flame className="h-4 w-4 text-muted-foreground" />
