@@ -9,9 +9,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
     await requireAuthUser(request);
     const { accountId } = await params;
     const { searchParams } = new URL(request.url);
-    const dateFrom = searchParams.get("date_from");
-    const dateTo = searchParams.get("date_to");
+    const dateFrom = searchParams.get("dateFrom") || searchParams.get("date_from") || undefined;
+    const dateTo = searchParams.get("dateTo") || searchParams.get("date_to") || undefined;
+
+    const globalAny = globalThis as any;
+    globalAny.__acct_tx_cache = globalAny.__acct_tx_cache || new Map<string, { ts: number; payload: any }>();
+    const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+    const now = Date.now();
+    const cacheKey = JSON.stringify({ accountId, dateFrom, dateTo });
+    const cached = globalAny.__acct_tx_cache.get(cacheKey);
+    if (cached && now - cached.ts < CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload);
+    }
+
     const data = await getAccountTransactions(accountId, { dateFrom, dateTo });
+    globalAny.__acct_tx_cache.set(cacheKey, { ts: now, payload: data });
     return NextResponse.json(data);
   } catch (err: any) {
     if (err instanceof HttpError) {
