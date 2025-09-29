@@ -186,6 +186,7 @@ export const useTimeseries = (dateRange?: { from: string; to: string }) => {
 export const useTransactions = (params?: {
   limit?: number;
   offset?: number;
+  all?: boolean;
   category?: string;
   accountId?: string;
   dateRange?: { from: string; to: string };
@@ -196,6 +197,7 @@ export const useTransactions = (params?: {
       const searchParams = new URLSearchParams();
       if (params?.limit) searchParams.set("limit", params.limit.toString());
       if (params?.offset) searchParams.set("offset", params.offset.toString());
+      if (params?.all) searchParams.set("all", "true");
       if (params?.category) searchParams.set("category", params.category);
       if (params?.accountId) searchParams.set("accountId", params.accountId);
       if (params?.dateRange?.from) searchParams.set("from", params.dateRange.from);

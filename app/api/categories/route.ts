@@ -3,12 +3,6 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { Client, Databases, Query } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
-
-type CategoryRow = { name: string; amount: number; percent: number };
-
-// In-memory response cache per user and date range (resets on process restart)
-const categoriesCache = new Map<string, CategoryRow[]>();
-
 type AuthUser = { $id?: string; id?: string };
 type TxDoc = { amount?: string | number; category?: string; bookingDate?: string };
 
@@ -23,13 +17,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-
-    const cacheKey = `${userId}|${from ?? ''}|${to ?? ''}`;
-    const cached = categoriesCache.get(cacheKey);
-    if (cached) {
-      return NextResponse.json(cached, { headers: { 'X-Cache': 'HIT' } });
-    }
-
     // Create Appwrite client
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
@@ -106,8 +93,7 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.amount - a.amount);
 
-    categoriesCache.set(cacheKey, categoriesData);
-    return NextResponse.json(categoriesData, { headers: { 'X-Cache': 'MISS' } });
+    return NextResponse.json(categoriesData);
 
   } catch (error: unknown) {
     console.error("Error fetching categories data:", error);

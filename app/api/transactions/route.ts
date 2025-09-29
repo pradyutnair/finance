@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const accountId = searchParams.get("accountId");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+    const isAll = ["1", "true", "yes"].includes((searchParams.get("all") || "").toLowerCase());
     const limit = Math.max(1, parseInt(searchParams.get("limit") || "50"));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
     const searchTermRaw = searchParams.get("search");
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
     baseQueries.push(Query.orderDesc('bookingDate'));
 
     // Simple in-memory TTL cache for this serverless instance
-    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset, search: searchTerm });
+    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset, all: isAll, search: searchTerm });
     const now = Date.now();
     const globalAny = globalThis as any;
     globalAny.__tx_cache = globalAny.__tx_cache || new Map<string, { ts: number; payload: any }>();
@@ -123,11 +124,29 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.payload);
     }
 
+    // Fast path: no fuzzy search and not requesting all -> use native offset/limit
+    if (!hasSearch && !isAll) {
+      const page = await databases.listDocuments(
+        DATABASE_ID,
+        TRANSACTIONS_COLLECTION_ID,
+        [...baseQueries, Query.limit(limit), Query.offset(offset)] as any
+      );
+
+      const payload = {
+        ok: true,
+        transactions: (page as any).documents || [],
+        total: typeof (page as any).total === 'number' ? (page as any).total : ((page as any).documents || []).length,
+      };
+      globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
+      return NextResponse.json(payload);
+    }
+
     // Fetch documents with cursor pagination (we collect enough for filtering/paging)
     const docs: any[] = [];
     let cursor: string | undefined;
-    const maxFetch = hasSearch ? Math.max(offset + limit, 400) : offset + limit;
-    const hardCap = hasSearch ? 1000 : 400;
+    let firstPageTotal: number | undefined;
+    const maxFetch = isAll ? Number.MAX_SAFE_INTEGER : (hasSearch ? Math.max(offset + limit, 400) : offset + limit);
+    const hardCap = isAll ? 10000 : (hasSearch ? 1000 : 400);
     while (docs.length < Math.min(maxFetch, hardCap)) {
       const remaining = Math.min(100, Math.min(maxFetch, hardCap) - docs.length);
       const q = [...baseQueries, Query.limit(remaining)] as any[];
@@ -137,6 +156,9 @@ export async function GET(request: Request) {
         TRANSACTIONS_COLLECTION_ID,
         q
       );
+      if (firstPageTotal === undefined && typeof (page as any).total === "number") {
+        firstPageTotal = (page as any).total as number;
+      }
       const pageDocs = page.documents as any[];
       docs.push(...pageDocs);
       if (pageDocs.length < remaining) break;
@@ -162,8 +184,9 @@ export async function GET(request: Request) {
         .map(item => item.doc);
     }
 
-    const total = filtered.length;
-    const paged = filtered.slice(offset, offset + limit);
+    const totalBase = typeof firstPageTotal === 'number' ? firstPageTotal : docs.length;
+    const total = hasSearch ? filtered.length : totalBase;
+    const paged = isAll ? filtered : filtered.slice(offset, offset + limit);
 
     const payload = {
       ok: true,
