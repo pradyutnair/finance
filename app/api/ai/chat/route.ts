@@ -316,9 +316,8 @@ export async function POST(request: Request) {
       }
     ];
 
-    const STYLE = "Always format dates as 'dd MMM yyyy'. Start with a confident one-sentence takeaway, then up to four friendly bullet points. " +
-      "Treat payments as outflows (use nout/outTotal). Include counts with currency codes and comma separators (e.g., EUR 1,234). " +
-      "Mention the analysed window as 'fromf — tof'. Reference up to two items from sampleOut with formatted dates, highlighting description/counterparty. Avoid raw JSON.";
+    const STYLE = "Answer like a clear, friendly finance coach. Lead with a single sentence headline, then,  only if needed, one short paragraph (1–2 sentences) weaving in the key figures. " +
+      "Use currency symbols (e.g., €1,234). Keep it brief. No em dashes.";
 
     const baseMessages: any[] = [
       { role: "system", content: "You are a concise yet supportive finance assistant. Always rely on provided data and tools." },
@@ -399,18 +398,20 @@ export async function POST(request: Request) {
           try {
             const fallback = await queryTransactionsTool({ days: 60, search: heuristicArgs?.search || undefined, category: heuristicArgs?.category, limit: 200 });
             const lines: string[] = [];
-            lines.push(`Quick snapshot (${fallback.fromf} — ${fallback.tof}):`);
-            lines.push(`• Outgoing payments: ${fallback.nout} for ${fallback.cur || ''} ${fallback.outTotal.toLocaleString()}`);
+            const currencySymbol = new Intl.NumberFormat('en', { style: 'currency', currency: fallback.cur || 'EUR' }).format;
+            const totalFormatted = currencySymbol(fallback.outTotal || 0);
+            lines.push(`Fallback summary for ${fallback.fromf} — ${fallback.tof}: you made ${fallback.nout} outgoing payments totalling ${totalFormatted}.`);
             if (fallback.sampleOut?.length) {
               const firstSample = fallback.sampleOut[0];
-              lines.push(`• Latest: ${firstSample.df} — ${firstSample.s || 'Payment'} (${fallback.cur || ''} ${firstSample.a.toLocaleString()})`);
+              const sampleAmount = currencySymbol(firstSample.a || 0);
+              lines.push(`Most recent was on ${firstSample.df}: ${firstSample.s || 'payment'} to ${firstSample.p || 'the payee'} for ${sampleAmount}.`);
             }
             if (fallback.cats?.length) {
-              const cats = fallback.cats.slice(0, 2).map((c: any) => c[0]).join(', ');
-              if (cats) lines.push(`• Top categories: ${cats}`);
+              const top = fallback.cats.slice(0, 2).map((c: any) => c[0]).join(' and ');
+              if (top) lines.push(`Top categories: ${top}.`);
             }
-            lines.push(`• Need a wider range or different filters? Just ask!`);
-            send(lines.join("\n"));
+            lines.push(`Ask again if you'd like a broader range or different filters.`);
+            send(lines.join(' '));
             send("[DONE]");
             controller.close();
           } catch (fallbackErr) {
