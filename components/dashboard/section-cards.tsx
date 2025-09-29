@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import {
   IconArrowUpRight,
   IconArrowDownRight,
@@ -44,6 +44,9 @@ export function SectionCards() {
   const [savingsRateGoal, setSavingsRateGoal] = useState<number>(20)
   const [jwt, setJwt] = useState<string | null>(null)
   const [editingGoal, setEditingGoal] = useState<string | null>(null)
+  const didFetchRef = useRef(false)
+  const [initialized, setInitialized] = useState(false)
+  const [hasUserEdited, setHasUserEdited] = useState(false)
   
   console.log('SectionCards render - baseCurrency:', baseCurrency, 'rates loaded:', !!rates)
   
@@ -74,6 +77,12 @@ export function SectionCards() {
         if (data) {
           setBalanceGoal(data.balanceGoal || 0)
           setSavingsRateGoal(data.savingsRateGoal || 20)
+          try {
+            sessionStorage.setItem('budgetGoals', JSON.stringify({
+              balanceGoal: Number(data.balanceGoal || 0),
+              savingsRateGoal: Number(data.savingsRateGoal || 20),
+            }))
+          } catch {}
         }
       }
     } catch (error) {
@@ -95,6 +104,14 @@ export function SectionCards() {
       if (!response.ok) {
         console.error('Failed to save goals')
       }
+      try {
+        const cached = sessionStorage.getItem('budgetGoals')
+        const prev = cached ? JSON.parse(cached) : {}
+        sessionStorage.setItem('budgetGoals', JSON.stringify({
+          balanceGoal: typeof newBalanceGoal === 'number' ? newBalanceGoal : prev.balanceGoal ?? balanceGoal,
+          savingsRateGoal: typeof newSavingsRateGoal === 'number' ? newSavingsRateGoal : prev.savingsRateGoal ?? savingsRateGoal,
+        }))
+      } catch {}
     } catch (error) {
       console.error('Failed to save goals:', error)
     }
@@ -102,11 +119,26 @@ export function SectionCards() {
 
   // Load goals on component mount
   useEffect(() => {
-    fetchGoals()
+    if (didFetchRef.current) return
+    didFetchRef.current = true
+
+    try {
+      const cached = sessionStorage.getItem('budgetGoals')
+      if (cached) {
+        const data = JSON.parse(cached)
+        setBalanceGoal(Number(data.balanceGoal || 0))
+        setSavingsRateGoal(Number(data.savingsRateGoal || 20))
+        setInitialized(true)
+        return
+      }
+    } catch {}
+
+    fetchGoals().finally(() => setInitialized(true))
   }, [])
 
   // Save goals when they change (with debounce)
   useEffect(() => {
+    if (!initialized || !hasUserEdited) return
     const timer = setTimeout(() => {
       const payload: { balanceGoal?: number; savingsRateGoal?: number } = {}
       if (typeof balanceGoal === 'number' && balanceGoal >= 0) payload.balanceGoal = balanceGoal
@@ -315,8 +347,11 @@ export function SectionCards() {
                           } else {
                             setSavingsRateGoal(val)
                           }
+                          setHasUserEdited(true)
                         }}
-                        onBlur={() => setEditingGoal(null)}
+                        onBlur={() => {
+                          setEditingGoal(null)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') setEditingGoal(null)
                         }}

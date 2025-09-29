@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
 
+// Simple in-memory cache for user goals within a single server process lifecycle
+type GoalsPayload = {
+  $id?: string
+  userId: string
+  balanceGoal: number
+  savingsRateGoal: number
+  baseCurrency: string
+}
+
+const goalsCache = new Map<string, GoalsPayload>()
+
 const client = new Client()
   .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1')
   .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
@@ -17,6 +28,12 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
+    }
+
+    // Serve from cache when available (avoid database read)
+    const cached = goalsCache.get(userId)
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'X-Cache': 'HIT' } })
     }
 
     try {
@@ -37,21 +54,25 @@ export async function GET(request: NextRequest) {
 
       if (response.documents.length > 0) {
         const doc: any = response.documents[0]
-        return NextResponse.json({
+        const payload: GoalsPayload = {
           $id: doc.$id,
           userId: doc.userId,
           balanceGoal: Number(doc.balanceGoal || 0),
           savingsRateGoal: Number(doc.savingsRateGoal || 20),
           baseCurrency: doc.baseCurrency || 'EUR',
-        })
+        }
+        goalsCache.set(userId, payload)
+        return NextResponse.json(payload, { headers: { 'X-Cache': 'MISS' } })
       }
 
-      return NextResponse.json({
+      const fallback: GoalsPayload = {
         userId,
         balanceGoal: 0,
         savingsRateGoal: 20,
         baseCurrency: 'EUR',
-      })
+      }
+      goalsCache.set(userId, fallback)
+      return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
     } catch (error) {
       console.error('Error fetching goals:', error)
       return NextResponse.json({ error: 'Failed to fetch goals' }, { status: 500 })
@@ -100,6 +121,15 @@ export async function POST(request: NextRequest) {
       if (existing.documents.length > 0) {
         const doc = existing.documents[0]
         await databases.updateDocument(databaseId, COLLECTION_ID, doc.$id, updateData)
+        // Update cache with new values when present
+        const current = goalsCache.get(userId)
+        goalsCache.set(userId, {
+          $id: doc.$id,
+          userId,
+          balanceGoal: (updateData.balanceGoal as number | undefined) ?? current?.balanceGoal ?? Number(doc.balanceGoal || 0),
+          savingsRateGoal: (updateData.savingsRateGoal as number | undefined) ?? current?.savingsRateGoal ?? Number(doc.savingsRateGoal || 20),
+          baseCurrency: current?.baseCurrency ?? doc.baseCurrency ?? 'EUR',
+        })
       } else {
         await databases.createDocument(
           databaseId,
@@ -112,6 +142,12 @@ export async function POST(request: NextRequest) {
             savingsRateGoal: savingsRateGoal ?? 20,
           }
         )
+        goalsCache.set(userId, {
+          userId,
+          baseCurrency: 'EUR',
+          balanceGoal: balanceGoal ?? 0,
+          savingsRateGoal: savingsRateGoal ?? 20,
+        })
       }
 
       return NextResponse.json({ success: true })
