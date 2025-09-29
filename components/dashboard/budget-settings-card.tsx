@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,11 +66,35 @@ export function BudgetSettingsCard() {
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const budgetRef = React.useRef<Partial<BudgetData>>(budgetData)
+  const didInitRef = useRef(false)
 
   // budgets are saved server-side for the authenticated user
 
   useEffect(() => {
-    refreshAll()
+    if (didInitRef.current) return
+    didInitRef.current = true
+
+    const run = async () => {
+      let usedCache = false
+      try {
+        const cached = sessionStorage.getItem('budgetPrefs')
+        if (cached) {
+          const data = JSON.parse(cached)
+          setBudgetData(data)
+          setIsLoading(false)
+          setAutoSaveEnabled(true)
+          usedCache = true
+        }
+      } catch {}
+
+      // Always refresh category spend; fetch budgets only if no cache
+      await Promise.all([
+        usedCache ? Promise.resolve() : fetchBudgets(),
+        fetchCategorySpend(),
+      ])
+    }
+
+    run()
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [])
 
@@ -102,6 +126,7 @@ export function BudgetSettingsCard() {
         const data = await response.json()
         if (data) {
           setBudgetData(data)
+          try { sessionStorage.setItem('budgetPrefs', JSON.stringify(data)) } catch {}
         }
       }
     } catch (error) {
@@ -126,6 +151,16 @@ export function BudgetSettingsCard() {
       const today = new Date()
       const from = new Date(today.getFullYear(), today.getMonth(), 1)
       const to = today
+      const cacheKey = `categorySpend:${fmtDate(from)}:${fmtDate(to)}`
+      try {
+        const cached = sessionStorage.getItem(cacheKey)
+        if (cached) {
+          setCategorySpend(JSON.parse(cached))
+          setIsLoadingSpend(false)
+          return
+        }
+      } catch {}
+
       const resp = await fetch(`/api/categories?from=${fmtDate(from)}&to=${fmtDate(to)}`, { headers: await authHeaders() })
       if (resp.ok) {
         const data: Array<{ name: string; amount: number }> = await resp.json()
@@ -134,6 +169,7 @@ export function BudgetSettingsCard() {
           map[row.name] = row.amount || 0
         }
         setCategorySpend(map)
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(map)) } catch {}
       }
     } catch (e) {
       // ignore soft-fail
@@ -162,6 +198,12 @@ export function BudgetSettingsCard() {
 
       setSavingState('saved')
       setTimeout(() => setSavingState('idle'), 5500)
+      try {
+        const cached = sessionStorage.getItem('budgetPrefs')
+        const prev = cached ? JSON.parse(cached) : {}
+        const merged = { ...prev, ...(payload ?? budgetRef.current) }
+        sessionStorage.setItem('budgetPrefs', JSON.stringify(merged))
+      } catch {}
     } catch (error) {
       console.error('Failed to save budgets:', error)
       setError('Failed to save budget data')
@@ -334,12 +376,13 @@ export function BudgetSettingsCard() {
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 ">
             <Button
               variant="outline"
               size="sm"
               onClick={fetchBudgets}
               disabled={isSaving}
+              className="hover:bg-chart-1/80"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh

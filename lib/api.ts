@@ -4,6 +4,10 @@ import { account } from "@/lib/appwrite";
 
 const API_BASE_URL = "/api";
 
+// Client-side caches (module-scoped) to avoid duplicate fetches across components
+const categoriesMemoryCache = new Map<string, CategorySlice[]>();
+const categoriesInflight = new Map<string, Promise<CategorySlice[]>>();
+
 // Types
 export interface Transaction {
   id: string;
@@ -251,8 +255,43 @@ export const useUpdateTransaction = () => {
 export const useCategories = (dateRange?: { from: string; to: string }) => {
   return useQuery({
     queryKey: ["categories", dateRange],
-    queryFn: () => apiRequest<CategorySlice[]>(`/categories${dateRange ? `?from=${dateRange.from}&to=${dateRange.to}` : ""}`),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    queryFn: async () => {
+      const key = `categories:${dateRange?.from ?? ''}:${dateRange?.to ?? ''}`;
+
+      // 1) Return from in-memory cache if present
+      const mem = categoriesMemoryCache.get(key);
+      if (mem) return mem;
+
+      // 2) Return from sessionStorage if present
+      try {
+        const raw = sessionStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw) as CategorySlice[];
+          if (Array.isArray(parsed)) {
+            categoriesMemoryCache.set(key, parsed);
+            return parsed;
+          }
+        }
+      } catch {}
+
+      // 3) De-dupe concurrent fetches
+      const inflight = categoriesInflight.get(key);
+      if (inflight) return inflight;
+
+      const p = (async () => {
+        const data = await apiRequest<CategorySlice[]>(`/categories${dateRange ? `?from=${dateRange.from}&to=${dateRange.to}` : ""}`);
+        categoriesMemoryCache.set(key, data);
+        try { sessionStorage.setItem(key, JSON.stringify(data)); } catch {}
+        categoriesInflight.delete(key);
+        return data;
+      })();
+      categoriesInflight.set(key, p);
+      return p;
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes to strongly prefer cache
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 };
 

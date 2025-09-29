@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
 
+// In-memory cache of budget preferences for the current server process
+type BudgetPayload = {
+  $id?: string
+  userId: string
+  baseCurrency: string
+  groceriesBudget: number
+  restaurantsBudget: number
+  transportBudget: number
+  travelBudget: number
+  shoppingBudget: number
+  utilitiesBudget: number
+  entertainmentBudget: number
+  healthBudget: number
+  miscellaneousBudget: number
+}
+
+const budgetsCache = new Map<string, BudgetPayload>()
+
 const client = new Client()
   .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1')
   .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
@@ -24,6 +42,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Return from cache if present
+    const cached = budgetsCache.get(userId)
+    if (cached) {
+      return NextResponse.json(cached, { headers: { 'X-Cache': 'HIT' } })
+    }
+
     try {
       // Set auth: prefer server API key, fallback to JWT if provided
       const apiKey = process.env.APPWRITE_API_KEY as string | undefined
@@ -43,10 +67,10 @@ export async function GET(request: NextRequest) {
 
       if (response.documents.length > 0) {
         const budget = response.documents[0]
-        return NextResponse.json({
+        const payload: BudgetPayload = {
           $id: budget.$id,
           userId: budget.userId,
-          baseCurrency: budget.baseCurrency,
+          baseCurrency: budget.baseCurrency || 'EUR',
           groceriesBudget: budget.groceriesBudget || 0,
           restaurantsBudget: budget.restaurantsBudget || 0,
           transportBudget: budget.transportBudget || 0,
@@ -56,10 +80,12 @@ export async function GET(request: NextRequest) {
           entertainmentBudget: budget.entertainmentBudget || 0,
           healthBudget: budget.healthBudget || 0,
           miscellaneousBudget: budget.miscellaneousBudget || 0,
-        })
+        }
+        budgetsCache.set(userId, payload)
+        return NextResponse.json(payload, { headers: { 'X-Cache': 'MISS' } })
       } else {
         // Return default budget structure if no budget exists
-        return NextResponse.json({
+        const fallback: BudgetPayload = {
           userId,
           baseCurrency: 'EUR',
           groceriesBudget: 0,
@@ -71,7 +97,9 @@ export async function GET(request: NextRequest) {
           entertainmentBudget: 0,
           healthBudget: 0,
           miscellaneousBudget: 0,
-        })
+        }
+        budgetsCache.set(userId, fallback)
+        return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
       }
     } catch (error) {
       console.error('Error fetching budgets:', error)
@@ -180,6 +208,8 @@ export async function POST(request: NextRequest) {
           existingBudget.$id,
           budgetData
         )
+        // Update cache with the new data
+        budgetsCache.set(userId, { $id: existingBudget.$id, ...budgetData })
       } else {
         // Create new budget document
         await databases.createDocument(
@@ -188,6 +218,8 @@ export async function POST(request: NextRequest) {
           ID.unique(),
           budgetData
         )
+        // Cache the newly created preferences
+        budgetsCache.set(userId, { ...budgetData })
       }
 
       return NextResponse.json({
