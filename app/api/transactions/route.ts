@@ -14,8 +14,10 @@ export async function GET(request: Request) {
     const accountId = searchParams.get("accountId");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const limit = Math.max(1, parseInt(searchParams.get("limit") || "50"));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
+    const searchTermRaw = searchParams.get("search");
+    const searchTerm = searchTermRaw ? searchTermRaw.trim() : "";
 
     // Create Appwrite client
     const client = new Client()
@@ -36,25 +38,82 @@ export async function GET(request: Request) {
     const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
     const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
-    // Build query
-    const queries = [Query.equal('userId', userId)];
+    // Helper functions for fuzzy search
+    const tokenize = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+
+    const levenshtein = (a: string, b: string) => {
+      const m = a.length;
+      const n = b.length;
+      if (!m) return n;
+      if (!n) return m;
+      const prev = new Array(n + 1).fill(0);
+      const curr = new Array(n + 1).fill(0);
+      for (let j = 0; j <= n; j++) prev[j] = j;
+      for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          curr[j] = Math.min(
+            curr[j - 1] + 1,
+            prev[j] + 1,
+            prev[j - 1] + cost
+          );
+        }
+        for (let j = 0; j <= n; j++) prev[j] = curr[j];
+      }
+      return prev[n];
+    };
+
+    const hasSearch = Boolean(searchTerm);
+    const tokens = hasSearch ? tokenize(searchTerm) : [];
+    const fuzzyEnabled = hasSearch && searchTerm.length <= 40;
+
+    const scoreText = (text: string) => {
+      if (!hasSearch) return 0;
+      const hay = tokenize(text);
+      if (!hay.length) return 0;
+      let score = 0;
+      for (const token of tokens) {
+        let matched = false;
+        for (const word of hay) {
+          if (word.includes(token)) {
+            score += 3;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) continue;
+        if (!fuzzyEnabled) continue;
+        for (const word of hay) {
+          if (Math.abs(word.length - token.length) > 2) continue;
+          if (levenshtein(word, token) <= 2) {
+            score += 1;
+            matched = true;
+            break;
+          }
+        }
+      }
+      return score;
+    };
+
+    // Build base queries
+    const baseQueries = [Query.equal('userId', userId)] as any[];
     if (accountId) {
-      queries.push(Query.equal('accountId', accountId));
+      baseQueries.push(Query.equal('accountId', accountId));
     }
-    
-    // Add date range filtering
     if (from && to) {
-      queries.push(Query.greaterThanEqual("bookingDate", from));
-      queries.push(Query.lessThanEqual("bookingDate", to));
+      baseQueries.push(Query.greaterThanEqual("bookingDate", from));
+      baseQueries.push(Query.lessThanEqual("bookingDate", to));
     }
-    
-    // Add ordering by booking date (newest first)
-    queries.push(Query.orderDesc('bookingDate'));
-    queries.push(Query.limit(limit));
-    queries.push(Query.offset(offset));
+    baseQueries.push(Query.orderDesc('bookingDate'));
 
     // Simple in-memory TTL cache for this serverless instance
-    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset });
+    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset, search: searchTerm });
     const now = Date.now();
     const globalAny = globalThis as any;
     globalAny.__tx_cache = globalAny.__tx_cache || new Map<string, { ts: number; payload: any }>();
@@ -64,17 +123,52 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.payload);
     }
 
-    // Get user's transactions (cache miss)
-    const transactionsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
-      queries
-    );
+    // Fetch documents with cursor pagination (we collect enough for filtering/paging)
+    const docs: any[] = [];
+    let cursor: string | undefined;
+    const maxFetch = hasSearch ? Math.max(offset + limit, 400) : offset + limit;
+    const hardCap = hasSearch ? 1000 : 400;
+    while (docs.length < Math.min(maxFetch, hardCap)) {
+      const remaining = Math.min(100, Math.min(maxFetch, hardCap) - docs.length);
+      const q = [...baseQueries, Query.limit(remaining)] as any[];
+      if (cursor) q.push(Query.cursorAfter(cursor));
+      const page = await databases.listDocuments(
+        DATABASE_ID,
+        TRANSACTIONS_COLLECTION_ID,
+        q
+      );
+      const pageDocs = page.documents as any[];
+      docs.push(...pageDocs);
+      if (pageDocs.length < remaining) break;
+      cursor = pageDocs[pageDocs.length - 1]?.$id;
+      if (!cursor) break;
+    }
+
+    let filtered = docs;
+    if (hasSearch) {
+      filtered = docs
+        .map(doc => {
+          const text = `${doc.description || ''} ${doc.counterparty || ''}`;
+          const score = scoreText(text);
+          return { doc, score, ts: doc.bookingDate || doc.$createdAt };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const ta = a.ts || '';
+          const tb = b.ts || '';
+          return tb.localeCompare(ta);
+        })
+        .map(item => item.doc);
+    }
+
+    const total = filtered.length;
+    const paged = filtered.slice(offset, offset + limit);
 
     const payload = {
       ok: true,
-      transactions: transactionsResponse.documents,
-      total: transactionsResponse.total,
+      transactions: paged,
+      total,
     };
     globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
 

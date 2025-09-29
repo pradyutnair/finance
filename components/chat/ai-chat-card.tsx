@@ -3,8 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PromptInputTextarea } from "@/components/ui/prompt-input"
-import { Send, Sparkles, Bot, User } from "lucide-react"
-import { useState, useRef, useEffect } from "react"
+import { Send, Sparkles } from "lucide-react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useAuth } from "@/contexts/auth-context"
 
 const STORAGE_KEY_PREFIX = "nexpass_ai_chat_v1"
@@ -16,12 +16,20 @@ function getStorageKey(userId?: string | null): string {
   return `${STORAGE_KEY_PREFIX}:${uid}`
 }
 
+const createGreeting = () => ({
+  id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
+  type: "ai" as const,
+  content: "Hi! I can help with budgeting, investments, and financial planning. "
+})
+
 export function AiChatCard() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [message, setMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const hasHydratedRef = useRef(false)
+  const lastUserIdRef = useRef<string | undefined>(undefined)
 
   const generateId = () =>
     (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
@@ -36,50 +44,69 @@ export function AiChatCard() {
     scrollToBottom()
   }, [messages])
 
-  // Load persisted chat on mount or when user changes
+  const storageKey = useMemo(() => getStorageKey(user?.$id), [user?.$id])
+
   useEffect(() => {
+    if (loading) return
+    const currentUserId = user?.$id
+
+    if (hasHydratedRef.current && lastUserIdRef.current === currentUserId) return
+
     try {
-      const key = getStorageKey(user?.$id)
+      const key = storageKey
       const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null
+
       if (raw) {
         const parsed = JSON.parse(raw) as { input?: string; messages?: ChatMessage[] }
         if (Array.isArray(parsed?.messages) && parsed.messages.length > 0) {
           setMessages(parsed.messages)
         } else {
-          // seed with intro message
-          setMessages([
-            {
-              id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
-              type: "ai",
-              content: "Hi! I can help with budgeting, investments, and financial planning. "
-            }
-          ])
+          setMessages([createGreeting()])
         }
         if (typeof parsed?.input === 'string') setMessage(parsed.input)
+      } else if (currentUserId && typeof window !== 'undefined') {
+        const anonRaw = window.localStorage.getItem(getStorageKey(undefined))
+        if (anonRaw) {
+          const parsed = JSON.parse(anonRaw) as { input?: string; messages?: ChatMessage[] }
+          const migratedMessages = Array.isArray(parsed?.messages) && parsed.messages.length > 0 ? parsed.messages : [createGreeting()]
+          setMessages(migratedMessages)
+          setMessage(typeof parsed?.input === 'string' ? parsed.input : "")
+          window.localStorage.setItem(key, JSON.stringify({ input: parsed?.input ?? "", messages: migratedMessages }))
+        } else {
+          setMessages([createGreeting()])
+        }
       } else {
-        setMessages([
-          {
-            id: typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : `${Date.now()}-init`,
-            type: "ai",
-            content: "Hi! I can help with budgeting, investments, and financial planning. "
-          }
-        ])
+        setMessages([createGreeting()])
       }
     } catch {
-      // ignore
+      setMessages([createGreeting()])
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.$id])
+
+    hasHydratedRef.current = true
+    lastUserIdRef.current = currentUserId
+  }, [loading, storageKey, user?.$id])
 
   // Persist chat state on change (throttled lightly via setTimeout microtask merging)
   useEffect(() => {
-    const key = getStorageKey(user?.$id)
+    if (!hasHydratedRef.current) return
     try {
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(key, JSON.stringify({ input: message, messages }))
+        window.localStorage.setItem(storageKey, JSON.stringify({ input: message, messages }))
       }
     } catch {}
-  }, [user?.$id, message, messages])
+  }, [storageKey, message, messages])
+
+  const handleClear = () => {
+    if (isLoading) return
+    const greeting = createGreeting()
+    setMessages([greeting])
+    setMessage("")
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(storageKey, JSON.stringify({ input: "", messages: [greeting] }))
+      }
+    } catch {}
+  }
 
   const handleSubmit = async () => {
     if (!message.trim() || isLoading) return
@@ -161,7 +188,9 @@ export function AiChatCard() {
     <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px] flex flex-col overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 flex-shrink-0">
         <CardTitle className="text-base font-medium">AI Assistant</CardTitle>
-        <Sparkles className="h-4 w-4 text-muted-foreground" />
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleClear} disabled={isLoading} title="Clear conversation">
+          <Sparkles className="h-4 w-4 text-muted-foreground" />
+        </Button>
       </CardHeader>
       
       <CardContent className="flex flex-col p-0 flex-1 min-h-0 overflow-hidden">

@@ -95,6 +95,86 @@ export async function POST(request: Request) {
       return matched > 0;
     }
 
+    function fmtDate(ymd: string): string {
+      // ymd: YYYY-MM-DD
+      const [y, m, d] = ymd.split('-').map(x => parseInt(x, 10));
+      if (!y || !m || !d) return ymd;
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      return `${String(d).padStart(2,'0')} ${months[dt.getUTCMonth()]} ${dt.getUTCFullYear()}`;
+    }
+
+    function derivedCategory(token: string): string | undefined {
+      const map: Record<string, string> = {
+        groceries: "Groceries",
+        grocery: "Groceries",
+        supermarket: "Groceries",
+        transport: "Transport",
+        transportation: "Transport",
+        fuel: "Transport",
+        taxi: "Transport",
+        cab: "Transport",
+        rideshare: "Transport",
+        ride: "Transport",
+        restaurant: "Restaurants",
+        dining: "Restaurants",
+        food: "Restaurants",
+        water: "Utilities",
+        electricity: "Utilities",
+        energy: "Utilities",
+        utility: "Utilities",
+        utilities: "Utilities",
+        rent: "Housing",
+        mortgage: "Housing",
+        salary: "Income",
+        paycheck: "Income",
+        freelance: "Income",
+      };
+      return map[token];
+    }
+
+    function deriveToolArgs(message: string) {
+      const words = tokenize(message);
+      let days = 60;
+      if (words.includes("week") || words.includes("weekly")) days = 7;
+      if (words.includes("month") || words.includes("monthly")) days = 31;
+      if (words.includes("quarter")) days = 95;
+      if (words.includes("year") || words.includes("annually")) days = 365;
+
+      const stop = new Set([
+        "how","many","much","did","have","get","got","do","does","the","for","with","from","this","that","last","past",
+        "what","was","were","your","you","me","about","tell","count","number","total","amount","spent","spend","pay","paid","payments",
+        "month","week","year","day","days","please","show","list","give","need","want","looking","look","share","report","summary",
+        "transaction","transactions","invoice","invoices","bill","bills","expense","expenses","payment","payments"
+      ]);
+
+      const focus = words.filter(w => !stop.has(w) && !/^\d{1,4}$/.test(w));
+      if (!focus.length) return null;
+
+      let category: string | undefined;
+      for (const token of focus) {
+        const cat = derivedCategory(token);
+        if (cat) {
+          category = cat;
+          break;
+        }
+      }
+
+      const searchTokens = focus.filter(w => derivedCategory(w) == null);
+      const search = searchTokens.slice(0, 3).join(" ");
+
+      if (!category && !search) return null;
+
+      return {
+        days,
+        search: search || undefined,
+        searchMode: searchTokens.length > 1 ? "all" : "any",
+        fuzzy: true,
+        category,
+        limit: 200,
+      };
+    }
+
     async function queryTransactionsTool(args: any) {
       const msDay = 24 * 60 * 60 * 1000;
       const ymd = (d: Date) => `${d.getUTCFullYear()}-${`${d.getUTCMonth() + 1}`.padStart(2, "0")}-${`${d.getUTCDate()}`.padStart(2, "0")}`;
@@ -102,6 +182,8 @@ export async function POST(request: Request) {
       const days = Math.max(1, Math.min(365, Number(args?.days) || 60));
       const fromStr = typeof args?.from === "string" ? args.from : ymd(new Date(now.getTime() - (days - 1) * msDay));
       const toStr = typeof args?.to === "string" ? args.to : ymd(now);
+      const fromFmt = fmtDate(fromStr);
+      const toFmt = fmtDate(toStr);
       const limit = Math.max(1, Math.min(300, Number(args?.limit) || 150));
       const category = typeof args?.category === "string" ? args.category : undefined;
       const search = typeof args?.search === "string" ? args.search : undefined;
@@ -144,19 +226,67 @@ export async function POST(request: Request) {
       }
 
       const round2 = (n: number) => Number(n.toFixed(2));
-      let income = 0, expenses = 0;
+      let income = 0, expenses = 0, nin = 0, nout = 0;
       const byCat: Record<string, number> = {};
+      const samplesOut: any[] = [];
+      const samplesIn: any[] = [];
+      let earliest: string | null = null;
+      let latest: string | null = null;
+
       for (const t of txs) {
         const amt = Number(t.amount ?? 0);
         if (!Number.isFinite(amt)) continue;
-        if (amt >= 0) income += amt; else expenses += Math.abs(amt);
+        const dateStr = String(t.bookingDate || "");
+        if (dateStr) {
+          if (!earliest || dateStr < earliest) earliest = dateStr;
+          if (!latest || dateStr > latest) latest = dateStr;
+        }
+        if (amt >= 0) {
+          income += amt;
+          nin++;
+          if (samplesIn.length < 20) {
+            samplesIn.push({ d: dateStr, df: dateStr ? fmtDate(dateStr) : null, a: round2(amt), c: t.category || null, p: t.counterparty || null, s: t.description || null });
+          }
+        } else {
+          const abs = Math.abs(amt);
+          expenses += abs;
+          nout++;
+          if (samplesOut.length < 20) {
+            samplesOut.push({ d: dateStr, df: dateStr ? fmtDate(dateStr) : null, a: round2(abs), c: t.category || null, p: t.counterparty || null, s: t.description || null });
+          }
+        }
         const cat = (t.category || "Uncategorized").toString();
         byCat[cat] = (byCat[cat] || 0) + amt;
       }
-      const cats = Object.entries(byCat).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).map(([n,a])=>[n, round2(a)]);
-      const sample = txs.slice(0, 30).map(t => ({ d: t.bookingDate, a: Number(t.amount ?? 0), c: t.category || null, p: t.counterparty || null, s: t.description || null }));
+
+      const cats = Object.entries(byCat)
+        .sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
+        .map(([n,a])=>[n, round2(a)]);
+
       const cur = txs.find(t=>t.currency)?.currency || "";
-      return { from: fromStr, to: toStr, cur, inc: round2(income), exp: round2(expenses), net: round2(income-expenses), cats, sample };
+      const n = txs.length;
+
+      return {
+        from: fromStr,
+        to: toStr,
+        fromf: fromFmt,
+        tof: toFmt,
+        cur,
+        inc: round2(income),
+        exp: round2(expenses),
+        net: round2(income-expenses),
+        n,
+        nin,
+        nout,
+        cats,
+        outTotal: round2(expenses),
+        inTotal: round2(income),
+        sampleOut: samplesOut,
+        sampleIn: samplesIn,
+        earliest: earliest ? fmtDate(earliest) : null,
+        latest: latest ? fmtDate(latest) : null,
+        query: search || null
+      };
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -176,6 +306,8 @@ export async function POST(request: Request) {
               to: { type: "string" },
               category: { type: "string" },
               search: { type: "string" },
+              searchMode: { type: "string", enum: ["any","all"], description: "Match any or all tokens" },
+              fuzzy: { type: "boolean", description: "Disable to require exact matches" },
               accountId: { type: "string" },
               limit: { type: "integer", minimum: 1, maximum: 300 }
             }
@@ -184,29 +316,58 @@ export async function POST(request: Request) {
       }
     ];
 
-    // Let model decide to call tools
+    const STYLE = "Always format dates as 'dd MMM yyyy'. Start with a confident one-sentence takeaway, then up to four friendly bullet points. " +
+      "Treat payments as outflows (use nout/outTotal). Include counts with currency codes and comma separators (e.g., EUR 1,234). " +
+      "Mention the analysed window as 'fromf — tof'. Reference up to two items from sampleOut with formatted dates, highlighting description/counterparty. Avoid raw JSON.";
+
+    const baseMessages: any[] = [
+      { role: "system", content: "You are a concise yet supportive finance assistant. Always rely on provided data and tools." },
+      { role: "system", content: STYLE },
+      { role: "user", content: userMessage }
+    ];
+
+    const heuristicArgs = deriveToolArgs(userMessage);
+    const toolPrefetch: any[] = [];
+    if (heuristicArgs) {
+      try {
+        const heuristicResult = await queryTransactionsTool(heuristicArgs);
+        const autoId = `auto_${Date.now()}`;
+        toolPrefetch.push({
+          role: "assistant",
+          tool_calls: [
+            {
+              id: autoId,
+              type: "function",
+              function: { name: "query_transactions", arguments: JSON.stringify(heuristicArgs) }
+            }
+          ]
+        });
+        toolPrefetch.push({
+          role: "tool",
+          tool_call_id: autoId,
+          name: "query_transactions",
+          content: JSON.stringify(heuristicResult)
+        });
+      } catch (prefetchErr) {
+        console.warn("Heuristic query prefetch failed", prefetchErr);
+      }
+    }
+
     const first = await openai.chat.completions.create({
       model,
-      messages: [
-        { role: "system", content: "You are a concise finance assistant. Use tools to fetch data as needed." },
-        { role: "user", content: userMessage }
-      ],
+      messages: [...baseMessages, ...toolPrefetch],
       tools: tools as any
     });
 
     const choice = first.choices?.[0];
     const toolCalls = choice?.message?.tool_calls;
-    const msgs: Array<any> = [
-      { role: "system", content: "You are a concise finance assistant." },
-      { role: "user", content: userMessage }
-    ];
+    const msgs: Array<any> = [...baseMessages, ...toolPrefetch];
     if (toolCalls && toolCalls.length > 0) {
       for (const tc of toolCalls) {
         if (tc.type === "function" && tc.function?.name === "query_transactions") {
           let args: any = {};
           try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
           const result = await queryTransactionsTool(args);
-          // Reflect assistant tool call with proper metadata
           msgs.push({
             role: "assistant",
             tool_calls: [
@@ -217,13 +378,11 @@ export async function POST(request: Request) {
               }
             ]
           });
-          // Provide tool result
           msgs.push({ role: "tool", tool_call_id: tc.id, name: "query_transactions", content: JSON.stringify(result) });
         }
       }
     }
 
-    // Stream final answer (SSE)
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -237,19 +396,24 @@ export async function POST(request: Request) {
           send("[DONE]");
           controller.close();
         } catch (err: any) {
-          // Fallback: try a quick heuristic answer to avoid total failure
           try {
-            const fallback = await queryTransactionsTool({ days: 31, search: /cab|uber|lyft/i.test(userMessage) ? "cab" : undefined, limit: 150 });
+            const fallback = await queryTransactionsTool({ days: 60, search: heuristicArgs?.search || undefined, category: heuristicArgs?.category, limit: 200 });
             const lines: string[] = [];
-            lines.push("Here’s a quick summary:");
-            const count = Array.isArray(fallback.sample) ? fallback.sample.filter((t:any)=> t.a > 0).length : 0;
-            lines.push(`- Payments count: ${count}`);
-            if (fallback.cats?.length) lines.push(`- Top categories: ${fallback.cats.slice(0,3).map((c:any)=>`${c[0]} ${Math.round(Math.abs(c[1]))}`).join(', ')}`);
-            const text = lines.join("\n");
-            send(text);
+            lines.push(`Quick snapshot (${fallback.fromf} — ${fallback.tof}):`);
+            lines.push(`• Outgoing payments: ${fallback.nout} for ${fallback.cur || ''} ${fallback.outTotal.toLocaleString()}`);
+            if (fallback.sampleOut?.length) {
+              const firstSample = fallback.sampleOut[0];
+              lines.push(`• Latest: ${firstSample.df} — ${firstSample.s || 'Payment'} (${fallback.cur || ''} ${firstSample.a.toLocaleString()})`);
+            }
+            if (fallback.cats?.length) {
+              const cats = fallback.cats.slice(0, 2).map((c: any) => c[0]).join(', ');
+              if (cats) lines.push(`• Top categories: ${cats}`);
+            }
+            lines.push(`• Need a wider range or different filters? Just ask!`);
+            send(lines.join("\n"));
             send("[DONE]");
             controller.close();
-          } catch (_e) {
+          } catch (fallbackErr) {
             send(`ERROR: ${err?.message || "stream failed"}`);
             controller.close();
           }

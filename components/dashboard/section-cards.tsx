@@ -39,7 +39,7 @@ export function SectionCards() {
   const { dateRange, formatDateForAPI } = useDateRange()
   const { baseCurrency, convertAmount, rates } = useCurrency()
   
-  // State for goals
+  // State for goals (stored in EUR, converted for display)
   const [balanceGoal, setBalanceGoal] = useState<number>(0)
   const [savingsRateGoal, setSavingsRateGoal] = useState<number>(20)
   const [jwt, setJwt] = useState<string | null>(null)
@@ -151,6 +151,9 @@ export function SectionCards() {
 
   const savingsRate = metrics.savingsRate
   const savingsProgress = Math.max(0, Math.min(100, (savingsRate / savingsRateGoal) * 100))
+  
+  // Convert balance goal to display currency for progress calculation
+  const balanceGoalInDisplayCurrency = convertAmount(balanceGoal, 'EUR', baseCurrency)
   const balanceProgress = balanceGoal > 0 ? Math.max(0, Math.min(100, (Math.abs(metrics.balance || 0) / balanceGoal) * 100)) : 0
 
   console.log('SectionCards - metrics:', { 
@@ -169,7 +172,7 @@ export function SectionCards() {
       icon: <IconWallet className="size-5" />,
       delta: metrics.deltas?.balancePct ?? 0,
       kind: "balance" as const,
-      goal: balanceGoal,
+      goal: balanceGoalInDisplayCurrency,
       progress: balanceProgress,
       accentColor: "from-amber-500/10 to-amber-600/10",
       iconBg: "bg-amber-500/10",
@@ -302,11 +305,13 @@ export function SectionCards() {
                         autoFocus
                         inputMode="decimal"
                         className="h-6 w-20 text-xs px-2 border-muted-foreground/20"
-                        value={card.kind === "balance" ? balanceGoal || '' : savingsRateGoal || ''}
+                        value={card.kind === "balance" ? balanceGoalInDisplayCurrency || '' : savingsRateGoal || ''}
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0
                           if (card.kind === "balance") {
-                            setBalanceGoal(val)
+                            // Convert from display currency back to EUR for storage
+                            const convertedToEUR = convertAmount(val, baseCurrency, 'EUR')
+                            setBalanceGoal(convertedToEUR)
                           } else {
                             setSavingsRateGoal(val)
                           }
