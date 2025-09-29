@@ -2,7 +2,7 @@ import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { ChartAreaInteractive } from "@/components/dashboard/chart-area-interactive"
 import { AiChatCard } from "@/components/chat/ai-chat-card"
-import { RecentExpensesTable } from "@/components/dashboard/recent-expenses-table"
+import FinanceHeatmapCard from "@/components/dashboard/FinanceHeatmapCard"
 import { ExpenseChart } from "@/components/dashboard/expense-chart"
 import { SectionCards } from "@/components/dashboard/section-cards"
 import { SiteHeader } from "@/components/site-header"
@@ -40,7 +40,7 @@ export default function Page() {
                         <AiChatCard />
                       </div>
                       <div className="md:col-span-1 lg:col-span-1">
-                        <RecentExpensesTable />
+                        <FinanceHeatmapCard />
                       </div>
                       <div className="md:col-span-1 lg:col-span-1">
                         <ExpenseChart />
