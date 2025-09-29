@@ -185,7 +185,7 @@ export function AiChatCard() {
   }
 
   return (
-    <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px] flex flex-col overflow-hidden">
+    <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col overflow-hidden">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 flex-shrink-0">
         <CardTitle className="text-base font-medium">AI Assistant</CardTitle>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleClear} disabled={isLoading} title="Clear conversation">

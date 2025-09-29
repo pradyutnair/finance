@@ -107,12 +107,12 @@ export function ExpenseChart() {
 
   if (isLoading) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="flex flex-col flex-1 p-6">
+        <CardContent className="flex flex-col flex-1 p-6 overflow-hidden">
           <div className="relative flex-1 flex items-center justify-center min-h-[280px] mt-0">
             <Skeleton className="aspect-square h-[240px] w-[240px] rounded-full" />
           </div>
@@ -128,12 +128,12 @@ export function ExpenseChart() {
 
   if (error || !categoriesData) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4 flex-1">
           <PieChartIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
           <p className="text-sm text-muted-foreground text-center">
             Unable to load breakdown
@@ -148,12 +148,12 @@ export function ExpenseChart() {
 
   if (!total || chartData.length === 0) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base font-medium">Breakdown</CardTitle>
           <PieChartIcon className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4 flex-1">
           <PieChartIcon className="h-8 w-8 text-muted-foreground/50 mb-2" />
           <p className="text-sm text-muted-foreground text-center">
             No expenses yet
@@ -167,13 +167,13 @@ export function ExpenseChart() {
   }
 
   return (
-    <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px]">
+    <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-base font-medium">Breakdown</CardTitle>
         <PieChartIcon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
 
-      <CardContent className="flex flex-col flex-1 pb-4">
+      <CardContent className="flex flex-col flex-1 pb-4 overflow-hidden">
         {/* Donut */}
         <div className="relative flex-1 flex items-center justify-center min-h-[280px] mt-0 mb-2">
           <ChartContainer

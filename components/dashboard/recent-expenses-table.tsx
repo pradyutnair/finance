@@ -57,13 +57,13 @@ export function RecentExpensesTable() {
 
   if (isLoading) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
           <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="px-4 pb-4 space-y-3">
+        <CardContent className="p-0 flex-1 overflow-hidden">
+          <div className="px-4 pb-4 h-full overflow-y-auto space-y-3">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="flex items-center justify-between py-2">
                 <div className="flex-1 space-y-1.5">
@@ -81,12 +81,12 @@ export function RecentExpensesTable() {
 
   if (error || !transactionsData) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
           <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4 flex-1">
           <Receipt className="h-8 w-8 text-muted-foreground/50 mb-2" />
           <p className="text-sm text-muted-foreground text-center">
             Unable to load expenses
@@ -101,12 +101,12 @@ export function RecentExpensesTable() {
 
   if (recentExpenses.length === 0) {
     return (
-      <Card className="h-full">
+      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
           <TrendingDown className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+        <CardContent className="flex flex-col items-center justify-center py-8 px-4 flex-1">
           <Receipt className="h-8 w-8 text-muted-foreground/50 mb-2" />
           <p className="text-sm text-muted-foreground text-center">
             No expenses yet
@@ -120,13 +120,13 @@ export function RecentExpensesTable() {
   }
 
   return (
-    <Card className="h-[380px] sm:h-[420px] md:h-[460px] lg:h-[520px]">
+    <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-base font-medium">Recent Expenses</CardTitle>
         <TrendingDown className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="px-4 pb-4">
+      <CardContent className="p-0 flex-1 overflow-hidden">
+        <div className="px-4 pb-4 h-full overflow-y-auto">
         {recentExpenses.map((tx: any, index: number) => {
             const amountOriginal = parseFloat(String(tx.amount)) || 0
             const amount = convertAmount(amountOriginal, tx.currency || "EUR", baseCurrency)
