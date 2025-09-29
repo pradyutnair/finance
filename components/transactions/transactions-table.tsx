@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useTransactions } from "@/lib/api"
+import { useTransactions, useAccounts } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
 import { useUpdateTransaction } from "@/lib/api"
@@ -79,6 +79,14 @@ function categoryToColor(cat: string): string {
   }
 }
 
+function formatBankName(raw: string | undefined | null): string {
+  if (typeof raw !== "string" || raw.length === 0) return "Unknown"
+  const idx = raw.indexOf("_")
+  const first = idx > -1 ? raw.slice(0, idx) : raw
+  const lower = first.toLowerCase()
+  return lower.length ? lower[0].toUpperCase() + lower.slice(1) : first
+}
+
 export function TransactionsTable() {
   const pageSize = 10
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
@@ -93,6 +101,7 @@ export function TransactionsTable() {
   const { baseCurrency, convertAmount, getCurrencySymbol } = useCurrency()
   const updateTx = useUpdateTransaction()
   const autoCategorize = useAutoCategorize()
+  const { data: accounts } = useAccounts()
 
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -116,11 +125,21 @@ export function TransactionsTable() {
 
   const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange })
 
+  const accountIdToInstitutionId = useMemo(() => {
+    const map = new Map<string, string>()
+    ;(accounts || []).forEach((acc: any) => {
+      const acctId = acc?.accountId || acc?.$id
+      const instId = acc?.institutionId || acc?.connectionInstitutionId
+      if (acctId && instId) map.set(acctId, instId)
+    })
+    return map
+  }, [accounts])
+
   const rows: TxRow[] = (data?.transactions || []).map((t: any) => ({
     id: t.$id || t.id,
     description: t.description || t.counterparty || "Unknown",
     category: t.category || "Uncategorized",
-    bankName: t.institutionId || "Unknown",
+    bankName: accountIdToInstitutionId.get(t.accountId) || "Unknown",
     bookingDate: t.bookingDate || t.date,
     amount: Number(t.amount) || 0,
     currency: t.currency || "EUR",
@@ -197,7 +216,7 @@ export function TransactionsTable() {
         header: "Bank",
         cell: ({ row }) => (
           <div className="text-xs text-muted-foreground">
-            {row.getValue("bankName")}
+            {formatBankName(String(row.getValue("bankName") || ""))}
           </div>
         ),
       },
@@ -420,7 +439,7 @@ export function TransactionsTable() {
               <SelectContent>
                 <SelectItem value="all">All banks</SelectItem>
                 {bankOptions.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                  <SelectItem key={b} value={b}>{formatBankName(b)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
