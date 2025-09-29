@@ -9,8 +9,10 @@ function toNumber(amount?: string | number | null): number {
 }
 
 export function categorizeHeuristic(description?: string | null, counterparty?: string | null, amount?: string | number | null): string {
-  // Prioritize counterparty over description
-  const text = `${counterparty || ""} ${description || ""}`.toLowerCase();
+  // Use both counterparty and description if either is non-null
+  const counterpartyText = counterparty || "";
+  const descriptionText = description || "";
+  const text = `${counterpartyText} ${descriptionText}`.toLowerCase().trim();
   const value = toNumber(amount);
 
   const has = (arr: string[]) => arr.some((k) => text.includes(k));
@@ -34,7 +36,7 @@ export async function categorizeViaOpenAI(description?: string | null, counterpa
   if (!apiKey) return null;
   const model = process.env.OPENAI_MODEL || "gpt-5-nano";
   const sys = `You are a strict classifier. Reply with exactly one category name from this list and nothing else: ${CATEGORY_OPTIONS.join(", ")}`;
-  // Prioritize counterparty over description in the prompt
+  // Use both counterparty and description in the prompt
   const user = `Transaction\nCounterparty: ${counterparty || ""}\nDescription: ${description || ""}\nAmount: ${amount ?? ""} ${currency || ""}\nReturn one of: ${CATEGORY_OPTIONS.join(", ")}`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -69,7 +71,7 @@ export async function suggestCategory(description?: string | null, counterparty?
   return llm || "Miscellaneous";
 }
 
-// Try to reuse an existing category by counterparty first, then description for this user
+// Try to reuse an existing category by matching both counterparty and description for this user
 export async function findExistingCategory(
   databases: any,
   databaseId: string,
@@ -78,12 +80,16 @@ export async function findExistingCategory(
   description?: string | null,
   counterparty?: string | null
 ): Promise<string | null> {
-  // First try to find by counterparty
-  if (counterparty && counterparty.trim()) {
+  const counterpartyText = (counterparty || "").trim();
+  const descriptionText = (description || "").trim();
+  
+  // If we have both counterparty and description, try to find exact matches
+  if (counterpartyText && descriptionText) {
     try {
       const page = await databases.listDocuments(databaseId, collectionId, [
         Query.equal('userId', userId),
-        Query.equal('counterparty', counterparty.trim()),
+        Query.equal('counterparty', counterpartyText),
+        Query.equal('description', descriptionText),
         Query.orderDesc('bookingDate'),
         Query.limit(5),
       ]);
@@ -96,23 +102,42 @@ export async function findExistingCategory(
     }
   }
   
-  // If no match by counterparty, try by description
-  const desc = (description || "").trim();
-  if (!desc) return null;
-  try {
-    const page = await databases.listDocuments(databaseId, collectionId, [
-      Query.equal('userId', userId),
-      Query.equal('description', desc),
-      Query.orderDesc('bookingDate'),
-      Query.limit(5),
-    ]);
-    const docs: any[] = (page as any)?.documents || [];
-    for (const d of docs) {
-      if (d?.category && d.category !== 'Uncategorized') return d.category as string;
+  // Try to find by counterparty only
+  if (counterpartyText) {
+    try {
+      const page = await databases.listDocuments(databaseId, collectionId, [
+        Query.equal('userId', userId),
+        Query.equal('counterparty', counterpartyText),
+        Query.orderDesc('bookingDate'),
+        Query.limit(5),
+      ]);
+      const docs: any[] = (page as any)?.documents || [];
+      for (const d of docs) {
+        if (d?.category && d.category !== 'Uncategorized') return d.category as string;
+      }
+    } catch (_e) {
+      // ignore
     }
-  } catch (_e) {
-    // ignore
   }
+  
+  // Try to find by description only
+  if (descriptionText) {
+    try {
+      const page = await databases.listDocuments(databaseId, collectionId, [
+        Query.equal('userId', userId),
+        Query.equal('description', descriptionText),
+        Query.orderDesc('bookingDate'),
+        Query.limit(5),
+      ]);
+      const docs: any[] = (page as any)?.documents || [];
+      for (const d of docs) {
+        if (d?.category && d.category !== 'Uncategorized') return d.category as string;
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+  
   return null;
 }
 

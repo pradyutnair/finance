@@ -38,29 +38,36 @@ export async function POST(request: Request) {
     
     // Ensure an End User Agreement exists using the institution's max historical days
     let effectiveAgreementId: string | undefined = agreementId;
-    try {
+    if (!effectiveAgreementId) {
+      if (!institutionId) throw new HttpError("'institutionId' is required", 400);
+      const institution = await getInstitution(institutionId);
+      // Prefer provider's transaction_total_days; fall back to other common keys if provided by API
+      const ttlCandidates: any[] = [
+        (institution as any)?.transaction_total_days,
+        (institution as any)?.max_historical_days,
+        (institution as any)?.max_history_days,
+      ].filter((v) => v !== undefined && v !== null);
+      const ttlParsed = ttlCandidates.map((v) => Number(v)).find((n) => Number.isFinite(n));
+      const maxHistoricalDays = (ttlParsed as number | undefined) ?? 90;
+
+      const accessValidCandidates: any[] = [
+        (institution as any)?.max_access_valid_for_days,
+        (institution as any)?.access_valid_for_days,
+      ].filter((v) => v !== undefined && v !== null);
+      const accessValidParsed = accessValidCandidates.map((v) => Number(v)).find((n) => Number.isFinite(n));
+      const accessValidForDays = (accessValidParsed as number | undefined);
+
+      const agreement = await createEndUserAgreement({
+        institutionId,
+        maxHistoricalDays,
+        ...(typeof accessValidForDays === 'number' ? { accessValidForDays } : {}),
+        accessScope: ["balances", "details", "transactions"],
+      });
+      effectiveAgreementId = agreement?.id as string | undefined;
       if (!effectiveAgreementId) {
-        if (!institutionId) throw new HttpError("'institutionId' is required", 400);
-        const institution = await getInstitution(institutionId);
-        const ttlRaw = (institution && (institution as any).transaction_total_days) as any;
-        const ttlNum = ttlRaw !== undefined && ttlRaw !== null ? Number(ttlRaw) : NaN;
-        const maxHistoricalDays = Number.isFinite(ttlNum) ? ttlNum : 90;
-
-        const accessValidRaw = (institution && (institution as any).max_access_valid_for_days) as any;
-        const accessValidParsed = accessValidRaw !== undefined && accessValidRaw !== null ? Number(accessValidRaw) : NaN;
-        const accessValidForDays = Number.isFinite(accessValidParsed) ? accessValidParsed : undefined;
-
-        const agreement = await createEndUserAgreement({
-          institutionId,
-          maxHistoricalDays,
-          ...(typeof accessValidForDays === 'number' ? { accessValidForDays } : {}),
-          accessScope: ["balances", "details", "transactions"],
-        });
-        effectiveAgreementId = agreement?.id as string | undefined;
-        console.log('📝 Created end-user agreement for requisition', { maxHistoricalDays, accessValidForDays, agreementId: effectiveAgreementId });
+        throw new HttpError('Failed to create end-user agreement (missing id)', 502);
       }
-    } catch (agreementErr) {
-      console.warn('⚠️ Failed to create end-user agreement automatically; proceeding without explicit agreement', agreementErr);
+      console.log('📝 Created end-user agreement for requisition', { maxHistoricalDays, accessValidForDays, agreementId: effectiveAgreementId });
     }
 
     // Create requisition with GoCardless

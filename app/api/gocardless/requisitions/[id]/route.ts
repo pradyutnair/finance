@@ -6,6 +6,7 @@ import { getRequisition, listRequisitions, getAccounts, getBalances, getTransact
 import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
+import { createHash } from "crypto";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -114,7 +115,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           // proceed without institution metadata
         }
 
-        // Store requisition in database (after metadata ready)
+        // Upsert requisition in database (idempotent)
         try {
           await databases.createDocument(
             DATABASE_ID,
@@ -130,8 +131,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
             }
           );
-        } catch (error) {
-          console.error('Error storing requisition:', error);
+        } catch (error: any) {
+          const code = (error && (error.code || (error.responseCode as number | undefined))) as number | undefined;
+          const message = (error && error.message) || '';
+          if (code === 409 || message.includes('already exists')) {
+            await databases.updateDocument(
+              DATABASE_ID,
+              REQUISITIONS_COLLECTION_ID,
+              requisition.id,
+              {
+                userId: userId,
+                requisitionId: requisition.id,
+                institutionId: requisition.institution_id,
+                institutionName: requisition.institution_name || 'Unknown Bank',
+                status: requisition.status,
+                reference: requisition.reference,
+                redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
+              }
+            );
+          } else {
+            console.error('Error storing requisition:', error);
+          }
         }
 
         // Create bank connection record first to get connectionId
@@ -269,10 +289,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (transactions && transactions.length > 0) {
                   for (const transaction of transactions.slice(0, 100)) {
                     try {
-                      // Use provider transactionId as the Appwrite $id to prevent duplicates
+                      // Use provider transactionId as the Appwrite $id to prevent duplicates, with safe length and charset
                       const providerTransactionId: string | undefined = transaction.transactionId || undefined;
                       const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${(transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')}`;
-                      const docId = (providerTransactionId || fallbackIdBase).toString().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
+
+                      const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
+                      let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                      if (!docIdCandidate || docIdCandidate.length > 36) {
+                        try {
+                          const hashed = createHash('sha1').update(rawKey).digest('hex');
+                          docIdCandidate = hashed.slice(0, 36);
+                        } catch {
+                          docIdCandidate = (docIdCandidate || 'tx').slice(0, 36);
+                        }
+                      }
+                      const docId = docIdCandidate || ID.unique();
 
                       // Skip if already exists
                       let exists = false;
@@ -310,16 +341,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         {
                           userId: userId,
                           accountId: accountId,
-                          transactionId: providerTransactionId || transaction.internalTransactionId || docId,
-                          amount: transaction.transactionAmount?.amount || '0',
-                          currency: transaction.transactionAmount?.currency || 'EUR',
-                          bookingDate: transaction.bookingDate || null,
-                          bookingDateTime: transaction.bookingDateTime || null,
-                          valueDate: transaction.valueDate || null,
-                          description: transaction.remittanceInformationUnstructured || transaction.additionalInformation || '',
-                          counterparty: transaction.creditorName || transaction.debtorName || '',
+                          transactionId: (providerTransactionId || transaction.internalTransactionId || docId).toString().slice(0, 255),
+                          amount: String(transaction.transactionAmount?.amount ?? '0'),
+                          currency: (transaction.transactionAmount?.currency || 'EUR').toString().toUpperCase().slice(0, 3),
+                          bookingDate: transaction.bookingDate ? String(transaction.bookingDate).slice(0, 10) : null,
+                          bookingDateTime: transaction.bookingDateTime ? String(transaction.bookingDateTime).slice(0, 25) : null,
+                          valueDate: transaction.valueDate ? String(transaction.valueDate).slice(0, 10) : null,
+                          description: (transaction.remittanceInformationUnstructured || transaction.additionalInformation || '').toString().slice(0, 500),
+                          counterparty: (transaction.creditorName || transaction.debtorName || '').toString().slice(0, 255),
                           category,
-                          raw: JSON.stringify(transaction),
+                          raw: JSON.stringify(transaction).slice(0, 10000),
                         }
                       );
                     } catch (error: any) {

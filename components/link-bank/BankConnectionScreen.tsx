@@ -60,7 +60,8 @@ export function BankConnectionScreen({ userId, onConnectionSuccess }: BankConnec
           transaction_total_days: "730",
           countries: ["GB"],
           logo: null,
-          max_access_valid_for_days: "90"
+          max_access_valid_for_days: "90",
+          max_historical_days: "730"
         };
         
         // Add sandbox at the top for easy access
