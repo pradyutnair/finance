@@ -10,16 +10,17 @@ import { useCurrency } from "@/contexts/currency-context"
 import { useTransactions } from "@/lib/api"
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, Flame } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
 type HeatmapMode = "spending" | "savings" | "net"
 
 const SAVINGS_CATEGORIES = new Set(["Savings", "Investment"])
+const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date)
   d.setDate(d.getDate() + days)
   return d
 }
-
 function startOfWeek(date: Date): Date {
   const d = new Date(date)
   const day = d.getDay()
@@ -28,26 +29,25 @@ function startOfWeek(date: Date): Date {
   d.setHours(0, 0, 0, 0)
   return d
 }
-
 function endOfWeek(date: Date): Date {
   const d = startOfWeek(date)
   d.setDate(d.getDate() + 6)
   d.setHours(23, 59, 59, 999)
   return d
 }
-
 function formatMonthShort(date: Date): string {
   return date.toLocaleString("en-US", { month: "short" })
 }
-
 function formatIsoDate(date: Date): string {
   return date.toISOString().split("T")[0]
 }
-
 function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
-
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t }
-
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "")
+  const bigint = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16)
+  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }
+}
 function lerpHexColor(hexA: string, hexB: string, t: number): string {
   const a = hexToRgb(hexA)
   const b = hexToRgb(hexB)
@@ -56,25 +56,12 @@ function lerpHexColor(hexA: string, hexB: string, t: number): string {
   const bch = Math.round(lerp(a.b, b.b, t))
   return `rgb(${r}, ${g}, ${bch})`
 }
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const h = hex.replace("#", "")
-  const bigint = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16)
-  return {
-    r: (bigint >> 16) & 255,
-    g: (bigint >> 8) & 255,
-    b: bigint & 255,
-  }
-}
-
 function netToColor(value: number, maxAbs: number): string {
   if (!Number.isFinite(value) || !Number.isFinite(maxAbs) || maxAbs <= 0) return "rgba(0,0,0,0.05)"
   const t = clamp01(Math.abs(value) / maxAbs)
   if (Math.abs(value) < maxAbs * 0.02) return "rgba(0,0,0,0.08)"
-  // Positive → savings (green), Negative → spending (brown #40221a)
   return value >= 0 ? lerpHexColor("#f0fdf4", "#14532d", t) : lerpHexColor("#f2ebe9", "#40221a", t)
 }
-
 function isNoSpendDay(day: AggregatedDay): boolean {
   return (day.expenses ?? 0) === 0
 }
@@ -92,6 +79,7 @@ type AggregatedDay = {
 export function FinanceHeatmapCard() {
   const { dateRange, formatDateForAPI } = useDateRange()
   const { baseCurrency, convertAmount, getCurrencySymbol, formatAmount } = useCurrency()
+
   const [mode, setMode] = useState<HeatmapMode>("net")
   const [categoryFilter, setCategoryFilter] = useState<string | "all">("all")
   const [dailySavingsGoal, setDailySavingsGoal] = useState<number>(() => {
@@ -100,24 +88,19 @@ export function FinanceHeatmapCard() {
       return raw ? parseFloat(raw) : 0
     } catch { return 0 }
   })
-
   useEffect(() => {
     try { if (typeof window !== "undefined") window.localStorage.setItem("nexpass_daily_savings_goal", String(dailySavingsGoal || 0)) } catch {}
   }, [dailySavingsGoal])
 
-  // Max spend threshold for under-threshold streaks
   const [maxSpendThreshold, setMaxSpendThreshold] = useState<number>(() => {
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem("nexpass_max_spend_threshold") : null
       return raw ? parseFloat(raw) : 0
     } catch { return 0 }
   })
-
   useEffect(() => {
     try { if (typeof window !== "undefined") window.localStorage.setItem("nexpass_max_spend_threshold", String(maxSpendThreshold || 0)) } catch {}
   }, [maxSpendThreshold])
-
-  // Inline edit state for max spend (like SectionCards goal input)
   const [editingMax, setEditingMax] = useState(false)
 
   const apiDateRange = useMemo(() => {
@@ -128,61 +111,31 @@ export function FinanceHeatmapCard() {
   }, [dateRange, formatDateForAPI])
 
   const { data, isLoading, error } = useTransactions({ dateRange: apiDateRange })
-
   const transactions = data?.transactions || []
 
-  const { weeks, monthTicks } = useMemo(() => {
+  // Build continuous week rows that cover the selected range
+  const { fromDate, toDate, weeks } = useMemo(() => {
     const from = dateRange?.from ? new Date(dateRange.from) : new Date()
     const to = dateRange?.to ? new Date(dateRange.to) : new Date()
-    const start = startOfWeek(addDays(from, 0))
-    const end = endOfWeek(addDays(to, 0))
+    const start = startOfWeek(from)
+    const end = endOfWeek(to)
 
-    const days: Date[] = []
-    for (let d = new Date(start); d <= end; d = addDays(d, 1)) days.push(new Date(d))
-
-    const weeks: Date[][] = []
-    for (let i = 0; i < days.length; i += 7) {
-      weeks.push(days.slice(i, i + 7))
+    const rows: Date[][] = []
+    for (let wStart = new Date(start); wStart <= end; wStart = addDays(wStart, 7)) {
+      const row: Date[] = []
+      for (let i = 0; i < 7; i++) row.push(addDays(wStart, i))
+      rows.push(row)
     }
-
-    const monthTicks: { index: number; month: string; year: number }[] = []
-    let lastMonth = -1
-    let lastYear = -1
-    
-    weeks.forEach((w, idx) => {
-      const firstDay = w[0]
-      const month = firstDay.getMonth()
-      const year = firstDay.getFullYear()
-      
-      if (idx === 0 || month !== lastMonth || year !== lastYear) {
-        monthTicks.push({ 
-          index: idx, 
-          month: formatMonthShort(firstDay),
-          year: year
-        })
-        lastMonth = month
-        lastYear = year
-      }
-    })
-
-    return { weeks, monthTicks }
+    return { fromDate: from, toDate: to, weeks: rows }
   }, [dateRange])
 
+  // Aggregate per day for the entire covered range
   const dayMap: Record<string, AggregatedDay> = useMemo(() => {
     const map: Record<string, AggregatedDay> = {}
     weeks.flat().forEach((d) => {
       const key = formatIsoDate(d)
-      map[key] = {
-        dateKey: key,
-        date: d,
-        income: 0,
-        expenses: 0,
-        savings: 0,
-        net: 0,
-        categories: {},
-      }
+      map[key] = { dateKey: key, date: d, income: 0, expenses: 0, savings: 0, net: 0, categories: {} }
     })
-
     for (const tx of transactions) {
       const dt = new Date((tx as any).bookingDate || (tx as any).date)
       const key = formatIsoDate(dt)
@@ -194,9 +147,7 @@ export function FinanceHeatmapCard() {
 
       if (amount > 0) {
         map[key].income += amount
-        if (SAVINGS_CATEGORIES.has(cat)) {
-          map[key].savings += amount
-        }
+        if (SAVINGS_CATEGORIES.has(cat)) map[key].savings += amount
       } else if (amount < 0) {
         map[key].expenses += Math.abs(amount)
       }
@@ -216,13 +167,10 @@ export function FinanceHeatmapCard() {
     return { maxAbs }
   }, [dayMap, mode])
 
-  // Flatten visible days for streak calculations
+  // Streaks over visible range
   const orderedDays = useMemo(() => weeks.flat(), [weeks])
-
-  // Longest streaks
   const longestNoSpendStreak = useMemo(() => {
-    let max = 0
-    let cur = 0
+    let max = 0, cur = 0
     for (const day of orderedDays) {
       const d = dayMap[formatIsoDate(day)]
       if (d && (d.expenses ?? 0) === 0) cur += 1
@@ -230,11 +178,9 @@ export function FinanceHeatmapCard() {
     }
     return Math.max(max, cur)
   }, [orderedDays, dayMap])
-
   const longestUnderThresholdStreak = useMemo(() => {
     const thr = Math.max(0, maxSpendThreshold || 0)
-    let max = 0
-    let cur = 0
+    let max = 0, cur = 0
     for (const day of orderedDays) {
       const d = dayMap[formatIsoDate(day)]
       if (d && (d.expenses ?? 0) <= thr) cur += 1
@@ -244,72 +190,176 @@ export function FinanceHeatmapCard() {
   }, [orderedDays, dayMap, maxSpendThreshold])
 
   const categoryOptions = useMemo(() => {
-    const s = new Set<string>(["all"]) 
+    const s = new Set<string>(["all"])
     transactions.forEach((t: any) => s.add(t.category || "Uncategorized"))
     return Array.from(s).sort()
   }, [transactions])
 
-  // Make cells large by default; still responsive to very long ranges
-  const cellSize = weeks.length > 24 ? "h-7 w-7" : weeks.length > 16 ? "h-9 w-9" : "h-10 w-10"
-  const gap = weeks.length > 24 ? "gap-1" : weeks.length > 16 ? "gap-1.5" : "gap-2"
-  const cellPx = weeks.length > 24 ? 28 : weeks.length > 16 ? 36 : 48
-  const gapPx = weeks.length > 24 ? 4 : weeks.length > 16 ? 6 : 8
-  const dayLabelColPx = cellPx + 8
 
-  // Compute day-of-week labels based on the first week (ensures correct order)
-  const dayLabels = useMemo(() => {
-    const firstWeek = weeks[0]
-    if (!firstWeek || firstWeek.length !== 7) return ["M","T","W","T","F","S","S"]
-    return firstWeek.map((d) => d.toLocaleDateString(undefined, { weekday: 'narrow' }))
-  }, [weeks])
-
-  // Month segments to center labels exactly above the grid
-  const monthSegments = useMemo(() => {
-    const segs: Array<{ start: number; end: number; month: string; year: number }> = []
-    if (!weeks || weeks.length === 0 || !monthTicks || monthTicks.length === 0) return segs
-    for (let i = 0; i < monthTicks.length; i++) {
-      const start = monthTicks[i].index
-      const end = (monthTicks[i + 1]?.index ?? weeks.length) - 1
-      segs.push({ start, end, month: monthTicks[i].month, year: monthTicks[i].year })
-    }
-    return segs
-  }, [weeks, monthTicks])
-
-  const totalGridWidth = useMemo(() => {
-    const weeksCount = weeks.length
-    return dayLabelColPx + weeksCount * cellPx + Math.max(0, weeksCount - 1) * gapPx
-  }, [weeks.length, dayLabelColPx, cellPx, gapPx])
-
-  // Keep row-2 (category + max spend) same width as the mode toggle group
-  const toggleWidthRef = useRef<HTMLDivElement | null>(null)
-  const [toggleRowWidth, setToggleRowWidth] = useState<number | null>(null)
+  // Dynamic sizing and centering for one single stacked grid
+  const gridBoxRef = useRef<HTMLDivElement | null>(null)
+  const [boxW, setBoxW] = useState<number>(0)
+  const [boxH, setBoxH] = useState<number>(0)
   useEffect(() => {
-    const el = toggleWidthRef.current
+    const el = gridBoxRef.current
     if (!el) return
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect?.width
-      if (typeof w === 'number') setToggleRowWidth(w)
+      const r = entries[0]?.contentRect
+      if (!r) return
+      setBoxW(r.width)
+      setBoxH(r.height)
     })
     ro.observe(el)
-    setToggleRowWidth(el.getBoundingClientRect().width)
+    const r0 = el.getBoundingClientRect()
+    setBoxW(r0.width)
+    setBoxH(r0.height)
     return () => ro.disconnect()
   }, [])
 
+  // Dynamic sizing - width-driven baseline; vertical scroll for long ranges
+  const daysCount = weeks.flat().length || 1
+  const rows = Math.max(weeks.length, 1)
+  const cols = 7
+  const headerH = 20 // height for MTWTFSS row
+
+  // Keep a constant small gap so width-based cell size is stable across ranges
+  const gapPx = 2
+
+  // Available width/height inside the measured box
+  const padding = 6 // tiny safety padding
+  const availableWidth = Math.max(0, boxW - padding)
+  const availableHeight = Math.max(0, boxH - headerH - 4)
+
+  // Baseline cell size from width so grid always fills card width
+  const widthCell = Math.max(8, Math.floor((availableWidth - (cols - 1) * gapPx) / cols))
+
+  // Height-constrained cell size (only applied for short ranges)
+  const heightCell = Math.max(8, Math.floor((availableHeight - (rows - 1) * gapPx) / rows))
+
+  // If the range is short (<= 35 days), fit both width and height.
+  // If longer, keep the width-driven size and allow vertical scrolling.
+  let cellPx = daysCount > 35 ? widthCell : Math.min(widthCell, heightCell)
+
+  // Aesthetic caps for very short ranges
+  if (daysCount <= 7) cellPx = Math.min(cellPx, 56)
+  else if (daysCount <= 14) cellPx = Math.min(cellPx, 48)
+  else if (daysCount <= 30) cellPx = Math.min(cellPx, 40)
+
+  const gridTotalWidth = cols * cellPx + (cols - 1) * gapPx
+  const gridTotalHeight = headerH + rows * cellPx + (rows - 1) * gapPx
+
+  const isEmpty = (transactions?.length || 0) === 0
+
+  const toggleOptions: Array<{ k: HeatmapMode; label: string; icon: any }> = [
+    { k: "spending", label: "Spending", icon: TrendingDown },
+    { k: "savings", label: "Savings", icon: TrendingUp },
+    { k: "net", label: "Net Flow", icon: Minus },
+  ]
+
+  // Helpers
+  function dayValue(d: AggregatedDay) {
+    return mode === "spending" ? -d.expenses : mode === "savings" ? d.savings : d.net
+  }
+
+  function DayCell({ date }: { date: Date }) {
+    const key = formatIsoDate(date)
+    const d = dayMap[key]
+    const disabled = date < startOfWeek(fromDate) || date > endOfWeek(toDate) || !d
+    const filteredCats = d
+      ? Object.entries(d.categories).filter(([name]) => categoryFilter === "all" || name === categoryFilter)
+      : []
+
+    const raw = d ? dayValue(d) : 0
+    const color = d ? netToColor(raw, valuesForScale.maxAbs) : "rgba(0,0,0,0.04)"
+    const showOutline = d && dailySavingsGoal > 0 && d.savings >= dailySavingsGoal
+    const showStreak = d ? isNoSpendDay(d) : false
+    const showUnderMax = d && !showStreak && maxSpendThreshold > 0 && d.expenses <= maxSpendThreshold
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="rounded cursor-pointer transition-transform hover:scale-110 hover:shadow-lg relative"
+            style={{
+              height: cellPx,
+              width: cellPx,
+              background: disabled ? "rgba(0,0,0,0.04)" : color,
+              outline: showOutline ? "2px solid #f59e0b" : undefined,
+              outlineOffset: showOutline ? 1 : undefined,
+              opacity: disabled ? 0.35 : 1,
+            }}
+          >
+            {!disabled && showStreak && <div className="absolute inset-0 rounded ring-1 ring-gray-500/60" />}
+            {!disabled && !showStreak && showUnderMax && <div className="absolute inset-0 rounded ring-1 ring-chart-1/70" />}
+          </div>
+        </TooltipTrigger>
+        {!disabled && d && (
+          <TooltipContent side="top" className="p-2">
+            <div className="space-y-1.5 text-xs">
+              <div className="font-semibold border-b pb-1">
+                {date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+              </div>
+
+              <div className="space-y-0.5">
+                <div className="flex justify-between gap-4">
+                  <span>Net:</span>
+                  <span className={`font-mono font-semibold ${d.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatAmount(d.net, baseCurrency)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Spending:</span>
+                  <span className="font-mono">{formatAmount(-d.expenses, baseCurrency)}</span>
+                </div>
+
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Savings:</span>
+                  <span className="font-mono">{formatAmount(d.savings, baseCurrency)}</span>
+                </div>
+              </div>
+
+              {filteredCats.length > 0 && (
+                <div className="pt-1 border-t space-y-0.5">
+                  <div className="text-[10px] font-medium opacity-60">Top Categories:</div>
+                  {filteredCats.slice(0, 3).map(([name, amt]) => (
+                    <div key={name} className="flex justify-between gap-3 text-[11px]">
+                      <span className="truncate">{name}</span>
+                      <span className="font-mono">{formatAmount(-Math.abs(amt), baseCurrency)}</span>
+                    </div>
+                  ))}
+                  {filteredCats.length > 3 && (
+                    <div className="text-[10px] opacity-50">+{filteredCats.length - 3} more</div>
+                  )}
+                </div>
+              )}
+
+              {(showStreak || showOutline) && (
+                <div className="pt-1 border-t text-[10px]">
+                  {showStreak && <div className="text-emerald-600">✓ No-spend day</div>}
+                  {showOutline && <div className="text-amber-600">★ Goal reached</div>}
+                </div>
+              )}
+            </div>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    )
+  }
+
+  // Loading and error states
   if (isLoading) {
     return (
       <Card className="h-full flex flex-col">
         <CardHeader className="pb-3 px-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold">Heatmap</CardTitle>
-          </div>
+          <CardTitle className="text-base font-semibold">Heatmap</CardTitle>
         </CardHeader>
         <CardContent className="flex-1 flex items-center justify-center px-4 pb-4">
-          <div className="space-y-1.5">
-            {[...Array(7)].map((_, r) => (
-              <div key={r} className="flex gap-1.5">
-                {[...Array(Math.min(14, weeks.length))].map((_, c) => (
-                  <Skeleton key={c} className={cellSize + " rounded"} />
-                ))}
+          <div className="space-y-2">
+            {[...Array(8)].map((_, r) => (
+              <div key={r} className="flex items-center gap-2">
+                <Skeleton className="h-4 w-12 rounded" />
+                {[...Array(7)].map((__, c) => <Skeleton key={c} className="h-5 w-5 rounded" />)}
               </div>
             ))}
           </div>
@@ -334,28 +384,82 @@ export function FinanceHeatmapCard() {
     )
   }
 
-  const isEmpty = (transactions?.length || 0) === 0
+  // Controls width alignment
+  const toggleWidthRef = useRef<HTMLDivElement | null>(null)
+  const [toggleRowWidth, setToggleRowWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = toggleWidthRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === "number") setToggleRowWidth(w)
+    })
+    ro.observe(el)
+    setToggleRowWidth(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
 
-  const toggleOptions: Array<{ k: HeatmapMode; label: string; icon: any }> = [
-    { k: "spending", label: "Spending", icon: TrendingDown },
-    { k: "savings", label: "Savings", icon: TrendingUp },
-    { k: "net", label: "Net Flow", icon: Minus },
-  ]
-
-  
+  function renderLegend() {
+    if (mode === "net") {
+      return (
+        <div className="mt-2 pt-2 border-t flex items-center justify-center gap-6 text-[9px]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Spending</span>
+            <div className="flex gap-0.5">
+              {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
+                <div key={`neg-${t}`} className="w-3 h-3 rounded-sm" style={{ background: lerpHexColor("#f2ebe9", "#40221a", t) }} />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Savings</span>
+            <div className="flex gap-0.5">
+              {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
+                <div key={`pos-${t}`} className="w-3 h-3 rounded-sm" style={{ background: lerpHexColor("#f0fdf4", "#14532d", t) }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="mt-2 pt-2 border-t flex items-center justify-center gap-6 text-[9px]">
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">Less</span>
+          <div className="flex gap-0.5">
+            {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
+              <div
+                key={t}
+                className="w-3 h-3 rounded-sm"
+                style={{
+                  background: mode === "spending"
+                    ? lerpHexColor("#f2ebe9", "#40221a", t)
+                    : lerpHexColor("#f0fdf4", "#14532d", t)
+                }}
+              />
+            ))}
+          </div>
+          <span className="text-muted-foreground">
+            More {mode === "spending" ? "Spending" : "Savings"}
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
+    <Card className="h-full min-h-[420px] max-h-[640px] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-4">
         <CardTitle className="text-base font-medium">Heatmap</CardTitle>
         <Flame className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
 
-      <CardContent className="flex-1 px-1 pb-3 overflow-hidden">
-        {/* Centered filters; second row holds category and max spend */}
-        <div className="w-full flex items-center justify-center mb-1">
-          <div className="w-full max-w-[880px] flex flex-col items-center gap-1.5">
-            {/* Row 1: Mode toggle centered */}
+      {/* Zero horizontal padding to avoid cut off. Inner sections manage their own padding. */}
+      <CardContent className="flex-1 px-0 pb-3 overflow-hidden">
+        {/* Controls */}
+        <div className="w-full flex items-center justify-center mb-1 px-3">
+          <div className="w-full max-w-[980px] flex flex-col items-center gap-1.5">
+            {/* Row 1: Mode toggle */}
             <div className="flex items-center justify-center">
               <div ref={toggleWidthRef} className="inline-flex rounded-md border bg-muted/30 p-0.5 h-8">
                 {toggleOptions.map((opt) => {
@@ -378,11 +482,11 @@ export function FinanceHeatmapCard() {
               </div>
             </div>
 
-            {/* Row 2: Category + Max spend on the SAME row */}
+            {/* Row 2: Category + Max spend aligned to toggle width */}
             <div className="flex items-center justify-center">
               <div className="flex items-center gap-2" style={{ width: toggleRowWidth ?? undefined }}>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="h-8 flex-1 min-w-0 rounded-md  bg-background px-2 text-xs font-medium">
+                  <SelectTrigger className="h-8 flex-1 min-w-0 rounded-md border bg-background px-3 text-xs font-medium shadow-sm">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,7 +497,7 @@ export function FinanceHeatmapCard() {
                   </SelectContent>
                 </Select>
 
-                <div 
+                <div
                   className="flex items-center gap-2 px-2 h-8 rounded-md border bg-background text-xs text-muted-foreground group/goal flex-none"
                   onClick={() => setEditingMax(true)}
                 >
@@ -407,19 +511,19 @@ export function FinanceHeatmapCard() {
                       value={Number.isFinite(maxSpendThreshold) ? String(maxSpendThreshold) : ""}
                       onChange={(e) => setMaxSpendThreshold(parseFloat(e.target.value) || 0)}
                       onBlur={() => setEditingMax(false)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') setEditingMax(false) }}
+                      onKeyDown={(e) => { if (e.key === "Enter") setEditingMax(false) }}
                       placeholder="0"
                     />
                   ) : (
-                    <span className={`font-semibold text-foreground/90 ${Number.isFinite(maxSpendThreshold) && maxSpendThreshold > 0 ? '' : 'text-muted-foreground/60'}`}>
-                      {Number.isFinite(maxSpendThreshold) && maxSpendThreshold > 0 ? maxSpendThreshold : '0'}
+                    <span className={`font-semibold text-foreground/90 ${Number.isFinite(maxSpendThreshold) && maxSpendThreshold > 0 ? "" : "text-muted-foreground/60"}`}>
+                      {Number.isFinite(maxSpendThreshold) && maxSpendThreshold > 0 ? maxSpendThreshold : "0"}
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Row 3: Streak badges */}
+            {/* Row 3: Streaks */}
             <div className="flex items-center justify-center gap-6 text-[11px] text-muted-foreground mt-0.5">
               <div className="flex items-center gap-1">
                 <Flame className="w-3.5 h-3.5 text-emerald-500" />
@@ -433,7 +537,7 @@ export function FinanceHeatmapCard() {
           </div>
         </div>
 
-        {/* Grid/empty state */}
+        {/* Single stacked calendar grid (centered). MTWTFSS are columns. Weeks are rows. */}
         {isEmpty ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center ">
@@ -441,154 +545,40 @@ export function FinanceHeatmapCard() {
               <div className="text-xs text-muted-foreground">No transactions found</div>
             </div>
           </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center">
-            {/* Month labels centered above chart using exact segment widths */}
-            <div className="mt-6 ml-4 flex items-center justify-center" style={{ width: totalGridWidth }}>
-              <div className="text-[11px] font-medium text-muted-foreground" style={{ display: 'flex'}}>
-                {monthSegments.map((seg, i) => {
-                  const spanWeeks = seg.end - seg.start + 1
-                  const spanWidth = spanWeeks * cellPx + Math.max(0, spanWeeks - 1) * gapPx
-                  return (
-                    <div key={`mseg-${i}`} style={{ width: spanWidth }} className="text-center">
-                      {seg.month}
-                      {monthSegments.length <= 3 && (
-                        <span className="ml-1.5 text-[9px] opacity-60">{seg.year}</span>
-                      )}
-                    </div>
-                  )
-                })}
+          ) : (
+            <div className="h-full w-full px-3 pb-2">
+              {/* Box that we measure for dynamic sizing */}
+              <div
+                ref={gridBoxRef}
+                className={"h-full w-full flex flex-col items-center justify-center " + (daysCount > 35 ? "overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20" : "overflow-hidden")}
+                style={{ maxHeight: daysCount > 35 ? gridTotalHeight : undefined }}
+              >
+                {/* Header row: MTWTFSS */}
+                <div className="flex items-center justify-center mb-1" style={{ gap: gapPx, height: headerH }}>
+                {DOW_LABELS.map((d, i) => (
+                  <div key={`hd-${i}`} className="text-[10px] text-muted-foreground flex items-center justify-center" style={{ width: cellPx, height: headerH }}>
+                    {d}
+                  </div>
+                ))}
               </div>
-            </div>
 
-            {/* Main heatmap grid */}
-            <div className="flex-1 flex items-center justify-center overflow-visible pb-12">
-              <div className="flex gap-2">
-                {/* Day labels */}
-                <div className={`flex flex-col ${gap} text-[9px] font-medium text-muted-foreground`}>
-                  {dayLabels.map((d, i) => (
-                    <div key={`dow-${i}`} className={`${cellSize.split(' ')[0]} flex items-center justify-center`}>
-                      {d}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Heatmap cells */}
-                <div className={`flex ${gap}`}>
-                  {weeks.map((week, wi) => (
-                    <div key={wi} className={`flex flex-col ${gap}`}>
-                      {week.map((day, di) => {
-                        const key = formatIsoDate(day)
-                        const d = dayMap[key]
-                        const raw = mode === "spending" ? -d.expenses : mode === "savings" ? d.savings : d.net
-                        const color = netToColor(raw, valuesForScale.maxAbs)
-                        const showOutline = dailySavingsGoal > 0 && d.savings >= dailySavingsGoal
-                        const showStreak = isNoSpendDay(d)
-                        const showUnderMax = !showStreak && maxSpendThreshold > 0 && d.expenses <= maxSpendThreshold
-
-                        const filteredCats = Object.entries(d.categories)
-                          .filter(([name]) => categoryFilter === "all" || name === categoryFilter)
-
-                        return (
-                          <Tooltip key={`${wi}-${di}`}>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={`${cellSize} rounded cursor-pointer transition-all hover:scale-110 hover:shadow-lg relative`}
-                                style={{ 
-                                  background: color,
-                                  outline: showOutline ? "2px solid #f59e0b" : undefined,
-                                  outlineOffset: showOutline ? 1 : undefined,
-                                }}
-                              >
-                                {showStreak && (
-                                  <div className="absolute inset-0 rounded ring-1 ring-gray-500/60" />
-                                )}
-                                {!showStreak && showUnderMax && (
-                                  <div className="absolute inset-0 rounded ring-1 ring-chart-1/70" />
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="p-2">
-                              <div className="space-y-1.5 text-xs">
-                                <div className="font-semibold border-b pb-1">
-                                  {day.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                                </div>
-                                
-                                <div className="space-y-0.5">
-                                  <div className="flex justify-between gap-4">
-                                    <span>Net:</span>
-                                    <span className={`font-mono font-semibold ${d.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                      {formatAmount(d.net, baseCurrency)}
-                                    </span>
-                                  </div>
-                                  
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-muted-foreground">Spending:</span>
-                                    <span className="font-mono">{formatAmount(-d.expenses, baseCurrency)}</span>
-                                  </div>
-                                  
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-muted-foreground">Savings:</span>
-                                    <span className="font-mono">{formatAmount(d.savings, baseCurrency)}</span>
-                                  </div>
-                                </div>
-
-                                {filteredCats.length > 0 && (
-                                  <div className="pt-1 border-t space-y-0.5">
-                                    <div className="text-[10px] font-medium opacity-60">Top Categories:</div>
-                                    {filteredCats.slice(0, 3).map(([name, amt]) => (
-                                      <div key={name} className="flex justify-between gap-3 text-[11px]">
-                                        <span className="truncate">{name}</span>
-                                        <span className="font-mono">{formatAmount(-Math.abs(amt), baseCurrency)}</span>
-                                      </div>
-                                    ))}
-                                    {filteredCats.length > 3 && (
-                                      <div className="text-[10px] opacity-50">+{filteredCats.length - 3} more</div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {(showStreak || showOutline) && (
-                                  <div className="pt-1 border-t text-[10px]">
-                                    {showStreak && <div className="text-emerald-600">✓ No-spend day</div>}
-                                    {showOutline && <div className="text-amber-600">★ Goal reached</div>}
-                                  </div>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Legend - Ultra compact */}
-            <div className="mt-2 pt-2 border-t flex items-center justify-center gap-6 text-[9px]">
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">Less</span>
-                <div className="flex gap-0.5">
-                  {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
-                    <div 
-                      key={t}
-                      className="w-3 h-3 rounded-sm"
-                      style={{ 
-                        background: mode === "spending" 
-                          ? lerpHexColor("#f2ebe9", "#40221a", t)
-                          : lerpHexColor("#f0fdf4", "#14532d", t)
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="text-muted-foreground">
-                  More {mode === "spending" ? "Spending" : mode === "savings" ? "Savings" : "Net"}
-                </span>
+              {/* Week rows grid */}
+                <div className="flex flex-col items-center justify-start flex-1 w-full" style={{ gap: gapPx }}>
+                {weeks.map((week, ri) => (
+                  <div key={`week-${ri}`} className="flex items-center justify-center" style={{ gap: gapPx }}>
+                    {/* 7 day cells */}
+                    {week.map((day, ci) => (
+                      <DayCell key={`d-${ri}-${ci}`} date={day} />
+                    ))}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         )}
+
+        {/* Legend */}
+        {renderLegend()}
       </CardContent>
     </Card>
   )
