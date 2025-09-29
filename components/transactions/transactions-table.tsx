@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap, Sparkles } from "lucide-react"
 import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
@@ -98,7 +98,20 @@ export function TransactionsTable() {
     return undefined
   }, [dateRange, formatDateForAPI])
 
-  const { data, isLoading, error } = useTransactions({ limit: pageSize, offset, dateRange: apiDateRange })
+  const hasActiveFilters = useMemo(() => {
+    return columnFilters.some((f: any) => {
+      const val = f?.value
+      if (val == null) return false
+      if (typeof val === "string") return val.trim() !== "" && val !== "all"
+      if (typeof val === "object") return (val.min != null && !Number.isNaN(val.min)) || (val.max != null && !Number.isNaN(val.max))
+      return true
+    })
+  }, [columnFilters])
+
+  const fetchLimit = hasActiveFilters ? 100 : pageSize
+  const fetchOffset = hasActiveFilters ? 0 : offset
+
+  const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange })
 
   const rows: TxRow[] = (data?.transactions || []).map((t: any) => ({
     id: t.$id || t.id,
@@ -129,6 +142,11 @@ export function TransactionsTable() {
   const clearAllFilters = () => {
     setColumnFilters([])
   }
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+  }, [columnFilters])
 
   const columns: ColumnDef<TxRow>[] = useMemo(
     () => [
@@ -264,6 +282,10 @@ export function TransactionsTable() {
     manualPagination: true,
     pageCount: Math.max(1, Math.ceil(totalCount / pageSize)),
   })
+
+  const filteredRowCount = table.getFilteredRowModel().rows.length
+  const showAllFilteredInOnePage = hasActiveFilters && filteredRowCount <= pageSize
+  const rowsToRender = showAllFilteredInOnePage ? table.getFilteredRowModel().rows : table.getRowModel().rows
 
   if (isLoading) {
     return (
@@ -475,8 +497,8 @@ export function TransactionsTable() {
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
+          {rowsToRender?.length ? (
+            rowsToRender.map((row) => (
               <TableRow 
                 key={row.id} 
                 className="hover:bg-muted/30 transition-colors border-border/30"
@@ -504,56 +526,58 @@ export function TransactionsTable() {
       </Table>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
-        <div className="text-sm text-muted-foreground">
-          Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
-        </div>
-        
-        <div className="flex items-center gap-6">
-          <div className="text-sm font-medium text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+      {!showAllFilteredInOnePage && (
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
+          <div className="text-sm text-muted-foreground">
+            Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
           </div>
           
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => table.setPageIndex(0)}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-              disabled={!table.getCanNextPage()}
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-6">
+            <div className="text-sm font-medium text-muted-foreground">
+              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+            </div>
+            
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => table.setPageIndex(0)}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                disabled={!table.getCanNextPage()}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
