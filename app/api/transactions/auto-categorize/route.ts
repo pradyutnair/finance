@@ -39,8 +39,8 @@ export async function POST(request: Request) {
         const needs = !d.category || d.category === '' || d.category === 'Uncategorized';
         const excluded = d.exclude === true;
         if (!needs || excluded) continue;
-        const byDescription = await findExistingCategory(databases, DATABASE_ID, TRANSACTIONS_COLLECTION_ID, userId, d.description);
-        const cat = byDescription || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
+        const byExisting = await findExistingCategory(databases, DATABASE_ID, TRANSACTIONS_COLLECTION_ID, userId, d.description, d.counterparty);
+        const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
         await databases.updateDocument(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, d.$id, { category: cat });
         processed += 1;
       }
