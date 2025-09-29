@@ -455,7 +455,7 @@ export function FinanceHeatmapCard() {
       </CardHeader>
 
       {/* Zero horizontal padding to avoid cut off. Inner sections manage their own padding. */}
-      <CardContent className="flex-1 px-0 pb-3 overflow-hidden">
+      <CardContent className="flex-1 px-0 pb-3 flex flex-col min-h-0 overflow-auto">
         {/* Controls */}
         <div className="w-full flex items-center justify-center mb-1 px-3">
           <div className="w-full max-w-[980px] flex flex-col items-center gap-1.5">
@@ -546,7 +546,7 @@ export function FinanceHeatmapCard() {
             </div>
           </div>
           ) : (
-            <div className="h-full w-full px-3 pb-2">
+            <div className="flex-1 min-h-0 w-full px-3 pb-2">
               {/* Box that we measure for dynamic sizing */}
               <div
                 ref={gridBoxRef}
@@ -563,9 +563,9 @@ export function FinanceHeatmapCard() {
               </div>
 
               {/* Week rows grid */}
-                <div className="flex flex-col items-center justify-start flex-1 w-full" style={{ gap: gapPx }}>
+                <div className="flex flex-col items-center justify-start flex-1 w-full" style={{ gap: gapPx+1 }}>
                 {weeks.map((week, ri) => (
-                  <div key={`week-${ri}`} className="flex items-center justify-center" style={{ gap: gapPx }}>
+                  <div key={`week-${ri}`} className="flex items-center justify-center" style={{ gap: gapPx+1 }}>
                     {/* 7 day cells */}
                     {week.map((day, ci) => (
                       <DayCell key={`d-${ri}-${ci}`} date={day} />
