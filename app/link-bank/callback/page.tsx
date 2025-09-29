@@ -127,6 +127,24 @@ function BankCallbackContent() {
             console.warn('Renew call error (non-blocking):', e);
           }
 
+          // Clear API caches before navigating to dashboard to ensure fresh data
+          try {
+            setMessage('Refreshing data...');
+            const clearRes = await fetch('/api/clear-cache', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}),
+              },
+              credentials: 'include',
+            });
+            if (!clearRes.ok) {
+              console.warn('Clear cache endpoint responded with non-OK status');
+            }
+          } catch (e) {
+            console.warn('Clear cache call error (non-blocking):', e);
+          }
+
           // Wait a moment then redirect to dashboard
           setTimeout(() => {
             router.push('/dashboard');

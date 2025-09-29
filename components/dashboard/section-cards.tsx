@@ -231,7 +231,7 @@ export function SectionCards() {
       iconColor: "text-rose-700 dark:text-rose-400",
     },
     {
-      label: "Savings Rate",
+      label: "Savings",
       value: `${metrics.savingsRate.toFixed(1)}%`,
       icon: <IconPigMoney className="size-5" />,
       delta: metrics.deltas?.savingsPct ?? 0,
