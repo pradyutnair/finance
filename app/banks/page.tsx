@@ -19,6 +19,7 @@ import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
 import { ChartContainer } from "@/components/ui/chart"
 import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
 import { useQueries } from "@tanstack/react-query"
+import { formatBankName } from "@/components/transactions/transactions-table"
 
 type BankAccountDoc = {
   $id: string
@@ -113,7 +114,7 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
       queryKey: ["account-details", accountId],
       queryFn: async () => {
         const headers = await getAuthHeader()
-        const res = await fetch(`/api/gocardless/accounts/${accountId}`, {
+        const res = await fetch(`/api/accounts/${accountId}`, {
           headers: {
             "Content-Type": "application/json",
             ...headers,
@@ -230,7 +231,7 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
               <div className="w-14 h-14 rounded-md shadow-sm overflow-hidden bg-white">
                 <img
                   src={account.logoUrl}
-                  alt={account.institutionName || "Bank"}
+                  alt={formatBankName(account.institutionId)}
                   className="w-full h-full object-contain p-1"
                 />
               </div>
@@ -241,7 +242,7 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
             )}
             <div className="min-w-0 flex-1">
               <CardTitle className="text-base font-semibold truncate">
-                {account.accountName || account.institutionName || "Bank account"}
+                {account.accountName || formatBankName(account.institutionId) || "Bank account"}
               </CardTitle>
               <div className="flex items-center gap-2 mt-0.5">
                 <Badge className={`w-fit text-[10px] font-medium px-2 py-0.5 ${
@@ -288,7 +289,7 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
                 pathname: "/link-bank",
                 query: {
                   institutionId: account.institutionId || "",
-                  institutionName: account.institutionName || account.accountName || "",
+                    institutionName: formatBankName(account.institutionId) || account.accountName || "",
                   autoConnect: "1",
                 },
               }}

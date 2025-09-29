@@ -205,7 +205,11 @@ export const useTransactions = (params?: {
       
       return apiRequest<{ok: boolean; transactions: Transaction[]; total: number}>(`/transactions?${searchParams.toString()}`);
     },
-    staleTime: 1 * 60 * 1000, // 1 minute
+    // Disable staleness so UI refetches promptly
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 };
 
@@ -213,7 +217,7 @@ export const useTransactions = (params?: {
 export const useUpdateTransaction = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { id: string; category?: string; exclude?: boolean }) => {
+    mutationFn: async (args: { id: string; category?: string; exclude?: boolean; description?: string; counterparty?: string }) => {
       return apiRequest<{ ok: boolean; transaction: any }>(`/transactions/${args.id}`, {
         method: "PATCH",
         body: JSON.stringify({ category: args.category, exclude: args.exclude }),
@@ -225,16 +229,35 @@ export const useUpdateTransaction = () => {
         queryKey: ["transactions"],
       });
 
+      const normalize = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "");
+      const matchDesc = normalize(args.description);
+      const matchCp = normalize(args.counterparty);
+
       previous.forEach(([key, data]) => {
         if (!data) return;
-        const updated = {
-          ...data,
-          transactions: data.transactions.map((t) =>
-            (t.$id || t.id) === args.id
-              ? { ...t, ...(typeof args.category === "string" ? { category: args.category } : {}), ...(typeof args.exclude === "boolean" ? { exclude: args.exclude } : {}) }
-              : t
-          ),
-        };
+        const updatedTransactions = data.transactions.map((t) => {
+          const isTarget = (t.$id || t.id) === args.id;
+          if (isTarget) {
+            return {
+              ...t,
+              ...(typeof args.category === "string" ? { category: args.category } : {}),
+              ...(typeof args.exclude === "boolean" ? { exclude: args.exclude } : {}),
+            };
+          }
+
+          // Optimistically update similar transactions when changing category
+          if (typeof args.category === "string" && (matchDesc || matchCp)) {
+            const tDesc = normalize((t as any).description);
+            const tCp = normalize((t as any).counterparty);
+            const same = (matchDesc && tDesc === matchDesc) || (matchCp && tCp === matchCp);
+            if (same) {
+              return { ...t, category: args.category };
+            }
+          }
+          return t;
+        });
+
+        const updated = { ...data, transactions: updatedTransactions };
         queryClient.setQueryData(key, updated);
       });
 

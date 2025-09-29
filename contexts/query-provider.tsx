@@ -53,7 +53,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     set(["session"], { staleTime: 5 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
     set(["metrics"], { staleTime: 5 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
     set(["timeseries"], { staleTime: 5 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
-    set(["transactions"], { staleTime: 3 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
+    // Reduce caching for transactions to avoid stale UI during debugging
+    set(["transactions"], { staleTime: 0, gcTime: 5 * 60 * 1000, refetchOnMount: true })
     set(["categories"], { staleTime: 5 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
     set(["accounts"], { staleTime: 10 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000, refetchOnMount: false })
     set(["institutions"], { staleTime: 12 * 60 * 60 * 1000, gcTime: 2 * 24 * 60 * 60 * 1000, refetchOnMount: false })

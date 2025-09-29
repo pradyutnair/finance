@@ -36,6 +36,7 @@ import { CATEGORY_OPTIONS } from "@/lib/categories"
 type TxRow = {
   id: string
   description: string
+  rawDescription?: string
   bankName: string
   category: string
   bookingDate: string
@@ -79,7 +80,7 @@ function categoryToColor(cat: string): string {
   }
 }
 
-function formatBankName(raw: string | undefined | null): string {
+export function formatBankName(raw: string | undefined | null): string {
   if (typeof raw !== "string" || raw.length === 0) return "Unknown"
   const idx = raw.indexOf("_")
   const first = idx > -1 ? raw.slice(0, idx) : raw
@@ -92,7 +93,8 @@ export function TransactionsTable() {
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    description: false
+    description: false,
+    accountId: false
   })
   const [showFilters, setShowFilters] = useState(false)
   const offset = pagination.pageIndex * pagination.pageSize
@@ -114,7 +116,8 @@ export function TransactionsTable() {
     return columnFilters.some((f: any) => {
       const val = f?.value
       if (val == null) return false
-      if (typeof val === "string") return val.trim() !== "" && val !== "all"
+      if (typeof val === "string") 
+      return val.trim() !== "" && val !== "all"
       if (typeof val === "object") return (val.min != null && !Number.isNaN(val.min)) || (val.max != null && !Number.isNaN(val.max))
       return true
     })
@@ -138,6 +141,7 @@ export function TransactionsTable() {
   const rows: TxRow[] = (data?.transactions || []).map((t: any) => ({
     id: t.$id || t.id,
     description: t.description || t.counterparty || "Unknown",
+    rawDescription: t.description,
     category: t.category || "Uncategorized",
     bankName: accountIdToInstitutionId.get(t.accountId) || "Unknown",
     bookingDate: t.bookingDate || t.date,
@@ -157,7 +161,7 @@ export function TransactionsTable() {
   }
 
   function handleCategorize(tx: TxRow, category: string) {
-    updateTx.mutate({ id: tx.id, category })
+    updateTx.mutate({ id: tx.id, category, description: tx.rawDescription, counterparty: tx.counterparty })
   }
 
   const activeFilterCount = columnFilters.length
@@ -274,6 +278,15 @@ export function TransactionsTable() {
           const isExcluded = Boolean(row.original.exclude)
           return value === "true" ? isExcluded : !isExcluded
         },
+      },
+      {
+        accessorKey: "accountId",
+        header: "Account",
+        cell: ({ row }) => (
+          <div className="text-xs text-muted-foreground">
+            {row.getValue("accountId")}
+          </div>
+        ),
       },
       {
         accessorKey: "amount",

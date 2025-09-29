@@ -99,6 +99,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
+    // Invalidate server-side transactions cache for this user so refetches reflect updates immediately
+    try {
+      const globalAny = globalThis as any
+      const cache: Map<string, { ts: number; payload: any }> | undefined = globalAny.__tx_cache
+      if (cache && cache.size) {
+        for (const key of Array.from(cache.keys())) {
+          try {
+            const parsed = JSON.parse(key)
+            if (parsed && parsed.userId === userId) {
+              cache.delete(key)
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
     return NextResponse.json({ ok: true, transaction: updated })
   } catch (err: any) {
     console.error("Error updating transaction:", err)

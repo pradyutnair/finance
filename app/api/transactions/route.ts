@@ -107,25 +107,18 @@ export async function GET(request: Request) {
     if (accountId) {
       baseQueries.push(Query.equal('accountId', accountId));
     }
-    if (from && to) {
-      baseQueries.push(Query.greaterThanEqual("bookingDate", from));
-      baseQueries.push(Query.lessThanEqual("bookingDate", to));
-    }
+    // IMPORTANT: Do not add date filters at the DB level, because some docs
+    // use `date` instead of `bookingDate`. We'll filter by date in-memory
+    // on the combined field below to avoid excluding valid documents.
     baseQueries.push(Query.orderDesc('bookingDate'));
 
-    // Simple in-memory TTL cache for this serverless instance
-    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset, all: isAll, search: searchTerm });
-    const now = Date.now();
-    const globalAny = globalThis as any;
-    globalAny.__tx_cache = globalAny.__tx_cache || new Map<string, { ts: number; payload: any }>();
-    const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
-    const cached = globalAny.__tx_cache.get(cacheKey);
-    if (cached && now - cached.ts < CACHE_TTL_MS) {
-      return NextResponse.json(cached.payload);
-    }
+    // Server response caching disabled to avoid stale results during debugging
 
-    // Fast path: no fuzzy search and not requesting all -> use native offset/limit
-    if (!hasSearch && !isAll) {
+    const hasDateRange = Boolean(from && to);
+    const needsPostFilter = hasSearch || hasDateRange;
+
+    // Fast path: only when we don't need post-filtering and not requesting all
+    if (!needsPostFilter && !isAll) {
       const page = await databases.listDocuments(
         DATABASE_ID,
         TRANSACTIONS_COLLECTION_ID,
@@ -137,7 +130,6 @@ export async function GET(request: Request) {
         transactions: (page as any).documents || [],
         total: typeof (page as any).total === 'number' ? (page as any).total : ((page as any).documents || []).length,
       };
-      globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
       return NextResponse.json(payload);
     }
 
@@ -145,8 +137,8 @@ export async function GET(request: Request) {
     const docs: any[] = [];
     let cursor: string | undefined;
     let firstPageTotal: number | undefined;
-    const maxFetch = isAll ? Number.MAX_SAFE_INTEGER : (hasSearch ? Math.max(offset + limit, 400) : offset + limit);
-    const hardCap = isAll ? 10000 : (hasSearch ? 1000 : 400);
+    const maxFetch = isAll ? Number.MAX_SAFE_INTEGER : (needsPostFilter ? Math.max(offset + limit, 400) : offset + limit);
+    const hardCap = isAll ? 10000 : (needsPostFilter ? 1000 : 400);
     while (docs.length < Math.min(maxFetch, hardCap)) {
       const remaining = Math.min(100, Math.min(maxFetch, hardCap) - docs.length);
       const q = [...baseQueries, Query.limit(remaining)] as any[];
@@ -172,7 +164,7 @@ export async function GET(request: Request) {
         .map(doc => {
           const text = `${doc.description || ''} ${doc.counterparty || ''}`;
           const score = scoreText(text);
-          return { doc, score, ts: doc.bookingDate || doc.$createdAt };
+          return { doc, score, ts: doc.bookingDate || doc.date || doc.$createdAt };
         })
         .filter(item => item.score > 0)
         .sort((a, b) => {
@@ -184,16 +176,34 @@ export async function GET(request: Request) {
         .map(item => item.doc);
     }
 
+    // Post-filter by date range if provided, using `bookingDate || date`
+    if (hasDateRange) {
+      const fromIso = from as string;
+      const toIso = to as string;
+      filtered = filtered
+        .filter(doc => {
+          const d = (doc.bookingDate || doc.date || '').slice(0, 10);
+          if (!d) return false;
+          return d >= fromIso && d <= toIso;
+        })
+        .sort((a, b) => {
+          const ta = (a.bookingDate || a.date || '') as string;
+          const tb = (b.bookingDate || b.date || '') as string;
+          return tb.localeCompare(ta);
+        });
+    }
+
     const totalBase = typeof firstPageTotal === 'number' ? firstPageTotal : docs.length;
-    const total = hasSearch ? filtered.length : totalBase;
-    const paged = isAll ? filtered : filtered.slice(offset, offset + limit);
+    const total = needsPostFilter ? filtered.length : totalBase;
+    // Always return a page slice to keep client-side pagination consistent,
+    // while still computing accurate totals when `all` is set.
+    const paged = filtered.slice(offset, offset + limit);
 
     const payload = {
       ok: true,
       transactions: paged,
       total,
     };
-    globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
 
     return NextResponse.json(payload);
 

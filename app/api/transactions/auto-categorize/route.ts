@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
@@ -15,7 +16,14 @@ export async function POST(request: Request) {
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    (client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": process.env.APPWRITE_API_KEY as string };
+    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+    if (apiKey) {
+      (client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": apiKey };
+    } else {
+      const auth = request.headers.get("authorization") || request.headers.get("Authorization");
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+      if (token) (client as any).headers = { ...(client as any).headers, "X-Appwrite-JWT": token };
+    }
     const databases = new Databases(client);
 
     const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
@@ -25,6 +33,7 @@ export async function POST(request: Request) {
     let processed = 0;
     const pageSize = 100;
     while (processed < limit) {
+      console.log(`[auto-categorize] Fetching page offset=${offset}, processed=${processed}/${limit}`)
       const page = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, [
         Query.equal('userId', userId),
         Query.orderDesc('$createdAt'),
@@ -38,15 +47,36 @@ export async function POST(request: Request) {
         if (processed >= limit) break;
         const needs = !d.category || d.category === '' || d.category === 'Uncategorized';
         const excluded = d.exclude === true;
-        if (!needs || excluded) continue;
+        if (!needs || excluded) {
+          console.log(`[auto-categorize] Skipping tx ${d.$id} needs=${needs} excluded=${excluded}`)
+          continue;
+        }
+        console.log(`[auto-categorize] Categorizing tx ${d.$id} desc='${d.description}' cp='${d.counterparty}' amt=${d.amount} ${d.currency}`)
         const byExisting = await findExistingCategory(databases, DATABASE_ID, TRANSACTIONS_COLLECTION_ID, userId, d.description, d.counterparty);
         const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
         await databases.updateDocument(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, d.$id, { category: cat });
+        console.log(`[auto-categorize] Updated tx ${d.$id} => ${cat}`)
         processed += 1;
       }
       offset += docs.length;
       if (docs.length < pageSize) break;
     }
+
+    // Invalidate server-side transactions cache for this user so subsequent fetches reflect updates
+    try {
+      const globalAny = globalThis as any;
+      const cache: Map<string, { ts: number; payload: any }> | undefined = globalAny.__tx_cache;
+      if (cache && cache.size) {
+        for (const key of Array.from(cache.keys())) {
+          try {
+            const parsed = JSON.parse(key);
+            if (parsed && parsed.userId === userId) {
+              cache.delete(key);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
 
     return NextResponse.json({ ok: true, processed });
   } catch (err: any) {
