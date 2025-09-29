@@ -150,7 +150,10 @@ export async function GET(request: NextRequest) {
       BALANCES_COLLECTION_ID,
       [
         Query.equal("userId", userId),
-        Query.equal("balanceType", "interimAvailable"),
+        Query.or([
+          Query.equal("balanceType", "interimAvailable"),
+          Query.equal("balanceType", "expected"),
+        ]),
         Query.lessThanEqual("referenceDate", cutoff),
         Query.orderDesc("referenceDate"),
         Query.limit(1000)

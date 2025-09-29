@@ -103,6 +103,21 @@ export function FinanceHeatmapCard() {
   }, [maxSpendThreshold])
   const [editingMax, setEditingMax] = useState(false)
 
+  // Controls width alignment - moved to top to fix hook order
+  const toggleWidthRef = useRef<HTMLDivElement | null>(null)
+  const [toggleRowWidth, setToggleRowWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const el = toggleWidthRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === "number") setToggleRowWidth(w)
+    })
+    ro.observe(el)
+    setToggleRowWidth(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
+
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
       return { from: formatDateForAPI(dateRange.from), to: formatDateForAPI(dateRange.to) }
@@ -384,20 +399,6 @@ export function FinanceHeatmapCard() {
     )
   }
 
-  // Controls width alignment
-  const toggleWidthRef = useRef<HTMLDivElement | null>(null)
-  const [toggleRowWidth, setToggleRowWidth] = useState<number | null>(null)
-  useEffect(() => {
-    const el = toggleWidthRef.current
-    if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect?.width
-      if (typeof w === "number") setToggleRowWidth(w)
-    })
-    ro.observe(el)
-    setToggleRowWidth(el.getBoundingClientRect().width)
-    return () => ro.disconnect()
-  }, [])
 
   function renderLegend() {
     if (mode === "net") {

@@ -43,6 +43,7 @@ type TxRow = {
   currency: string
   accountId?: string
   exclude?: boolean
+  counterparty?: string
 }
 
 function RowActions({ onCategorize }: { onCategorize: (category: string) => void }) {
@@ -82,7 +83,9 @@ export function TransactionsTable() {
   const pageSize = 12
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    description: false
+  })
   const [showFilters, setShowFilters] = useState(false)
   const offset = pagination.pageIndex * pagination.pageSize
 
@@ -123,6 +126,7 @@ export function TransactionsTable() {
     currency: t.currency || "EUR",
     accountId: t.accountId,
     exclude: Boolean(t.exclude),
+    counterparty: t.counterparty,
   }))
 
   const totalCount = data?.total || rows.length
@@ -170,12 +174,12 @@ export function TransactionsTable() {
         ),
       },
       {
-        accessorKey: "description",
+        accessorKey: "counterparty",
         header: "Transaction",
         cell: ({ row }) => (
           <div className="flex flex-col max-w-[300px]">
             <span className="font-medium text-sm truncate">
-              {row.getValue("description")}
+              {row.getValue("counterparty") || row.original.description || "Unknown"}
             </span>
             <span className="text-xs text-muted-foreground">
               {row.original.bankName}
@@ -189,6 +193,15 @@ export function TransactionsTable() {
         cell: ({ row }) => (
           <div className="text-xs text-muted-foreground">
             {row.getValue("bankName")}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "description",
+        header: "Description",
+        cell: ({ row }) => (
+          <div className="text-xs text-muted-foreground">
+            {row.getValue("description")}
           </div>
         ),
       },
@@ -321,9 +334,9 @@ export function TransactionsTable() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search transactions..."
-              value={(table.getColumn("description")?.getFilterValue() as string) ?? ""}
-              onChange={(e) => table.getColumn("description")?.setFilterValue(e.target.value)}
+              placeholder="Search payees..."
+              value={(table.getColumn("counterparty")?.getFilterValue() as string) ?? ""}
+              onChange={(e) => table.getColumn("counterparty")?.setFilterValue(e.target.value)}
               className="h-9 w-64 pl-9 bg-background/50 border-border/50 focus:bg-background"
             />
           </div>

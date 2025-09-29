@@ -152,7 +152,7 @@ export function RecentExpensesTable() {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium leading-tight truncate text-foreground/90 group-hover:text-foreground transition-colors">
-                      {tx.description || tx.counterparty || "Unknown"}
+                      {tx.counterparty || tx.description || "Unknown"}
                     </p>
                     <p className="text-xs text-muted-foreground/70 mt-0.5">
                       {new Date(tx.bookingDate || tx.date).toLocaleDateString("en-US", {
