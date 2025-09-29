@@ -175,14 +175,19 @@ export function TransactionsTable() {
       },
       {
         accessorKey: "counterparty",
-        header: "Transaction",
+        header: "Payee",
         cell: ({ row }) => (
           <div className="flex flex-col max-w-[300px]">
             <span className="font-medium text-sm truncate">
               {row.getValue("counterparty") || row.original.description || "Unknown"}
             </span>
             <span className="text-xs text-muted-foreground">
-              {row.original.bankName}
+            {row.original.description &&
+            !/^[^\d]{0,2}\d/.test(row.original.description) &&
+            (row.original.description.length > 25
+              ? row.original.description.slice(0, 25) + "..."
+              : row.original.description)}
+
             </span>
           </div>
         ),

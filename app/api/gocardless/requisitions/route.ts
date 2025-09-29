@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
-import { createRequisition, HttpError } from "@/lib/gocardless";
+import { createRequisition, createEndUserAgreement, getInstitution, HttpError } from "@/lib/gocardless";
 // No DB writes here; requisitions are persisted only after successful authorization in the callback
 
 export async function POST(request: Request) {
@@ -36,13 +36,40 @@ export async function POST(request: Request) {
     const finalReference = reference || `user_${userId}_${Date.now()}`;
     console.log('🔗 Using reference:', finalReference);
     
+    // Ensure an End User Agreement exists using the institution's max historical days
+    let effectiveAgreementId: string | undefined = agreementId;
+    try {
+      if (!effectiveAgreementId) {
+        if (!institutionId) throw new HttpError("'institutionId' is required", 400);
+        const institution = await getInstitution(institutionId);
+        const ttlRaw = (institution && (institution as any).transaction_total_days) as any;
+        const ttlNum = ttlRaw !== undefined && ttlRaw !== null ? Number(ttlRaw) : NaN;
+        const maxHistoricalDays = Number.isFinite(ttlNum) ? ttlNum : 90;
+
+        const accessValidRaw = (institution && (institution as any).max_access_valid_for_days) as any;
+        const accessValidParsed = accessValidRaw !== undefined && accessValidRaw !== null ? Number(accessValidRaw) : NaN;
+        const accessValidForDays = Number.isFinite(accessValidParsed) ? accessValidParsed : undefined;
+
+        const agreement = await createEndUserAgreement({
+          institutionId,
+          maxHistoricalDays,
+          ...(typeof accessValidForDays === 'number' ? { accessValidForDays } : {}),
+          accessScope: ["balances", "details", "transactions"],
+        });
+        effectiveAgreementId = agreement?.id as string | undefined;
+        console.log('📝 Created end-user agreement for requisition', { maxHistoricalDays, accessValidForDays, agreementId: effectiveAgreementId });
+      }
+    } catch (agreementErr) {
+      console.warn('⚠️ Failed to create end-user agreement automatically; proceeding without explicit agreement', agreementErr);
+    }
+
     // Create requisition with GoCardless
     const data = await createRequisition({
       redirect,
       institutionId,
       reference: finalReference,
       userLanguage,
-      agreementId,
+      agreementId: effectiveAgreementId,
     });
 
     // Do not persist requisition yet. Persist only after successful authorization in callback.
