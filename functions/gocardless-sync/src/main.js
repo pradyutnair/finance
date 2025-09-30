@@ -3,17 +3,43 @@
  * Runs 4 times daily to fetch latest transactions and update database
  */
 
-import { Client, Databases, Query, ID } from 'appwrite';
-import { createHash } from 'crypto';
-
 // This Appwrite function will be executed every time your function is triggered
 export default async ({ req, res, log, error }) => {
   // Use context.log() for logging that will be visible in Appwrite logs
   log('🚀 Starting GoCardless transaction sync...');
 
-  // Import GoCardless client (dynamic import for ES modules)
-  const gocardlessModule = await import('../lib/gocardless.js');
-  const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = gocardlessModule;
+  // Import modules using dynamic imports for better compatibility
+  let Client, Databases, Query, ID;
+  try {
+    const appwriteModule = await import('appwrite');
+    ({ Client, Databases, Query, ID } = appwriteModule);
+    log('✅ Appwrite SDK imported successfully');
+  } catch (err) {
+    log(`❌ Failed to import Appwrite SDK: ${err.message}`);
+    throw new Error('Failed to import Appwrite SDK');
+  }
+
+  // Import crypto for hashing
+  let createHash;
+  try {
+    const cryptoModule = await import('crypto');
+    ({ createHash } = cryptoModule);
+    log('✅ Crypto module imported successfully');
+  } catch (err) {
+    log(`❌ Failed to import crypto module: ${err.message}`);
+    throw new Error('Failed to import crypto module');
+  }
+
+  // Import GoCardless client
+  let getTransactions, getAccounts, getBalances, getInstitution, HttpError;
+  try {
+    const gocardlessModule = await import('../lib/gocardless.js');
+    ({ getTransactions, getAccounts, getBalances, getInstitution, HttpError } = gocardlessModule);
+    log('✅ GoCardless client imported successfully');
+  } catch (err) {
+    log(`❌ Failed to import GoCardless client: ${err.message}`);
+    throw new Error('Failed to import GoCardless client');
+  }
 
   // Validate required environment variables
   const requiredEnvVars = [
@@ -32,9 +58,6 @@ export default async ({ req, res, log, error }) => {
   }
 
   log(`🔧 Validating environment variables...`);
-  log(`✅ APPWRITE_ENDPOINT: ${process.env.APPWRITE_ENDPOINT}`);
-  log(`✅ APPWRITE_PROJECT_ID: ${process.env.APPWRITE_PROJECT_ID}`);
-  log(`✅ APPWRITE_DATABASE_ID: ${process.env.APPWRITE_DATABASE_ID}`);
 
   // Initialize Appwrite client
   const client = new Client()
@@ -49,6 +72,12 @@ export default async ({ req, res, log, error }) => {
   const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
   const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
   const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
+
+  // Make constants available to helper functions
+  global.DATABASE_ID = DATABASE_ID;
+  global.TRANSACTIONS_COLLECTION_ID = TRANSACTIONS_COLLECTION_ID;
+  global.BANK_ACCOUNTS_COLLECTION_ID = BANK_ACCOUNTS_COLLECTION_ID;
+  global.BALANCES_COLLECTION_ID = BALANCES_COLLECTION_ID;
 
   log(`🔧 Appwrite client initialized successfully`);
   log(`📊 Database ID: ${DATABASE_ID}`);
@@ -99,8 +128,8 @@ export default async ({ req, res, log, error }) => {
   async function findExistingCategory(databases, databaseId, collectionId, userId, description) {
     try {
       const response = await databases.listDocuments(
-        databaseId,
-        collectionId,
+        global.DATABASE_ID,
+        global.TRANSACTIONS_COLLECTION_ID,
         [
           Query.equal('userId', userId),
           Query.search('description', description.slice(0, 50)),
@@ -273,7 +302,6 @@ export default async ({ req, res, log, error }) => {
 
 // Helper functions
 async function processTransaction(databases, account, transaction, userId, log) {
-
   // Generate unique document ID to prevent duplicates
   const providerTransactionId = transaction.transactionId;
   const fallbackIdBase = transaction.internalTransactionId ||
@@ -291,7 +319,7 @@ async function processTransaction(databases, account, transaction, userId, log) 
 
   // Check if transaction already exists
   try {
-    await databases.getDocument(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, docId);
+    await databases.getDocument(global.DATABASE_ID, global.TRANSACTIONS_COLLECTION_ID, docId);
     return; // Already exists, skip
   } catch (error) {
     // Not found, proceed with creation
@@ -305,8 +333,8 @@ async function processTransaction(databases, account, transaction, userId, log) 
     log(`🏷️ Categorizing transaction: ${txDescription.substring(0, 50)}...`);
     const existingCategory = await findExistingCategory(
       databases,
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
+      global.DATABASE_ID,
+      global.TRANSACTIONS_COLLECTION_ID,
       userId,
       txDescription
     );
@@ -324,8 +352,8 @@ async function processTransaction(databases, account, transaction, userId, log) 
   // Store transaction
   log(`💾 Storing transaction in database: ${docId}`);
   await databases.createDocument(
-    DATABASE_ID,
-    TRANSACTIONS_COLLECTION_ID,
+    global.DATABASE_ID,
+    global.TRANSACTIONS_COLLECTION_ID,
     docId,
     {
       userId: userId,
@@ -361,8 +389,8 @@ async function updateAccountBalances(databases, accountId, userId, log) {
       // Check if balance already exists
       try {
         const existingBalances = await databases.listDocuments(
-          DATABASE_ID,
-          BALANCES_COLLECTION_ID,
+          global.DATABASE_ID,
+          global.BALANCES_COLLECTION_ID,
           [
             Query.equal('accountId', accountId),
             Query.equal('balanceType', balanceType),
@@ -381,8 +409,8 @@ async function updateAccountBalances(databases, accountId, userId, log) {
       // Create balance record
       log(`💾 Storing balance: ${amount} ${balance.balanceAmount?.currency} for ${accountId}`);
       await databases.createDocument(
-        DATABASE_ID,
-        BALANCES_COLLECTION_ID,
+        global.DATABASE_ID,
+        global.BALANCES_COLLECTION_ID,
         ID.unique(),
         {
           userId: userId,
