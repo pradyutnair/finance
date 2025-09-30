@@ -15,6 +15,27 @@ export default async ({ req, res, log, error }) => {
   const gocardlessModule = await import('../lib/gocardless.js');
   const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = gocardlessModule;
 
+  // Validate required environment variables
+  const requiredEnvVars = [
+    'APPWRITE_ENDPOINT',
+    'APPWRITE_PROJECT_ID',
+    'APPWRITE_API_KEY',
+    'APPWRITE_DATABASE_ID',
+    'GOCARDLESS_SECRET_ID',
+    'GOCARDLESS_SECRET_KEY'
+  ];
+
+  for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) {
+      throw new Error(`Missing required environment variable: ${envVar}`);
+    }
+  }
+
+  log(`🔧 Validating environment variables...`);
+  log(`✅ APPWRITE_ENDPOINT: ${process.env.APPWRITE_ENDPOINT}`);
+  log(`✅ APPWRITE_PROJECT_ID: ${process.env.APPWRITE_PROJECT_ID}`);
+  log(`✅ APPWRITE_DATABASE_ID: ${process.env.APPWRITE_DATABASE_ID}`);
+
   // Initialize Appwrite client
   const client = new Client()
     .setEndpoint(process.env.APPWRITE_ENDPOINT)
@@ -24,12 +45,12 @@ export default async ({ req, res, log, error }) => {
   const databases = new Databases(client);
 
   // Configuration
-  const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+  const DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
   const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
   const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
   const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
-  log(`🔧 Appwrite client initialized with endpoint: ${process.env.APPWRITE_ENDPOINT}`);
+  log(`🔧 Appwrite client initialized successfully`);
   log(`📊 Database ID: ${DATABASE_ID}`);
   log(`🏦 Bank accounts collection: ${BANK_ACCOUNTS_COLLECTION_ID}`);
   log(`💰 Transactions collection: ${TRANSACTIONS_COLLECTION_ID}`);
