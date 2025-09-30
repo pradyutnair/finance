@@ -13,7 +13,6 @@ import openai
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
-from appwrite.query import Query
 from appwrite.exception import AppwriteException
 
 ############################################################# GoCardless
@@ -118,10 +117,10 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
             database_id,
             collection_id,
             [
-                Query.equal("userId", user_id),
-                Query.equal("accountId", account_id),
-                Query.order_desc("bookingDate"),
-                Query.limit(1),
+                f'equal("userId", "{user_id}")',
+                f'equal("accountId", "{account_id}")',
+                'orderDesc("bookingDate")',
+                'limit(1)',
             ],
         )
         docs = resp.get("documents", [])
@@ -161,7 +160,7 @@ def load_previous_categories(
         resp = list_documents_http(
             database_id,
             collection_id,
-            [Query.equal("userId", user_id), Query.limit(1)],
+            [f'equal("userId", "{user_id}")', 'limit(1)'],
         )
         documents = resp.get("documents", [])
         if documents:
@@ -274,7 +273,7 @@ def main(context):
         accounts_response = list_documents_http(
             database_id,
             bank_accounts_collection,
-            [Query.equal("status", "active"), Query.limit(50)],
+            ['equal("status", "active")', 'limit(50)'],
         )
         accounts = accounts_response.get("documents", [])
         context.log(f"🏦 Found {len(accounts)} active accounts")
