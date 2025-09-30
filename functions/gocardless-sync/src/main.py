@@ -9,13 +9,12 @@ import time
 import hashlib
 import re
 from datetime import datetime
-
+import openai
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
 from appwrite.query import Query
 from appwrite.exception import AppwriteException
-import openai
 
 ############################################################# GoCardless
 # GoCardless API configuration
@@ -82,6 +81,29 @@ class GoCardlessClient:
 
 
 ############################################################# Helper functions
+def list_documents_http(database_id, collection_id, queries):
+    """HTTP GET wrapper for Appwrite listDocuments to avoid request body on GET"""
+    import requests
+
+    endpoint = os.environ["APPWRITE_FUNCTION_API_ENDPOINT"].rstrip("/")
+    project_id = os.environ["APPWRITE_FUNCTION_PROJECT_ID"]
+    api_key = os.environ["APPWRITE_API_KEY"]
+
+    url = f"{endpoint}/databases/{database_id}/collections/{collection_id}/documents"
+    headers = {
+        "X-Appwrite-Project": project_id,
+        "X-Appwrite-Key": api_key,
+        "Content-Type": "application/json",
+    }
+    params = []
+    for q in queries or []:
+        params.append(("queries[]", q))
+
+    resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def generate_doc_id(transaction_id, account_id, booking_date):
     """Generate unique document ID"""
     raw_key = transaction_id or f"{account_id}_{booking_date}_{int(time.time())}"
@@ -92,7 +114,7 @@ def generate_doc_id(transaction_id, account_id, booking_date):
 def get_last_booking_date(databases, database_id, collection_id, user_id, account_id):
     """Get last transaction date for incremental sync"""
     try:
-        response = databases.list_documents(
+        resp = list_documents_http(
             database_id,
             collection_id,
             [
@@ -102,9 +124,12 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
                 Query.limit(1),
             ],
         )
-        docs = response.get("documents", [])
-        return docs[0].get("bookingDate") if docs else None
-    except:
+        docs = resp.get("documents", [])
+        if docs:
+            return docs[0].get("bookingDate") or docs[0].get("valueDate") or None
+        return None
+    except Exception as e:
+        print(f"Error fetching last booking date: {e}")
         return None
 
 
@@ -113,7 +138,7 @@ def load_categories():
     """Return the list of available categories"""
     return [
         "Groceries",
-        "Restaurant", 
+        "Restaurant",
         "Education",
         "Transport",
         "Travel",
@@ -124,21 +149,21 @@ def load_categories():
         "Income",
         "Miscellaneous",
         "Uncategorized",
-        "Bank Transfer"
+        "Bank Transfer",
     ]
 
 
 def load_previous_categories(
     db: Databases, database_id: str, collection_id: str, user_id: str
 ) -> list[str]:
-    """
-    Load previous categories from the Appwrite database if it exists
-    """
+    """Load previous categories from the Appwrite database if it exists"""
     try:
-        response = db.list_documents(
-            database_id, collection_id, [Query.equal("userId", user_id), Query.limit(1)]
+        resp = list_documents_http(
+            database_id,
+            collection_id,
+            [Query.equal("userId", user_id), Query.limit(1)],
         )
-        documents = response.get("documents", [])
+        documents = resp.get("documents", [])
         if documents:
             return [doc.get("category", "") for doc in documents if doc.get("category")]
         return []
@@ -151,10 +176,7 @@ def lazy_categorize(description, counterparty, amount):
     """Simple transaction categorization"""
     text = f"{counterparty or ''} {description or ''}".lower()
 
-    if any(
-        word in text
-        for word in ["restaurant", "cafe", "coffee", "mcdonald", "starbucks"]
-    ):
+    if any(word in text for word in ["restaurant", "cafe", "coffee", "mcdonald", "starbucks"]):
         return "Restaurant"
     elif any(word in text for word in ["uber", "taxi", "fuel", "gas", "petrol"]):
         return "Transport"
@@ -166,13 +188,10 @@ def lazy_categorize(description, counterparty, amount):
         return "Utilities"
     elif any(word in text for word in ["grocery", "supermarket", "aldi", "tesco"]):
         return "Groceries"
-    elif float(amount or 0) > 0 and any(
-        word in text for word in ["salary", "payroll", "income"]
-    ):
+    elif float(amount or 0) > 0 and any(word in text for word in ["salary", "payroll", "income"]):
         return "Income"
     else:
         return "Uncategorized"
-
 
 def categorize_transaction(
     description: str,
@@ -209,7 +228,6 @@ def categorize_transaction(
     try:
         response = openai.chat.completions.create(
             model="gpt-5-nano",
-            max_tokens=100,
             messages=[
                 {
                     "role": "system",
@@ -219,8 +237,7 @@ def categorize_transaction(
                     "role": "user",
                     "content": f"Transaction\nCounterparty: {counterparty}\nDescription: {description}\nAmount: {amount}\nReturn one of: {categories}",
                 },
-            ],
-            temperature=0,
+            ]
         )
         category = response.choices[0].message.content.strip()
         print(f"Categorized transaction: {text} as {category} via OpenAI")
@@ -232,8 +249,6 @@ def categorize_transaction(
 
 
 ############################################################# Main
-
-
 def main(context):
     """Main function"""
     context.log("🚀 Starting GoCardless sync...")
@@ -251,20 +266,10 @@ def main(context):
         )
 
         # Configuration
-        database_id = os.environ["APPWRITE_DATABASE_ID"]
-        # Collections
-        # transactions_collection = os.environ.get(
-        #     "APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions"
-        # )
-        # bank_accounts_collection = os.environ.get(
-        #     "APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts"
-        # )
-        # balances_collection = os.environ.get(
-        #     "APPWRITE_BALANCES_COLLECTION_ID", "balances"
-        # )
-        transactions_collection = "transactions"
-        bank_accounts_collection = "bank_accounts"
-        balances_collection = "balances"
+        database_id = "68d42ac20031b27284c9"
+        transactions_collection = os.environ.get("APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions")
+        bank_accounts_collection = os.environ.get("APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts")
+        balances_collection = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances")
 
         # Get all active bank accounts
         accounts_response = databases.list_documents(
@@ -272,7 +277,6 @@ def main(context):
             bank_accounts_collection,
             [Query.equal("status", "active"), Query.limit(50)],
         )
-
         accounts = accounts_response.get("documents", [])
         context.log(f"🏦 Found {len(accounts)} active accounts")
 
@@ -286,15 +290,13 @@ def main(context):
         for i, account in enumerate(accounts):
             account_id = account["accountId"]
             user_id = account["userId"]
-
             context.log(f"💳 Processing account {i+1}/{len(accounts)}: {account_id}")
 
             try:
-                # Get last transaction date for incremental sync
+                # Get last transaction date
                 last_date = get_last_booking_date(
                     databases, database_id, transactions_collection, user_id, account_id
                 )
-
                 if last_date:
                     context.log(f"📅 Last transaction: {last_date}")
                 else:
@@ -303,8 +305,6 @@ def main(context):
                 # Fetch transactions
                 try:
                     tx_response = gocardless.get_transactions(account_id, last_date)
-
-                    # Ensure response is a dictionary
                     if not isinstance(tx_response, dict):
                         context.log(f"❌ Invalid transaction response type: {type(tx_response)}")
                         continue
@@ -315,8 +315,6 @@ def main(context):
                         continue
 
                     transactions = transactions_data.get("booked", [])
-
-                    # Ensure transactions is a list
                     if not isinstance(transactions, list):
                         context.log(f"❌ Invalid transactions list type: {type(transactions)}")
                         continue
@@ -327,30 +325,22 @@ def main(context):
                     continue
 
                 # Store transactions
-                for tx in transactions[:50]:  # Limit to 50 per account
+                for tx in transactions[:50]:
                     try:
-                        # Ensure transaction is a dictionary
                         if not isinstance(tx, dict):
                             context.log(f"❌ Invalid transaction data type: {type(tx)}, value: {tx}")
                             continue
 
-                        tx_id = tx.get("transactionId") or tx.get(
-                            "internalTransactionId"
-                        )
-                        doc_id = generate_doc_id(
-                            tx_id, account_id, tx.get("bookingDate")
-                        )
+                        tx_id = tx.get("transactionId") or tx.get("internalTransactionId")
+                        doc_id = generate_doc_id(tx_id, account_id, tx.get("bookingDate"))
 
-                        # Check if exists
+                        # Skip if exists
                         try:
-                            databases.get_document(
-                                database_id, transactions_collection, doc_id
-                            )
-                            continue  # Skip if exists
+                            databases.get_document(database_id, transactions_collection, doc_id)
+                            continue
                         except:
                             pass
 
-                        # Prepare transaction data with safe access
                         transaction_amount = tx.get("transactionAmount", {})
                         if not isinstance(transaction_amount, dict):
                             transaction_amount = {}
@@ -361,28 +351,16 @@ def main(context):
                             or tx.get("additionalInformation")
                             or ""
                         )
-                        counterparty = (
-                            tx.get("creditorName") or tx.get("debtorName") or ""
-                        )
+                        counterparty = tx.get("creditorName") or tx.get("debtorName") or ""
 
                         tx_data = {
                             "userId": user_id,
                             "accountId": account_id,
                             "transactionId": str(tx_id)[:255] if tx_id else doc_id,
                             "amount": str(amount),
-                            "currency": (
-                                transaction_amount.get("currency") or "EUR"
-                            )[:3],
-                            "bookingDate": (
-                                tx.get("bookingDate", "")[:10]
-                                if tx.get("bookingDate")
-                                else None
-                            ),
-                            "valueDate": (
-                                tx.get("valueDate", "")[:10]
-                                if tx.get("valueDate")
-                                else None
-                            ),
+                            "currency": (transaction_amount.get("currency") or "EUR")[:3],
+                            "bookingDate": (tx.get("bookingDate", "")[:10] if tx.get("bookingDate") else None),
+                            "valueDate": (tx.get("valueDate", "")[:10] if tx.get("valueDate") else None),
                             "description": description[:500],
                             "counterparty": counterparty[:255],
                             "category": categorize_transaction(
@@ -397,9 +375,7 @@ def main(context):
                             "raw": json.dumps(tx)[:10000],
                         }
 
-                        databases.create_document(
-                            database_id, transactions_collection, doc_id, tx_data
-                        )
+                        databases.create_document(database_id, transactions_collection, doc_id, tx_data)
                         total_transactions += 1
                         context.log(f"✅ Stored transaction: {doc_id}")
 
@@ -410,44 +386,32 @@ def main(context):
                 # Fetch and store balances
                 try:
                     balance_response = gocardless.get_balances(account_id)
-
-                    # Ensure response is a dictionary
                     if not isinstance(balance_response, dict):
                         context.log(f"❌ Invalid balance response type: {type(balance_response)}")
                         balances = []
                     else:
                         balances = balance_response.get("balances", [])
 
-                    # Ensure balances is a list
                     if not isinstance(balances, list):
                         context.log(f"❌ Invalid balances list type: {type(balances)}")
                         balances = []
 
                     for balance in balances:
-                        # Ensure balance is a dictionary
                         if not isinstance(balance, dict):
                             context.log(f"❌ Invalid balance data type: {type(balance)}, value: {balance}")
                             continue
 
                         balance_type = balance.get("balanceType", "closingBooked")
-                        reference_date = balance.get(
-                            "referenceDate", datetime.now().strftime("%Y-%m-%d")
-                        )
+                        reference_date = balance.get("referenceDate", datetime.now().strftime("%Y-%m-%d"))
                         balance_amount = balance.get("balanceAmount", {})
                         if not isinstance(balance_amount, dict):
                             balance_amount = {}
 
                         amount = balance_amount.get("amount", "0")
+                        balance_doc_id = f"{account_id}_{balance_type}_{reference_date}"[:36]
 
-                        balance_doc_id = (
-                            f"{account_id}_{balance_type}_{reference_date}"[:36]
-                        )
-
-                        # Check if exists
                         try:
-                            databases.get_document(
-                                database_id, balances_collection, balance_doc_id
-                            )
+                            databases.get_document(database_id, balances_collection, balance_doc_id)
                             continue
                         except:
                             pass
@@ -456,20 +420,12 @@ def main(context):
                             "userId": user_id,
                             "accountId": account_id,
                             "balanceAmount": str(amount),
-                            "currency": (
-                                balance_amount.get("currency")
-                                or "EUR"
-                            )[:3],
+                            "currency": (balance_amount.get("currency") or "EUR")[:3],
                             "balanceType": balance_type,
                             "referenceDate": reference_date,
                         }
 
-                        databases.create_document(
-                            database_id,
-                            balances_collection,
-                            balance_doc_id,
-                            balance_data,
-                        )
+                        databases.create_document(database_id, balances_collection, balance_doc_id, balance_data)
                         total_balances += 1
                         context.log(f"✅ Stored balance: {balance_doc_id}")
 
@@ -483,10 +439,7 @@ def main(context):
             except Exception as e:
                 context.log(f"❌ Error processing account {account_id}: {e}")
 
-        context.log(
-            f"🎉 Sync completed: {total_transactions} transactions, {total_balances} balances"
-        )
-
+        context.log(f"🎉 Sync completed: {total_transactions} transactions, {total_balances} balances")
         return context.res.json(
             {
                 "success": True,
