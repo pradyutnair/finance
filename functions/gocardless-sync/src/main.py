@@ -53,7 +53,12 @@ class GoCardlessClient:
             "secret_key": self.secret_key,
         }
 
-        response = requests.post(url, json=data, timeout=DEFAULT_TIMEOUT)
+        response = requests.post(
+            url,
+            json=data,
+            timeout=DEFAULT_TIMEOUT,
+            headers={"Content-Type": "application/json"}
+        )
         response.raise_for_status()
 
         token_data = response.json()
@@ -79,15 +84,24 @@ class GoCardlessClient:
 
         url = f"{GOCARDLESS_BASE_URL}{path}"
 
+        # Prepare request arguments - only pass valid parameters for the method
+        request_kwargs = {
+            "headers": headers,
+            "timeout": DEFAULT_TIMEOUT
+        }
+
+        # For GET requests, don't pass data/json parameters that would create a request body
+        if method.upper() == "GET":
+            # Remove any data/json parameters that would cause issues
+            request_kwargs = {k: v for k, v in request_kwargs.items() if k in ["headers", "timeout", "params"]}
+        else:
+            # For POST requests, we can pass json data
+            if "json" in kwargs:
+                request_kwargs["json"] = kwargs["json"]
+
         for attempt in range(MAX_RETRIES):
             try:
-                response = requests.request(
-                    method,
-                    url,
-                    headers=headers,
-                    timeout=DEFAULT_TIMEOUT,
-                    **{k: v for k, v in kwargs.items() if k != "headers"}
-                )
+                response = requests.request(method, url, **request_kwargs)
                 response.raise_for_status()
                 return response.json()
 
@@ -96,7 +110,7 @@ class GoCardlessClient:
                     raise e
 
                 # Exponential backoff with jitter
-                delay = (300 * (2 ** attempt)) + (hash(str(attempt)) % 200)
+                delay = (300 * (2 ** attempt)) + (abs(hash(str(attempt))) % 200)
                 time.sleep(delay / 1000)
 
         raise RuntimeError("Max retries exceeded")
@@ -207,8 +221,9 @@ def generate_document_id(provider_transaction_id, internal_transaction_id, accou
     fallback_base = f"{account_id}_{booking_date or ''}_{amount or ''}_{description or ''}"
     raw_key = provider_transaction_id or internal_transaction_id or fallback_base or ""
 
-    # Create a hash for uniqueness
-    doc_id_candidate = raw_key.replace('[^a-zA-Z0-9_-]', '_')
+    # Create a hash for uniqueness - replace non-alphanumeric characters
+    import re
+    doc_id_candidate = re.sub(r'[^a-zA-Z0-9_-]', '_', raw_key)
 
     if not doc_id_candidate or len(doc_id_candidate) > 36:
         # Use SHA1 hash and truncate to 36 characters
@@ -274,10 +289,6 @@ def process_transaction(databases, database_id, transactions_collection_id, bala
     databases.create_document(database_id, transactions_collection_id, doc_id, transaction_data)
     return doc_id
 
-def update_account_balances(databases, database_id, balances_collection_id, account_id, user_id):
-    """Update account balances"""
-    # This would need GoCardless API integration - simplified for now
-    pass
 
 def main(context):
     """Main Appwrite function entry point"""
@@ -304,10 +315,12 @@ def main(context):
         context.log(f"⚖️ Balances collection: {balances_collection_id}")
 
         # Initialize GoCardless client
+        context.log("🔑 Initializing GoCardless client...")
         gocardless = GoCardlessClient(
             os.environ["GOCARDLESS_SECRET_ID"],
             os.environ["GOCARDLESS_SECRET_KEY"]
         )
+        context.log("✅ GoCardless client initialized successfully")
 
         # Get all users with active bank accounts
         try:
@@ -370,10 +383,13 @@ def main(context):
 
                                 # Get transactions from GoCardless
                                 context.log(f"📡 Calling GoCardless API for transactions on account {account_id}")
-                                transactions_response = gocardless.get_account_transactions(account_id)
-                                transactions = transactions_response.get("transactions", {}).get("booked", [])
-
-                                context.log(f"📊 Retrieved {len(transactions)} transactions for account {account_id}")
+                                try:
+                                    transactions_response = gocardless.get_account_transactions(account_id)
+                                    transactions = transactions_response.get("transactions", {}).get("booked", [])
+                                    context.log(f"📊 Retrieved {len(transactions)} transactions for account {account_id}")
+                                except Exception as e:
+                                    context.log(f"❌ Error calling GoCardless API for account {account_id}: {e}")
+                                    continue
 
                                 # Process and store transactions
                                 for transaction in transactions[:100]:  # Limit to avoid overwhelming
@@ -393,9 +409,52 @@ def main(context):
 
                                 # Update balances
                                 try:
-                                    context.log(f"⚖️ Updating balances for account {account_id}")
-                                    update_account_balances(databases, database_id, balances_collection_id, account_id, user_id)
-                                    context.log(f"✅ Balances updated for account {account_id}")
+                                    context.log(f"⚖️ Fetching balances for account {account_id}")
+                                    balances_response = gocardless.get_account_balances(account_id)
+                                    balances = balances_response.get("balances", [])
+
+                                    context.log(f"📊 Found {len(balances)} balance records for account {account_id}")
+
+                                    for balance in balances:
+                                        balance_type = balance.get("balanceType") or "closingBooked"
+                                        reference_date = balance.get("referenceDate") or datetime.now().strftime("%Y-%m-%d")
+                                        amount = balance.get("balanceAmount", {}).get("amount") or "0"
+
+                                        # Check if balance already exists
+                                        try:
+                                            existing_balances = databases.list_documents(
+                                                database_id,
+                                                balances_collection_id,
+                                                [
+                                                    Query.equal("accountId", account_id),
+                                                    Query.equal("balanceType", balance_type),
+                                                    Query.equal("referenceDate", reference_date)
+                                                ]
+                                            )
+
+                                            if existing_balances["documents"]:
+                                                context.log(f"⏭️ Balance for {account_id} {balance_type} {reference_date} already exists, skipping")
+                                                continue
+                                        except AppwriteException:
+                                            context.log("❌ Error checking existing balance, proceeding with creation")
+
+                                        # Create balance record
+                                        context.log(f"💾 Storing balance: {amount} {balance.get('balanceAmount', {}).get('currency')} for {account_id}")
+                                        databases.create_document(
+                                            database_id,
+                                            balances_collection_id,
+                                            f"{account_id}_{balance_type}_{reference_date}",
+                                            {
+                                                "userId": user_id,
+                                                "accountId": account_id,
+                                                "balanceAmount": amount,
+                                                "currency": balance.get("balanceAmount", {}).get("currency") or "EUR",
+                                                "balanceType": balance_type,
+                                                "referenceDate": reference_date,
+                                            }
+                                        )
+                                        context.log(f"✅ Balance stored successfully for account {account_id}")
+
                                 except Exception as e:
                                     context.log(f"❌ Error updating balances for account {account_id}: {e}")
 
