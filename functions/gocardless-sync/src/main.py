@@ -154,7 +154,7 @@ def load_categories():
 
 
 def load_previous_categories(
-    db: Databases, database_id: str, collection_id: str, user_id: str
+    database_id: str, collection_id: str, user_id: str
 ) -> list[str]:
     """Load previous categories from the Appwrite database if it exists"""
     try:
@@ -197,7 +197,6 @@ def categorize_transaction(
     description: str,
     counterparty: str,
     amount: str,
-    db: Databases,
     database_id: str,
     collection_id: str,
     user_id: str,
@@ -210,7 +209,7 @@ def categorize_transaction(
     
     # Check if the transaction has already been categorized
     previous_categories = load_previous_categories(
-        db, database_id, collection_id, user_id
+        database_id, collection_id, user_id
     )
     if text in previous_categories:
         print(f"🔍 Transaction already categorized: {text}")
@@ -272,7 +271,7 @@ def main(context):
         balances_collection = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances")
 
         # Get all active bank accounts
-        accounts_response = databases.list_documents_http(
+        accounts_response = list_documents_http(
             database_id,
             bank_accounts_collection,
             [Query.equal("status", "active"), Query.limit(50)],
@@ -367,7 +366,6 @@ def main(context):
                                 description,
                                 counterparty,
                                 amount,
-                                databases,
                                 database_id,
                                 transactions_collection,
                                 user_id,
