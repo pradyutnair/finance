@@ -144,3 +144,5 @@ AppwriteFactCheck.ipynb
 .env.test
 
 .DS_Store
+
+appwrite/

@@ -237,6 +237,27 @@ def find_existing_category(databases, database_id, collection_id, user_id, descr
         print(f"Error finding existing category: {e}")
         return None
 
+def get_last_booking_date(database_id, transactions_collection_id, user_id, account_id):
+    """Return last bookingDate (YYYY-MM-DD) for a user's account, or None if none found"""
+    try:
+        resp = list_documents_http(
+            database_id,
+            transactions_collection_id,
+            [
+                Query.equal("userId", user_id),
+                Query.equal("accountId", account_id),
+                Query.order_desc("bookingDate"),
+                Query.limit(1)
+            ]
+        )
+        docs = resp.get("documents", [])
+        if docs:
+            return (docs[0].get("bookingDate") or docs[0].get("valueDate") or None)
+        return None
+    except Exception as e:
+        print(f"Error fetching last booking date: {e}")
+        return None
+
 def generate_document_id(provider_transaction_id, internal_transaction_id, account_id, booking_date, amount, description):
     """Generate unique document ID to prevent duplicates"""
     fallback_base = f"{account_id}_{booking_date or ''}_{amount or ''}_{description or ''}"
@@ -403,9 +424,25 @@ def main(context):
                                 context.log(f"💳 Processing account: {account_id} ({k + 1}/{len(account_batch)})")
 
                                 # Get transactions from GoCardless
+                                # Determine incremental window using last bookingDate
+                                last_date = get_last_booking_date(
+                                    database_id,
+                                    transactions_collection_id,
+                                    user_id,
+                                    account_id
+                                )
+                                if last_date:
+                                    context.log(f"🗓️ Last bookingDate for {account_id}: {last_date} — fetching new transactions after this date")
+                                else:
+                                    context.log(f"🗓️ No previous transactions found for {account_id}, fetching full default window")
+
                                 context.log(f"📡 Calling GoCardless API for transactions on account {account_id}")
                                 try:
-                                    transactions_response = gocardless.get_account_transactions(account_id)
+                                    transactions_response = gocardless.get_account_transactions(
+                                        account_id,
+                                        date_from=last_date,
+                                        date_to=None
+                                    )
                                     transactions = transactions_response.get("transactions", {}).get("booked", [])
                                     context.log(f"📊 Retrieved {len(transactions)} transactions for account {account_id}")
                                 except Exception as e:
