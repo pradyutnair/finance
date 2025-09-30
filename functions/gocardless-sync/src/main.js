@@ -41,10 +41,10 @@ export default async ({ req, res, log, error }) => {
     throw new Error('Failed to import GoCardless client');
   }
 
-  // Validate required environment variables
+  // Validate required environment variables (Appwrite Functions runtime)
   const requiredEnvVars = [
-    'APPWRITE_ENDPOINT',
-    'APPWRITE_PROJECT_ID',
+    'APPWRITE_FUNCTION_API_ENDPOINT',
+    'APPWRITE_FUNCTION_PROJECT_ID',
     'APPWRITE_API_KEY',
     'APPWRITE_DATABASE_ID',
     'GOCARDLESS_SECRET_ID',
@@ -58,12 +58,15 @@ export default async ({ req, res, log, error }) => {
   }
 
   log(`🔧 Validating environment variables...`);
+  log(`✅ APPWRITE_FUNCTION_API_ENDPOINT: ${process.env.APPWRITE_FUNCTION_API_ENDPOINT?.substring(0, 50)}...`);
+  log(`✅ APPWRITE_FUNCTION_PROJECT_ID: ${process.env.APPWRITE_FUNCTION_PROJECT_ID}`);
+  log(`✅ APPWRITE_DATABASE_ID: ${process.env.APPWRITE_DATABASE_ID}`);
 
-  // Initialize Appwrite client
+  // Initialize Appwrite client (using Appwrite Functions environment variables)
   const client = new Client()
-    .setEndpoint(process.env.APPWRITE_ENDPOINT)
-    .setProject(process.env.APPWRITE_PROJECT_ID)
-    .setKey(req.headers['x-appwrite-key'] ?? '');
+    .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
+    .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
+    .setKey(process.env.APPWRITE_API_KEY);
 
   const databases = new Databases(client);
 

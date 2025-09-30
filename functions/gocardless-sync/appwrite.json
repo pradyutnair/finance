@@ -14,13 +14,13 @@
     "npm install"
   ],
   "vars": {
-    "APPWRITE_ENDPOINT": {
-      "description": "Appwrite endpoint URL",
-      "required": true
+    "APPWRITE_FUNCTION_API_ENDPOINT": {
+      "description": "Appwrite endpoint URL (auto-provided by runtime)",
+      "required": false
     },
-    "APPWRITE_PROJECT_ID": {
-      "description": "Appwrite project ID",
-      "required": true
+    "APPWRITE_FUNCTION_PROJECT_ID": {
+      "description": "Appwrite project ID (auto-provided by runtime)",
+      "required": false
     },
     "APPWRITE_API_KEY": {
       "description": "Appwrite API key with server permissions",

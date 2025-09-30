@@ -22,8 +22,8 @@ fi
 
 # Check if required environment variables are set
 REQUIRED_VARS=(
-    "APPWRITE_ENDPOINT"
-    "APPWRITE_PROJECT_ID"
+    "APPWRITE_FUNCTION_API_ENDPOINT"
+    "APPWRITE_FUNCTION_PROJECT_ID"
     "APPWRITE_DATABASE_ID"
     "APPWRITE_API_KEY"
     "GOCARDLESS_SECRET_ID"
@@ -43,8 +43,8 @@ if [ ${#MISSING_VARS[@]} -ne 0 ]; then
     printf '   %s\n' "${MISSING_VARS[@]}"
     echo ""
     echo "Please set these variables before deploying:"
-    echo "   export APPWRITE_ENDPOINT='your-appwrite-endpoint'"
-    echo "   export APPWRITE_PROJECT_ID='your-project-id'"
+    echo "   export APPWRITE_FUNCTION_API_ENDPOINT='your-appwrite-endpoint'"
+    echo "   export APPWRITE_FUNCTION_PROJECT_ID='your-project-id'"
     echo "   export APPWRITE_DATABASE_ID='your-database-id'"
     echo "   export APPWRITE_API_KEY='your-appwrite-api-key'"
     echo "   export GOCARDLESS_SECRET_ID='your-gocardless-id'"
@@ -64,9 +64,7 @@ echo "🔄 Deploying function to Appwrite..."
     --function-id "gocardless-sync" \
     --name "GoCardless Transaction Sync" \
     --runtime "node-20.0" \
-    --entrypoint "src/main.js" \
-    --execute "users" \
-    --scopes "databases.read databases.write collections.read"
+    --entrypoint "src/main.js"
 
 # Deploy the code
 echo "📤 Deploying function code..."
@@ -78,8 +76,8 @@ echo ""
 echo "📋 Next steps:"
 echo "1. Go to your Appwrite Console"
 echo "2. Navigate to Functions → gocardless-sync"
-echo "3. Configure the environment variables in the function settings"
-echo "4. Set up the cron schedule: 0 0,6,12,18 * * *"
+echo "3. Configure the environment variables in the function settings (APPWRITE_FUNCTION_API_ENDPOINT and APPWRITE_FUNCTION_PROJECT_ID are auto-provided)"
+echo "4. Set up the cron schedule: 0 8,14,20,23 * * *"
 echo "5. Enable the function"
 echo ""
 echo "🔗 Function URL will be available in the Appwrite Console"

@@ -15,8 +15,8 @@ This Appwrite Function synchronizes bank transaction data from GoCardless into y
 The following environment variables must be configured:
 
 ### Appwrite Configuration
-- `APPWRITE_ENDPOINT`: Your Appwrite endpoint URL
-- `APPWRITE_PROJECT_ID`: Your Appwrite project ID
+- `APPWRITE_FUNCTION_API_ENDPOINT`: Your Appwrite endpoint URL (auto-provided by runtime)
+- `APPWRITE_FUNCTION_PROJECT_ID`: Your Appwrite project ID (auto-provided by runtime)
 - `APPWRITE_API_KEY`: API key with server permissions
 - `APPWRITE_DATABASE_ID`: Database ID containing your collections
 - `APPWRITE_TRANSACTIONS_COLLECTION_ID`: Transactions collection ID (default: `transactions_dev`)
@@ -46,7 +46,7 @@ The following environment variables must be configured:
 
 3. **Configure Environment Variables**:
    - In the Appwrite Console, go to the function settings
-   - Add all required environment variables
+   - Add the required environment variables (APPWRITE_FUNCTION_API_ENDPOINT and APPWRITE_FUNCTION_PROJECT_ID are auto-provided)
 
 4. **Set Up Cron Schedule**:
    - In the function settings, set the schedule to: `0 8,14,20,23 * * *`
