@@ -272,7 +272,7 @@ def main(context):
         balances_collection = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances")
 
         # Get all active bank accounts
-        accounts_response = databases.list_documents(
+        accounts_response = databases.list_documents_http(
             database_id,
             bank_accounts_collection,
             [Query.equal("status", "active"), Query.limit(50)],
