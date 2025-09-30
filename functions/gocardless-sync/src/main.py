@@ -183,11 +183,32 @@ def suggest_category(description, counterparty, amount):
 
     return "Uncategorized"
 
+def list_documents_http(database_id, collection_id, queries):
+    """HTTP GET wrapper for Appwrite listDocuments to avoid request body on GET"""
+    import requests
+    endpoint = os.environ["APPWRITE_FUNCTION_API_ENDPOINT"].rstrip("/")
+    project_id = os.environ["APPWRITE_FUNCTION_PROJECT_ID"]
+    api_key = os.environ["APPWRITE_API_KEY"]
+
+    url = f"{endpoint}/databases/{database_id}/collections/{collection_id}/documents"
+    headers = {
+        "X-Appwrite-Project": project_id,
+        "X-Appwrite-Key": api_key,
+        "Content-Type": "application/json",
+    }
+    params = []
+    for q in queries or []:
+        params.append(("queries[]", q))
+
+    resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
 def find_existing_category(databases, database_id, collection_id, user_id, description):
     """Find existing category for similar transactions"""
     try:
         # Search for existing transactions with similar description
-        response = databases.list_documents(
+        response = list_documents_http(
             database_id,
             collection_id,
             [
