@@ -13,6 +13,7 @@ import openai
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
+from appwrite.query import Query
 from appwrite.exception import AppwriteException
 
 ############################################################# GoCardless
@@ -93,14 +94,14 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
         resp = databases.list_documents(
             database_id,
             collection_id,
-            [
-                f'equal("userId", ["{user_id}"])',
-                f'equal("accountId", ["{account_id}"])',
-                'orderDesc("bookingDate")',
-                'limit(1)',
+            queries=[
+                Query.equal("userId", user_id),
+                Query.equal("accountId", account_id),
+                Query.order_desc("bookingDate"),
+                Query.limit(1),
             ],
         )
-        docs = resp.get("documents", []) if isinstance(resp, dict) else resp.get('documents', [])
+        docs = resp.get("documents", []) if isinstance(resp, dict) else resp['documents']
         if docs:
             return docs[0].get("bookingDate") or docs[0].get("valueDate") or None
         return None
@@ -138,7 +139,10 @@ def load_previous_categories(
         resp = databases.list_documents(
             database_id,
             collection_id,
-            [f'equal("userId", ["{user_id}"])', 'limit(100)'],
+            queries=[
+                Query.equal("userId", user_id),
+                Query.limit(100),
+            ],
         )
         documents = resp.get("documents", [])
         if documents:
@@ -252,7 +256,10 @@ def main(context):
         accounts_response = databases.list_documents(
             database_id,
             bank_accounts_collection,
-            ['equal("status", ["active"])', 'limit(50)'],
+            queries=[
+                Query.equal("status", "active"),
+                Query.limit(50),
+            ],
         )
         accounts = accounts_response.get("documents", []) if isinstance(accounts_response, dict) else accounts_response['documents']
         context.log(f"🏦 Found {len(accounts)} active accounts")
