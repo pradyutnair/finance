@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bar, Line, ComposedChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { Bar, Line, ComposedChart, Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import {

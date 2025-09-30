@@ -15,6 +15,8 @@ type HeatmapMode = "spending" | "savings" | "net"
 
 const SAVINGS_CATEGORIES = new Set(["Savings", "Investment"])
 const DOW_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
+const SPENDING_THRESHOLD = 100
+const NET_FLOW_THRESHOLD = 50
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date)
@@ -39,7 +41,10 @@ function formatMonthShort(date: Date): string {
   return date.toLocaleString("en-US", { month: "short" })
 }
 function formatIsoDate(date: Date): string {
-  return date.toISOString().split("T")[0]
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
 }
 function clamp01(x: number): number { return Math.max(0, Math.min(1, x)) }
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t }
@@ -56,11 +61,47 @@ function lerpHexColor(hexA: string, hexB: string, t: number): string {
   const bch = Math.round(lerp(a.b, b.b, t))
   return `rgb(${r}, ${g}, ${bch})`
 }
+function isExcludedTx(tx: any): boolean {
+  const e = (tx as any)?.exclude
+  if (e === undefined || e === null) return false
+  if (typeof e === "boolean") return e
+  if (typeof e === "string") return e.toLowerCase() === "true" || e === "1"
+  return Boolean(e)
+}
+function parseToLocalDate(input: any): Date {
+  if (!input) return new Date(NaN)
+  if (input instanceof Date) return new Date(input.getFullYear(), input.getMonth(), input.getDate())
+  const s = String(input)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-").map(Number)
+    return new Date(y, (m as number) - 1, d)
+  }
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return d
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
 function netToColor(value: number, maxAbs: number): string {
-  if (!Number.isFinite(value) || !Number.isFinite(maxAbs) || maxAbs <= 0) return "rgba(0,0,0,0.05)"
-  const t = clamp01(Math.abs(value) / maxAbs)
-  if (Math.abs(value) < maxAbs * 0.02) return "rgba(0,0,0,0.08)"
+  if (!Number.isFinite(value)) return "rgba(0,0,0,0.05)"
+  const absValue = Math.abs(value)
+
+  // Use threshold-based gradient for net flow like spending
+  if (absValue >= NET_FLOW_THRESHOLD) {
+    return value >= 0 ? "#14532d" : "#40221a"
+  }
+
+  const t = clamp01(absValue / NET_FLOW_THRESHOLD)
   return value >= 0 ? lerpHexColor("#f0fdf4", "#14532d", t) : lerpHexColor("#f2ebe9", "#40221a", t)
+}
+function getSpendingColor(amountAbs: number, isDark: boolean): string {
+  if (!Number.isFinite(amountAbs) || amountAbs <= 0) return isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"
+  if (amountAbs >= SPENDING_THRESHOLD) return isDark ? "#ffffff" : "#40221a"
+  const t = clamp01(amountAbs / SPENDING_THRESHOLD)
+  return isDark ? lerpHexColor("#1f2937", "#e5e7eb", t) : lerpHexColor("#f2ebe9", "#40221a", t)
+}
+function getColorForCell(value: number, mode: HeatmapMode, maxAbs: number, isDark: boolean): string {
+  if (!Number.isFinite(value)) return isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"
+  if (mode === "spending") return getSpendingColor(Math.abs(value), isDark)
+  return netToColor(value, maxAbs)
 }
 function isNoSpendDay(day: AggregatedDay): boolean {
   return (day.expenses ?? 0) === 0
@@ -82,6 +123,16 @@ export function FinanceHeatmapCard() {
 
   const [mode, setMode] = useState<HeatmapMode>("net")
   const [categoryFilter, setCategoryFilter] = useState<string | "all">("all")
+  const [isDark, setIsDark] = useState<boolean>(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const root = document.documentElement
+    const update = () => setIsDark(root.classList.contains("dark"))
+    update()
+    const mo = new MutationObserver(update)
+    mo.observe(root, { attributes: true, attributeFilter: ["class"] })
+    return () => mo.disconnect()
+  }, [])
   const [dailySavingsGoal, setDailySavingsGoal] = useState<number>(() => {
     try {
       const raw = typeof window !== "undefined" ? window.localStorage.getItem("nexpass_daily_savings_goal") : null
@@ -126,7 +177,10 @@ export function FinanceHeatmapCard() {
   }, [dateRange, formatDateForAPI])
 
   const { data, isLoading, error } = useTransactions({ dateRange: apiDateRange })
-  const transactions = data?.transactions || []
+  const transactions = useMemo(() => {
+    const arr = (data?.transactions as any[]) || []
+    return arr.filter((tx) => !isExcludedTx(tx))
+  }, [data])
 
   // Build continuous week rows that cover the selected range
   const { fromDate, toDate, weeks } = useMemo(() => {
@@ -152,7 +206,8 @@ export function FinanceHeatmapCard() {
       map[key] = { dateKey: key, date: d, income: 0, expenses: 0, savings: 0, net: 0, categories: {} }
     })
     for (const tx of transactions) {
-      const dt = new Date((tx as any).bookingDate || (tx as any).date)
+      const rawDate = (tx as any).bookingDate || (tx as any).bookingDateTime || (tx as any).date || (tx as any).valueDate
+      const dt = parseToLocalDate(rawDate)
       const key = formatIsoDate(dt)
       if (!map[key]) continue
       const amountOriginal = Number((tx as any).amount) || 0
@@ -182,27 +237,29 @@ export function FinanceHeatmapCard() {
     return { maxAbs }
   }, [dayMap, mode])
 
-  // Streaks over visible range
-  const orderedDays = useMemo(() => weeks.flat(), [weeks])
+  // Streaks over filtered date range only
+  const filteredDays = useMemo(() => {
+    return weeks.flat().filter(day => day >= fromDate && day <= toDate)
+  }, [weeks, fromDate, toDate])
   const longestNoSpendStreak = useMemo(() => {
     let max = 0, cur = 0
-    for (const day of orderedDays) {
+    for (const day of filteredDays) {
       const d = dayMap[formatIsoDate(day)]
       if (d && (d.expenses ?? 0) === 0) cur += 1
       else { if (cur > max) max = cur; cur = 0 }
     }
     return Math.max(max, cur)
-  }, [orderedDays, dayMap])
+  }, [filteredDays, dayMap])
   const longestUnderThresholdStreak = useMemo(() => {
     const thr = Math.max(0, maxSpendThreshold || 0)
     let max = 0, cur = 0
-    for (const day of orderedDays) {
+    for (const day of filteredDays) {
       const d = dayMap[formatIsoDate(day)]
       if (d && (d.expenses ?? 0) <= thr) cur += 1
       else { if (cur > max) max = cur; cur = 0 }
     }
     return Math.max(max, cur)
-  }, [orderedDays, dayMap, maxSpendThreshold])
+  }, [filteredDays, dayMap, maxSpendThreshold])
 
   const categoryOptions = useMemo(() => {
     const s = new Set<string>(["all"])
@@ -285,7 +342,7 @@ export function FinanceHeatmapCard() {
       : []
 
     const raw = d ? dayValue(d) : 0
-    const color = d ? netToColor(raw, valuesForScale.maxAbs) : "rgba(0,0,0,0.04)"
+    const color = d ? getColorForCell(raw, mode, valuesForScale.maxAbs, isDark) : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)")
     const showOutline = d && dailySavingsGoal > 0 && d.savings >= dailySavingsGoal
     const showStreak = d ? isNoSpendDay(d) : false
     const showUnderMax = d && !showStreak && maxSpendThreshold > 0 && d.expenses <= maxSpendThreshold
@@ -298,13 +355,13 @@ export function FinanceHeatmapCard() {
             style={{
               height: cellPx,
               width: cellPx,
-              background: disabled ? "rgba(0,0,0,0.04)" : color,
+              background: disabled ? (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)") : color,
               outline: showOutline ? "2px solid #f59e0b" : undefined,
               outlineOffset: showOutline ? 1 : undefined,
               opacity: disabled ? 0.35 : 1,
             }}
           >
-            {!disabled && showStreak && <div className="absolute inset-0 rounded ring-1 ring-gray-500/60" />}
+            {!disabled && showStreak && <div className="absolute inset-0 rounded ring-1 ring-emerald-500/60" />}
             {!disabled && !showStreak && showUnderMax && <div className="absolute inset-0 rounded ring-1 ring-chart-1/70" />}
           </div>
         </TooltipTrigger>
@@ -402,23 +459,52 @@ export function FinanceHeatmapCard() {
 
   function renderLegend() {
     if (mode === "net") {
+      const samples = [0, 12.5, 25, 37.5, 50]
       return (
         <div className="mt-2 pt-2 border-t flex items-center justify-center gap-6 text-[9px]">
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Spending</span>
             <div className="flex gap-0.5">
-              {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
-                <div key={`neg-${t}`} className="w-3 h-3 rounded-sm" style={{ background: lerpHexColor("#f2ebe9", "#40221a", t) }} />
-              ))}
+              {samples.map((v) => {
+                const isCap = v >= 50
+                const bg = isCap ? "#40221a" : lerpHexColor("#f2ebe9", "#40221a", v / 50)
+                return <div key={`neg-${v}`} className="w-3 h-3 rounded-sm" style={{ background: bg }} />
+              })}
             </div>
+            <span className="text-muted-foreground">50+</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Savings</span>
             <div className="flex gap-0.5">
-              {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
-                <div key={`pos-${t}`} className="w-3 h-3 rounded-sm" style={{ background: lerpHexColor("#f0fdf4", "#14532d", t) }} />
-              ))}
+              {samples.map((v) => {
+                const isCap = v >= 50
+                const bg = isCap ? "#14532d" : lerpHexColor("#f0fdf4", "#14532d", v / 50)
+                return <div key={`pos-${v}`} className="w-3 h-3 rounded-sm" style={{ background: bg }} />
+              })}
             </div>
+            <span className="text-muted-foreground">50+</span>
+          </div>
+        </div>
+      )
+    }
+    if (mode === "spending") {
+      const samples = [0, 25, 50, 75, 100]
+      return (
+        <div className="mt-2 pt-2 border-t flex items-center justify-center gap-6 text-[9px]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Under 100</span>
+            <div className="flex gap-0.5">
+              {samples.map((v) => {
+                const isCap = v >= 100
+                const bg = isCap
+                  ? (typeof window !== "undefined" && document.documentElement.classList.contains("dark") ? "#ffffff" : "#40221a")
+                  : (typeof window !== "undefined" && document.documentElement.classList.contains("dark")
+                      ? lerpHexColor("#1f2937", "#e5e7eb", v / 100)
+                      : lerpHexColor("#f2ebe9", "#40221a", v / 100))
+                return <div key={`sp-${v}`} className="w-3 h-3 rounded-sm" style={{ background: bg }} />
+              })}
+            </div>
+            <span className="text-muted-foreground">100+</span>
           </div>
         </div>
       )
@@ -429,20 +515,10 @@ export function FinanceHeatmapCard() {
           <span className="text-muted-foreground">Less</span>
           <div className="flex gap-0.5">
             {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
-              <div
-                key={t}
-                className="w-3 h-3 rounded-sm"
-                style={{
-                  background: mode === "spending"
-                    ? lerpHexColor("#f2ebe9", "#40221a", t)
-                    : lerpHexColor("#f0fdf4", "#14532d", t)
-                }}
-              />
+              <div key={t} className="w-3 h-3 rounded-sm" style={{ background: lerpHexColor("#f0fdf4", "#14532d", t) }} />
             ))}
           </div>
-          <span className="text-muted-foreground">
-            More {mode === "spending" ? "Spending" : "Savings"}
-          </span>
+          <span className="text-muted-foreground">More Savings</span>
         </div>
       </div>
     )

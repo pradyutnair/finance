@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     const baseFilters = [
       Query.equal("userId", userId),
       Query.lessThan("amount", "0"), // compare as string to match schema
+      Query.equal("exclude", false), // exclude transactions marked as excluded
     ];
 
     if (from && to) {

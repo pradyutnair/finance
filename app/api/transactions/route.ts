@@ -7,7 +7,7 @@ import { Client, Databases, Query } from "appwrite";
 export async function GET(request: Request) {
   try {
     // Require authenticated user
-    const user = await requireAuthUser(request);
+    const user = await requireAuthUser(request) as { $id?: string; id?: string };
     const userId = user.$id || user.id;
 
     const { searchParams } = new URL(request.url);
@@ -103,42 +103,32 @@ export async function GET(request: Request) {
     };
 
     // Build base queries
-    const baseQueries = [Query.equal('userId', userId)] as any[];
+    const baseQueries = [Query.equal('userId', userId!)] as any[];
     if (accountId) {
       baseQueries.push(Query.equal('accountId', accountId));
     }
-    // IMPORTANT: Do not add date filters at the DB level, because some docs
-    // use `date` instead of `bookingDate`. We'll filter by date in-memory
-    // on the combined field below to avoid excluding valid documents.
+    if (from && to) {
+      baseQueries.push(Query.greaterThanEqual("bookingDate", from));
+      baseQueries.push(Query.lessThanEqual("bookingDate", to));
+    }
     baseQueries.push(Query.orderDesc('bookingDate'));
 
-    // Server response caching disabled to avoid stale results during debugging
-
-    const hasDateRange = Boolean(from && to);
-    const needsPostFilter = hasSearch || hasDateRange;
-
-    // Fast path: only when we don't need post-filtering and not requesting all
-    if (!needsPostFilter && !isAll) {
-      const page = await databases.listDocuments(
-        DATABASE_ID,
-        TRANSACTIONS_COLLECTION_ID,
-        [...baseQueries, Query.limit(limit), Query.offset(offset)] as any
-      );
-
-      const payload = {
-        ok: true,
-        transactions: (page as any).documents || [],
-        total: typeof (page as any).total === 'number' ? (page as any).total : ((page as any).documents || []).length,
-      };
-      return NextResponse.json(payload);
+    // Simple in-memory TTL cache for this serverless instance
+    const cacheKey = JSON.stringify({ userId, accountId, from, to, limit, offset, search: searchTerm });
+    const now = Date.now();
+    const globalAny = globalThis as any;
+    globalAny.__tx_cache = globalAny.__tx_cache || new Map<string, { ts: number; payload: any }>();
+    const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+    const cached = globalAny.__tx_cache.get(cacheKey);
+    if (cached && now - cached.ts < CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload);
     }
 
     // Fetch documents with cursor pagination (we collect enough for filtering/paging)
     const docs: any[] = [];
     let cursor: string | undefined;
-    let firstPageTotal: number | undefined;
-    const maxFetch = isAll ? Number.MAX_SAFE_INTEGER : (needsPostFilter ? Math.max(offset + limit, 400) : offset + limit);
-    const hardCap = isAll ? 10000 : (needsPostFilter ? 1000 : 400);
+    const maxFetch = hasSearch ? Math.max(offset + limit, 400) : offset + limit;
+    const hardCap = hasSearch ? 1000 : 400;
     while (docs.length < Math.min(maxFetch, hardCap)) {
       const remaining = Math.min(100, Math.min(maxFetch, hardCap) - docs.length);
       const q = [...baseQueries, Query.limit(remaining)] as any[];
@@ -148,9 +138,6 @@ export async function GET(request: Request) {
         TRANSACTIONS_COLLECTION_ID,
         q
       );
-      if (firstPageTotal === undefined && typeof (page as any).total === "number") {
-        firstPageTotal = (page as any).total as number;
-      }
       const pageDocs = page.documents as any[];
       docs.push(...pageDocs);
       if (pageDocs.length < remaining) break;
@@ -164,7 +151,7 @@ export async function GET(request: Request) {
         .map(doc => {
           const text = `${doc.description || ''} ${doc.counterparty || ''}`;
           const score = scoreText(text);
-          return { doc, score, ts: doc.bookingDate || doc.date || doc.$createdAt };
+          return { doc, score, ts: doc.bookingDate || doc.$createdAt };
         })
         .filter(item => item.score > 0)
         .sort((a, b) => {
@@ -176,27 +163,7 @@ export async function GET(request: Request) {
         .map(item => item.doc);
     }
 
-    // Post-filter by date range if provided, using `bookingDate || date`
-    if (hasDateRange) {
-      const fromIso = from as string;
-      const toIso = to as string;
-      filtered = filtered
-        .filter(doc => {
-          const d = (doc.bookingDate || doc.date || '').slice(0, 10);
-          if (!d) return false;
-          return d >= fromIso && d <= toIso;
-        })
-        .sort((a, b) => {
-          const ta = (a.bookingDate || a.date || '') as string;
-          const tb = (b.bookingDate || b.date || '') as string;
-          return tb.localeCompare(ta);
-        });
-    }
-
-    const totalBase = typeof firstPageTotal === 'number' ? firstPageTotal : docs.length;
-    const total = needsPostFilter ? filtered.length : totalBase;
-    // Always return a page slice to keep client-side pagination consistent,
-    // while still computing accurate totals when `all` is set.
+    const total = filtered.length;
     const paged = filtered.slice(offset, offset + limit);
 
     const payload = {
@@ -204,6 +171,7 @@ export async function GET(request: Request) {
       transactions: paged,
       total,
     };
+    globalAny.__tx_cache.set(cacheKey, { ts: now, payload });
 
     return NextResponse.json(payload);
 

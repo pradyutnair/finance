@@ -17,16 +17,35 @@ export function categorizeHeuristic(description?: string | null, counterparty?: 
 
   const has = (arr: string[]) => arr.some((k) => text.includes(k));
 
-  if (has(["aldi","lidl","tesco","sainsbury","asda","whole foods","costco","grocery","supermarket","spar"])) return "Groceries";
-  if (has(["restaurant","cafe","coffee","starbucks","mcdonald","kfc","burger","pizza","domino","uber eats","deliveroo","doordash"])) return "Restaurant";
-  if (has(["tuition","course","udemy","coursera","school","university","textbook","exam"])) return "Education";
-  if (has(["uber","lyft","bolt","taxi","bus","train","metro","fuel","gas","petrol","shell","bp" ,"cab"])) return "Transport";
-  if (has(["hotel","airbnb","flight","airlines","ryanair","easyjet","booking.com","expedia"])) return "Travel";
-  if (has(["amazon","store","mall","retail","ikea","aliexpress","decathlon"])) return "Shopping";
-  if (has(["electric","gas","water","internet","broadband","phone","vodafone","o2","ee","three","bt","virgin","utility", "rent"])) return "Utilities";
-  if (has(["netflix","spotify","hulu","disney","cinema","theatre","steam","playstation","xbox","prime video"])) return "Entertainment";
-  if (has(["pharmacy","doctor","dentist","clinic","gym","fitness","nhs","walgreens","boots"])) return "Health";
-  if (has(["salary","payroll","income","dividend"])) return "Income";
+  // Income/refunds
+  if (has(["salary","payroll","income","dividend","bonus","payout","refund","reimbursement","cashback"]) || value > 0 && has(["salary","payroll","dividend"])) return "Income";
+
+  // Groceries and supermarkets
+  if (has(["aldi","lidl","tesco","sainsbury","sainsbury's","asda","morrisons","whole foods","costco","grocery","supermarket","spar","coop","co-op"])) return "Groceries";
+
+  // Restaurants, cafes, takeaways
+  if (has(["restaurant","cafe","coffee","starbucks","mcdonald","kfc","burger","pizza","domino","domino's","uber eats","deliveroo","doordash","just eat","pret","greggs","nando"])) return "Restaurant";
+
+  // Education
+  if (has(["tuition","course","udemy","coursera","school","university","textbook","exam","udacity","edx"])) return "Education";
+
+  // Transport / Fuel
+  if (has(["uber","lyft","bolt","taxi","bus","train","metro","fuel","gas","petrol","shell","bp","esso","tesla supercharger","cab"])) return "Transport";
+
+  // Travel
+  if (has(["hotel","airbnb","flight","airlines","ryanair","easyjet","booking.com","expedia","hostel","marriott","hilton"])) return "Travel";
+
+  // Shopping / Retail
+  if (has(["amazon","store","mall","retail","ikea","aliexpress","decathlon","shopping","primark","zara","h&m","nike","adidas"])) return "Shopping";
+
+  // Utilities / Bills / Subscriptions
+  if (has(["electric","gas","water","internet","broadband","phone","vodafone","o2","ee","three","bt","virgin","utility","rent","council tax","sky","direct debit","subscription","subscrip"])) return "Utilities";
+
+  // Entertainment & streaming
+  if (has(["netflix","spotify","hulu","disney","cinema","theatre","steam","playstation","xbox","prime video","youtube premium","twitch","paramount+","apple tv"])) return "Entertainment";
+
+  // Health & fitness
+  if (has(["pharmacy","doctor","dentist","clinic","gym","fitness","nhs","walgreens","boots","vision express","specsavers","optician"])) return "Health";
 
   return "Uncategorized";
 }
@@ -34,7 +53,8 @@ export function categorizeHeuristic(description?: string | null, counterparty?: 
 export async function categorizeViaOpenAI(description?: string | null, counterparty?: string | null, amount?: string | number | null, currency?: string | null): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-  const model = process.env.OPENAI_MODEL || "gpt-5-nano";
+  // Prefer a widely-available small model; allow override via env
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const sys = `You are a strict classifier. Reply with exactly one category name from this list and nothing else: ${CATEGORY_OPTIONS.join(", ")}`;
   // Use both counterparty and description in the prompt
   const user = `Transaction\nCounterparty: ${counterparty || ""}\nDescription: ${description || ""}\nAmount: ${amount ?? ""} ${currency || ""}\nReturn one of: ${CATEGORY_OPTIONS.join(", ")}`;
@@ -68,7 +88,8 @@ export async function suggestCategory(description?: string | null, counterparty?
   const heuristic = categorizeHeuristic(description ?? undefined, counterparty ?? undefined, amount ?? undefined);
   if (heuristic !== "Uncategorized") return heuristic;
   const llm = await categorizeViaOpenAI(description ?? undefined, counterparty ?? undefined, amount ?? undefined, currency ?? undefined);
-  return llm || "Miscellaneous";
+  // Default to Uncategorized when we cannot confidently classify
+  return llm || "Uncategorized";
 }
 
 // Try to reuse an existing category by matching both counterparty and description for this user
@@ -137,7 +158,54 @@ export async function findExistingCategory(
       // ignore
     }
   }
-  
+
+  // Fuzzy search fallback: try token-based full-text search on description/counterparty and
+  // pick the most frequent non-generic category among recent matches.
+  try {
+    const makeTokens = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !/^\d+$/.test(w));
+
+    const descTokens = descriptionText ? Array.from(new Set(makeTokens(descriptionText))).slice(0, 2) : [];
+    const cpTokens = counterpartyText ? Array.from(new Set(makeTokens(counterpartyText))).slice(0, 2) : [];
+
+    if (descTokens.length || cpTokens.length) {
+      const queries: any[] = [
+        Query.equal('userId', userId),
+        Query.orderDesc('bookingDate'),
+        Query.limit(50),
+      ];
+      for (const t of descTokens) queries.push(Query.search('description', t));
+      for (const t of cpTokens) queries.push(Query.search('counterparty', t));
+
+      const page = await databases.listDocuments(databaseId, collectionId, queries);
+      const docs: any[] = (page as any)?.documents || [];
+
+      const counts = new Map<string, number>();
+      for (const d of docs) {
+        const cat = (d?.category || '').trim();
+        if (!cat || cat === 'Uncategorized' || cat === 'Miscellaneous') continue;
+        counts.set(cat, (counts.get(cat) || 0) + 1);
+      }
+
+      let best: string | null = null;
+      let bestCount = 0;
+      counts.forEach((c, k) => {
+        if (c > bestCount) {
+          best = k;
+          bestCount = c;
+        }
+      });
+
+      if (best && bestCount >= 2) return best;
+    }
+  } catch (_e) {
+    // ignore fuzzy failures
+  }
+
   return null;
 }
 
