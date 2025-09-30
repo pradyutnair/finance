@@ -1,15 +1,16 @@
 {
-  "name": "gocardless-sync-function",
+  "name": "starter-template",
   "version": "1.0.0",
-  "description": "Appwrite Function for syncing GoCardless bank transaction data",
-  "main": "index.js",
+  "description": "",
+  "main": "src/main.js",
+  "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "format": "prettier --write ."
   },
   "dependencies": {
-    "appwrite": "^15.0.0"
+    "node-appwrite": "^14.1.0"
   },
-  "engines": {
-    "node": ">=18.0.0"
+  "devDependencies": {
+    "prettier": "^3.2.5"
   }
 }
