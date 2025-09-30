@@ -1,0 +1,64 @@
+{
+  "name": "gocardless-sync",
+  "runtime": "node-20.0",
+  "entrypoint": "index.js",
+  "ignore": [
+    "node_modules",
+    "node_modules/**/*",
+    ".git",
+    ".github",
+    "README.md",
+    "**/*.md"
+  ],
+  "commands": [
+    "npm install"
+  ],
+  "vars": {
+    "APPWRITE_ENDPOINT": {
+      "description": "Appwrite endpoint URL",
+      "required": true
+    },
+    "APPWRITE_PROJECT_ID": {
+      "description": "Appwrite project ID",
+      "required": true
+    },
+    "APPWRITE_API_KEY": {
+      "description": "Appwrite API key with server permissions",
+      "required": true
+    },
+    "APPWRITE_DATABASE_ID": {
+      "description": "Appwrite database ID",
+      "required": true
+    },
+    "APPWRITE_TRANSACTIONS_COLLECTION_ID": {
+      "description": "Transactions collection ID",
+      "required": false,
+      "default": "transactions_dev"
+    },
+    "APPWRITE_BANK_ACCOUNTS_COLLECTION_ID": {
+      "description": "Bank accounts collection ID",
+      "required": false,
+      "default": "bank_accounts_dev"
+    },
+    "APPWRITE_BALANCES_COLLECTION_ID": {
+      "description": "Balances collection ID",
+      "required": false,
+      "default": "balances_dev"
+    },
+    "GOCARDLESS_SECRET_ID": {
+      "description": "GoCardless API secret ID",
+      "required": true
+    },
+    "GOCARDLESS_SECRET_KEY": {
+      "description": "GoCardless API secret key",
+      "required": true
+    }
+  },
+  "scopes": [
+    "users.read",
+    "databases.read",
+    "databases.write",
+    "collections.read",
+    "collections.write"
+  ]
+}

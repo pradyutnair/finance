@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# GoCardless Sync Function Deployment Script
+# This script helps deploy the Appwrite Function to your project
+
+set -e
+
+echo "🚀 Deploying GoCardless Sync Function..."
+
+# Check if Appwrite CLI is installed
+if ! command -v appwrite &> /dev/null; then
+    echo "❌ Appwrite CLI is not installed. Please install it first:"
+    echo "   npm install -g @appwrite/cli"
+    exit 1
+fi
+
+# Check if we're in the function directory
+if [ ! -f "appwrite.json" ]; then
+    echo "❌ Please run this script from the gocardless-sync function directory"
+    exit 1
+fi
+
+# Check if required environment variables are set
+REQUIRED_VARS=(
+    "APPWRITE_ENDPOINT"
+    "APPWRITE_PROJECT_ID"
+    "APPWRITE_DATABASE_ID"
+    "GOCARDLESS_SECRET_ID"
+    "GOCARDLESS_SECRET_KEY"
+)
+
+echo "🔍 Checking environment variables..."
+MISSING_VARS=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [ -z "${!var}" ]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [ ${#MISSING_VARS[@]} -ne 0 ]; then
+    echo "❌ Missing required environment variables:"
+    printf '   %s\n' "${MISSING_VARS[@]}"
+    echo ""
+    echo "Please set these variables before deploying:"
+    echo "   export APPWRITE_ENDPOINT='your-appwrite-endpoint'"
+    echo "   export APPWRITE_PROJECT_ID='your-project-id'"
+    echo "   export APPWRITE_DATABASE_ID='your-database-id'"
+    echo "   export GOCARDLESS_SECRET_ID='your-gocardless-id'"
+    echo "   export GOCARDLESS_SECRET_KEY='your-gocardless-key'"
+    exit 1
+fi
+
+echo "✅ All required environment variables are set"
+
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install
+
+# Deploy the function
+echo "🔄 Deploying function to Appwrite..."
+appwrite functions create \
+    --function-id "gocardless-sync" \
+    --name "GoCardless Transaction Sync" \
+    --runtime "node-20.0" \
+    --entrypoint "index.js" \
+    --execute "users" \
+    --scopes "databases.read databases.write collections.read"
+
+# Deploy the code
+echo "📤 Deploying function code..."
+appwrite functions deploy "gocardless-sync"
+
+echo ""
+echo "🎉 Function deployed successfully!"
+echo ""
+echo "📋 Next steps:"
+echo "1. Go to your Appwrite Console"
+echo "2. Navigate to Functions → gocardless-sync"
+echo "3. Configure the environment variables in the function settings"
+echo "4. Set up the cron schedule: 0 0,6,12,18 * * *"
+echo "5. Enable the function"
+echo ""
+echo "🔗 Function URL will be available in the Appwrite Console"
+echo "📊 Monitor executions in Functions → Executions"
+
+echo ""
+echo "✅ Deployment completed!"
