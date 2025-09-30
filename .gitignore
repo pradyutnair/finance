@@ -131,6 +131,3 @@ dist
 
 # Directory used by Appwrite CLI for local development
 .appwrite
-appwrite.config.json
-schema.md
-AppwriteFactCheck.ipynb
