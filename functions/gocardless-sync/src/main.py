@@ -80,29 +80,6 @@ class GoCardlessClient:
 
 
 ############################################################# Helper functions
-def list_documents_http(database_id, collection_id, queries):
-    """HTTP GET wrapper for Appwrite listDocuments to avoid request body on GET"""
-    import requests
-
-    endpoint = os.environ["APPWRITE_FUNCTION_API_ENDPOINT"].rstrip("/")
-    project_id = os.environ["APPWRITE_FUNCTION_PROJECT_ID"]
-    api_key = os.environ["APPWRITE_API_KEY"]
-
-    url = f"{endpoint}/databases/{database_id}/collections/{collection_id}/documents"
-    headers = {
-        "X-Appwrite-Project": project_id,
-        "X-Appwrite-Key": api_key,
-        "Content-Type": "application/json",
-    }
-    params = []
-    for q in queries or []:
-        params.append(("queries[]", q))
-
-    resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
-
-
 def generate_doc_id(transaction_id, account_id, booking_date):
     """Generate unique document ID"""
     raw_key = transaction_id or f"{account_id}_{booking_date}_{int(time.time())}"
@@ -113,17 +90,17 @@ def generate_doc_id(transaction_id, account_id, booking_date):
 def get_last_booking_date(databases, database_id, collection_id, user_id, account_id):
     """Get last transaction date for incremental sync"""
     try:
-        resp = list_documents_http(
+        resp = databases.list_documents(
             database_id,
             collection_id,
             [
-                f'equal("userId", "{user_id}")',
-                f'equal("accountId", "{account_id}")',
+                f'equal("userId", ["{user_id}"])',
+                f'equal("accountId", ["{account_id}"])',
                 'orderDesc("bookingDate")',
                 'limit(1)',
             ],
         )
-        docs = resp.get("documents", [])
+        docs = resp.get("documents", []) if isinstance(resp, dict) else resp.get('documents', [])
         if docs:
             return docs[0].get("bookingDate") or docs[0].get("valueDate") or None
         return None
@@ -152,15 +129,16 @@ def load_categories():
     ]
 
 
+
 def load_previous_categories(
-    database_id: str, collection_id: str, user_id: str
+    databases, database_id: str, collection_id: str, user_id: str
 ) -> list[str]:
     """Load previous categories from the Appwrite database if it exists"""
     try:
-        resp = list_documents_http(
+        resp = databases.list_documents(
             database_id,
             collection_id,
-            [f'equal("userId", "{user_id}")', 'limit(1)'],
+            [f'equal("userId", ["{user_id}"])', 'limit(100)'],
         )
         documents = resp.get("documents", [])
         if documents:
@@ -196,6 +174,7 @@ def categorize_transaction(
     description: str,
     counterparty: str,
     amount: str,
+    databases,
     database_id: str,
     collection_id: str,
     user_id: str,
@@ -208,7 +187,7 @@ def categorize_transaction(
     
     # Check if the transaction has already been categorized
     previous_categories = load_previous_categories(
-        database_id, collection_id, user_id
+        databases, database_id, collection_id, user_id
     )
     if text in previous_categories:
         print(f"🔍 Transaction already categorized: {text}")
@@ -270,12 +249,12 @@ def main(context):
         balances_collection = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances")
 
         # Get all active bank accounts
-        accounts_response = list_documents_http(
+        accounts_response = databases.list_documents(
             database_id,
             bank_accounts_collection,
-            ['equal("status", "active")', 'limit(50)'],
+            ['equal("status", ["active"])', 'limit(50)'],
         )
-        accounts = accounts_response.get("documents", [])
+        accounts = accounts_response.get("documents", []) if isinstance(accounts_response, dict) else accounts_response['documents']
         context.log(f"🏦 Found {len(accounts)} active accounts")
 
         if not accounts:
@@ -365,6 +344,7 @@ def main(context):
                                 description,
                                 counterparty,
                                 amount,
+                                databases,
                                 database_id,
                                 transactions_collection,
                                 user_id,
