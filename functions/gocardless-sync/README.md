@@ -1,6 +1,6 @@
 # GoCardless Transaction Sync Function
 
-This Appwrite Function synchronizes bank transaction data from GoCardless into your Appwrite database. It runs 4 times daily to fetch the latest transactions and update your database.
+This Appwrite Function (Python runtime) synchronizes bank transaction data from GoCardless into your Appwrite database. It runs 4 times daily to fetch the latest transactions and update your database.
 
 ## Features
 
@@ -32,13 +32,13 @@ The following environment variables must be configured:
 1. **Create the Function in Appwrite Console**:
    - Go to Functions → Add Function
    - Name: `gocardless-sync`
-   - Runtime: Node.js 20.0
-   - Entrypoint: `src/main.js`
+   - Runtime: Python 3.11
+   - Entrypoint: `src/main.py`
 
 2. **Deploy the Function**:
    ```bash
    # From the function directory
-   appwrite functions create --function-id gocardless-sync --name "GoCardless Sync" --runtime node-20.0 --entrypoint src/main.js
+   appwrite functions create --function-id gocardless-sync --name "GoCardless Sync" --runtime python-3.11 --entrypoint src/main.py
 
    # Deploy the code
    appwrite functions deploy gocardless-sync

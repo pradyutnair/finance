@@ -56,15 +56,15 @@ echo "✅ All required environment variables are set"
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-npm install
+pip install -r requirements.txt
 
 # Deploy the function
 echo "🔄 Deploying function to Appwrite..."
    appwrite functions create \
     --function-id "gocardless-sync" \
     --name "GoCardless Transaction Sync" \
-    --runtime "node-20.0" \
-    --entrypoint "src/main.js"
+    --runtime "python-3.11" \
+    --entrypoint "src/main.py"
 
 # Deploy the code
 echo "📤 Deploying function code..."

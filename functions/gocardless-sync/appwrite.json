@@ -1,17 +1,35 @@
 {
   "name": "gocardless-sync",
-  "runtime": "node-20.0",
-  "entrypoint": "src/main.js",
+  "runtime": "python-3.11",
+  "entrypoint": "src/main.py",
   "ignore": [
-    "node_modules",
-    "node_modules/**/*",
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".Python",
+    "build",
+    "develop-eggs",
+    "dist",
+    "downloads",
+    "eggs",
+    ".eggs",
+    "lib",
+    "lib64",
+    "parts",
+    "sdist",
+    "var",
+    "*.egg-info",
+    ".installed.cfg",
+    "*.egg",
+    "MANIFEST",
     ".git",
     ".github",
     "README.md",
     "**/*.md"
   ],
   "commands": [
-    "npm install"
+    "pip install -r requirements.txt"
   ],
   "vars": {
     "APPWRITE_FUNCTION_API_ENDPOINT": {
