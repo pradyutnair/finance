@@ -1,75 +1,48 @@
-# GoCardless Transaction Sync Function
+# ⚡ Python Starter Function
 
-This Appwrite Function (Python runtime) synchronizes bank transaction data from GoCardless into your Appwrite database. It runs 4 times daily to fetch the latest transactions and update your database.
+A simple starter function. Edit `src/main.py` to get started and create something awesome! 🚀
 
-## Features
+## 🧰 Usage
 
-- **Automatic Sync**: Fetches transactions from all active GoCardless accounts
-- **Deduplication**: Prevents duplicate transactions using unique IDs
-- **Categorization**: Uses existing heuristic-based categorization from your codebase
-- **Rate Limit Handling**: Implements exponential backoff for API rate limits
-- **Error Handling**: Comprehensive error handling and logging
+### GET /ping
 
-## Environment Variables
+- Returns a "Pong" message.
 
-The following environment variables must be configured:
+**Response**
 
-### Appwrite Configuration
-- `APPWRITE_FUNCTION_API_ENDPOINT`: Your Appwrite endpoint URL (auto-provided by runtime)
-- `APPWRITE_FUNCTION_PROJECT_ID`: Your Appwrite project ID (auto-provided by runtime)
-- `APPWRITE_API_KEY`: API key with server permissions
-- `APPWRITE_DATABASE_ID`: Database ID containing your collections
-- `APPWRITE_TRANSACTIONS_COLLECTION_ID`: Transactions collection ID (default: `transactions_dev`)
-- `APPWRITE_BANK_ACCOUNTS_COLLECTION_ID`: Bank accounts collection ID (default: `bank_accounts_dev`)
-- `APPWRITE_BALANCES_COLLECTION_ID`: Balances collection ID (default: `balances_dev`)
+Sample `200` Response:
 
-### GoCardless Configuration
-- `GOCARDLESS_SECRET_ID`: Your GoCardless API secret ID
-- `GOCARDLESS_SECRET_KEY`: Your GoCardless API secret key
+```text
+Pong
+```
 
-## Deployment
+### GET, POST, PUT, PATCH, DELETE /
 
-1. **Create the Function in Appwrite Console**:
-   - Go to Functions → Add Function
-   - Name: `gocardless-sync`
-   - Runtime: Python 3.11
-   - Entrypoint: `src/main.py`
+- Returns a "Learn More" JSON response.
 
-2. **Deploy the Function**:
-   ```bash
-   # From the function directory
-   appwrite functions create --function-id gocardless-sync --name "GoCardless Sync" --runtime python-3.11 --entrypoint src/main.py
+**Response**
 
-   # Deploy the code
-   appwrite functions deploy gocardless-sync
-   ```
+Sample `200` Response:
 
-3. **Configure Environment Variables**:
-   - In the Appwrite Console, go to the function settings
-   - Add the required environment variables (APPWRITE_FUNCTION_API_ENDPOINT and APPWRITE_FUNCTION_PROJECT_ID are auto-provided)
+```json
+{
+  "motto": "Build like a team of hundreds_",
+  "learn": "https://appwrite.io/docs",
+  "connect": "https://appwrite.io/discord",
+  "getInspired": "https://builtwith.appwrite.io"
+}
+```
 
-4. **Set Up Cron Schedule**:
-   - In the function settings, set the schedule to: `0 8,14,20,23 * * *`
-   - This runs the function at 08:00, 14:00, 20:00, and 23:00 UTC daily
+## ⚙️ Configuration
 
-## Monitoring
+| Setting           | Value                             |
+| ----------------- | --------------------------------- |
+| Runtime           | Python (3.9)                      |
+| Entrypoint        | `src/main.py`                     |
+| Build Commands    | `pip install -r requirements.txt` |
+| Permissions       | `any`                             |
+| Timeout (Seconds) | 15                                |
 
-- Check execution logs in the Appwrite Console
-- Monitor for rate limit errors and adjust timing if needed
-- Verify that transactions are being synced correctly
+## 🔒 Environment Variables
 
-## Troubleshooting
-
-- **Rate Limits**: If you hit GoCardless rate limits, the function will automatically retry with exponential backoff
-- **Authentication Errors**: Check that your API keys are correct and have the required permissions
-- **Database Errors**: Ensure your Appwrite collections exist and have the correct permissions
-
-## Collection Schema
-
-The function expects the following collections to exist:
-
-- `bank_accounts_dev`: Stores connected bank account information
-- `transactions_dev`: Stores transaction data
-- `balances_dev`: Stores account balance data
-
-Refer to your existing schema for exact field requirements.
+No environment variables required.
