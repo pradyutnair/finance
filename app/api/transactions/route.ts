@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     const limit = Math.max(1, parseInt(searchParams.get("limit") || "50"));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
     const searchTerm = searchParams.get("search")?.trim() || null;
+    const includeExcluded = searchParams.get("includeExcluded") === "true";
 
     // Create Appwrite client for cache service
     const client = new Client()
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
       from,
       to,
       accountId,
-      excludeExcluded: true,
+      excludeExcluded: !includeExcluded,
       search: searchTerm
     });
 

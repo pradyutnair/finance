@@ -190,6 +190,7 @@ export const useTransactions = (params?: {
   category?: string;
   accountId?: string;
   dateRange?: { from: string; to: string };
+  includeExcluded?: boolean;
 }) => {
   return useQuery({
     queryKey: ["transactions", params],
@@ -202,7 +203,8 @@ export const useTransactions = (params?: {
       if (params?.accountId) searchParams.set("accountId", params.accountId);
       if (params?.dateRange?.from) searchParams.set("from", params.dateRange.from);
       if (params?.dateRange?.to) searchParams.set("to", params.dateRange.to);
-      
+      if (params?.includeExcluded) searchParams.set("includeExcluded", "true");
+
       return apiRequest<{ok: boolean; transactions: Transaction[]; total: number}>(`/transactions?${searchParams.toString()}`);
     },
     // Disable staleness so UI refetches promptly

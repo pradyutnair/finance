@@ -126,7 +126,7 @@ export function TransactionsTable() {
   const fetchLimit = hasActiveFilters ? 100 : pageSize
   const fetchOffset = hasActiveFilters ? 0 : offset
 
-  const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange })
+  const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
 
   const accountIdToInstitutionId = useMemo(() => {
     const map = new Map<string, string>()
