@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Client, Databases, Query } from "appwrite";
+import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
+import { getUserTransactionCache, getUserBalanceCache, filterTransactions } from "@/lib/server/cache-service";
 
 type AuthUser = { $id?: string; id?: string };
-type TxDoc = {
-  amount?: string | number;
-  bookingDate?: string;
-};
-type DocWithId = TxDoc & { $id?: string };
-type BalanceDoc = {
-  accountId?: string;
-  balanceAmount?: string | number;
-  referenceDate?: string;
-  balanceType?: string;
-};
-
-const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
-const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
-const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,7 +40,6 @@ export async function GET(request: NextRequest) {
     }
     const databases = new Databases(client);
 
-    // Build query filters for current period
     // Default to last 30 days if not provided
     const endStr = to || ymd(new Date());
     const startStr = from || addDays(endStr, -29);
@@ -62,36 +47,15 @@ export async function GET(request: NextRequest) {
     const prevEndStr = addDays(startStr, -1);
     const prevStartStr = addDays(prevEndStr, -(lenDays - 1));
 
-    const filters = [Query.equal("userId", userId),
-                     Query.greaterThanEqual("bookingDate", startStr),
-                     Query.or([
-                      Query.equal("exclude", false),
-                      Query.isNull("exclude"),
-                      ]),
-                     Query.lessThanEqual("bookingDate", endStr)];
-
-    // Fetch transactions (paginate to include all rows in range)
-    const baseQueries = [
-      ...filters,
-      Query.orderDesc("bookingDate"),
-      Query.limit(100)
-    ];
-    let cursor: string | undefined = undefined;
-    const transactions: TxDoc[] = [];
-    while (true) {
-      const q = [...baseQueries];
-      if (cursor) q.push(Query.cursorAfter(cursor));
-      const resp = await databases.listDocuments(
-        DATABASE_ID,
-        TRANSACTIONS_COLLECTION_ID,
-        q
-      );
-      const docs = resp.documents as DocWithId[];
-      transactions.push(...docs);
-      if (docs.length < 100) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
-    }
+    // Get cached transactions (loads 365 days on first call)
+    const allTransactions = await getUserTransactionCache(userId, databases);
+    
+    // Filter transactions for current period
+    const transactions = filterTransactions(allTransactions, {
+      from: startStr,
+      to: endStr,
+      excludeExcluded: true
+    });
 
     // Calculate metrics from transactions (current)
     // IMPORTANT: expenses is the sum of negative values (negative result)
@@ -108,29 +72,12 @@ export async function GET(request: NextRequest) {
     const netIncome = income + expenses; // since expenses is negative
     const savingsRate = income > 0 ? (netIncome / income) * 100 : 0;
 
-    // Previous period transactions
-    const prevFilters = [
-      Query.equal("userId", userId),
-      Query.greaterThanEqual("bookingDate", prevStartStr),
-      Query.lessThanEqual("bookingDate", prevEndStr)
-    ];
-    const prevBase = [
-      ...prevFilters,
-      Query.orderDesc("bookingDate"),
-      Query.limit(100)
-    ];
-    let prevCursor: string | undefined = undefined;
-    const prevTxs: TxDoc[] = [];
-    while (true) {
-      const q = [...prevBase];
-      if (prevCursor) q.push(Query.cursorAfter(prevCursor));
-      const resp = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, q);
-      const docs = resp.documents as DocWithId[];
-      prevTxs.push(...docs);
-      if (docs.length < 100) break;
-      prevCursor = docs[docs.length - 1].$id;
-      if (!prevCursor) break;
-    }
+    // Filter transactions for previous period
+    const prevTxs = filterTransactions(allTransactions, {
+      from: prevStartStr,
+      to: prevEndStr,
+      excludeExcluded: true
+    });
 
     const prevIncome = prevTxs
       .map((t) => parseFloat(String(t.amount ?? 0)))
@@ -143,36 +90,39 @@ export async function GET(request: NextRequest) {
     const prevNet = prevIncome + prevExpensesNeg;
     const prevSavingsRate = prevIncome > 0 ? (prevNet / prevIncome) * 100 : 0;
 
-    // Fetch balances helper: latest per account at or before cutoff date
-    const fetchBalancesTotalAt = async (cutoff: string) => {
-      const resp = await databases.listDocuments(
-      DATABASE_ID,
-      BALANCES_COLLECTION_ID,
-      [
-        Query.equal("userId", userId),
-        Query.or([
-          Query.equal("balanceType", "interimAvailable"),
-          Query.equal("balanceType", "expected"),
-        ]),
-        Query.lessThanEqual("referenceDate", cutoff),
-        Query.orderDesc("referenceDate"),
-        Query.limit(1000)
-      ]
-      );
-      const seen = new Set<string>();
-      let total = 0;
-      for (const b of resp.documents as BalanceDoc[]) {
-        const acct = String(b.accountId ?? "");
-        if (acct && !seen.has(acct)) {
-          seen.add(acct);
-          total += parseFloat(String(b.balanceAmount ?? 0)) || 0;
+    // Get cached balances
+    const allBalances = await getUserBalanceCache(userId, databases);
+    
+    // Helper: get latest balance per account at or before cutoff date
+    const fetchBalancesTotalAt = (cutoff: string) => {
+      const relevantBalances = allBalances.filter(b => {
+        const type = b.balanceType || '';
+        const refDate = b.referenceDate || '';
+        return (type === 'interimAvailable' || type === 'expected') && refDate <= cutoff;
+      });
+      
+      // Get latest balance per account
+      const accountBalances = new Map<string, number>();
+      for (const b of relevantBalances) {
+        const acct = String(b.accountId || '');
+        const refDate = b.referenceDate || '';
+        if (!acct) continue;
+        
+        const existing = accountBalances.get(acct);
+        if (!existing || refDate > (existing as any).date) {
+          accountBalances.set(acct, parseFloat(String(b.balanceAmount ?? 0)) || 0);
         }
+      }
+      
+      let total = 0;
+      for (const amount of accountBalances.values()) {
+        total += amount;
       }
       return total;
     };
 
-    const totalBalance = await fetchBalancesTotalAt(endStr);
-    const prevBalance = await fetchBalancesTotalAt(prevEndStr);
+    const totalBalance = fetchBalancesTotalAt(endStr);
+    const prevBalance = fetchBalancesTotalAt(prevEndStr);
 
     // Delta percents
     const pct = (curr: number, prev: number) => (prev === 0 ? 0 : ((curr - prev) / prev) * 100);

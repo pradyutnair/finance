@@ -117,7 +117,58 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {isRestored ? children : null}
+      {isRestored ? (
+        <>
+          {children}
+          <PreloadUserCache />
+        </>
+      ) : null}
     </QueryClientProvider>
   )
+}
+
+function PreloadUserCache() {
+  useEffect(() => {
+    let cancelled = false
+    const doPreload = async () => {
+      try {
+        if (typeof window === "undefined") return
+        const key = "nexpass_cache_preload_v1"
+        const ttlMs = 30 * 60 * 1000 // 30 minutes session throttle
+        const last = Number(window.sessionStorage.getItem(key) || "0")
+        const now = Date.now()
+        if (last && now - last < ttlMs) return
+        
+        const { getAuthHeader } = await import("@/lib/api")
+        const headers = await getAuthHeader()
+        
+        // Trigger server-side cache preload
+        const res = await fetch(`/api/cache/preload`, {
+          method: "POST",
+          headers: { 
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            ...headers 
+          },
+          credentials: "include",
+        })
+        
+        // Mark as preloaded if successful
+        if (!cancelled && res?.ok) {
+          window.sessionStorage.setItem(key, String(now))
+          console.log("[Cache] Preload completed successfully")
+        }
+      } catch (error) {
+        console.error("[Cache] Preload failed:", error)
+      }
+    }
+    
+    // Small delay to let auth context settle
+    const timer = setTimeout(doPreload, 500)
+    return () => { 
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [])
+  return null
 }

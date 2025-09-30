@@ -2,11 +2,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
+import { invalidateUserCache } from "@/lib/server/cache-service";
 
 export async function POST(request: Request) {
   try {
     // Require authenticated user
-    await requireAuthUser(request);
+    const user = await requireAuthUser(request) as { $id?: string; id?: string };
+    const userId = user.$id || user.id;
 
     const globalAny = globalThis as any;
     let clearedCaches = [];
@@ -28,9 +30,14 @@ export async function POST(request: Request) {
       clearedCaches.push(`__acct_tx_cache (${size} entries)`);
     }
 
-    // Note: In-memory caches (categoriesCache, budgetsCache, goalsCache) 
+    // Clear centralized user cache
+    if (userId) {
+      invalidateUserCache(userId, 'all');
+      clearedCaches.push('user_cache (transactions & balances)');
+    }
+    
+    // Note: Some in-memory caches (budgetsCache, goalsCache) 
     // are module-level and cannot be cleared without restarting the server
-    // They will be cleared when the server restarts
 
     return NextResponse.json({
       ok: true,

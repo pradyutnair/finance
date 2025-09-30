@@ -217,8 +217,6 @@ export function ChartAreaInteractive() {
     // Expenses are negative, so use absolute value for projection
     const actualAbsolute = Math.abs(actualMtd)
 
-    console.log('YO YO NO GO !!!!', actualAbsolute)
-
     // Calculate remaining days in current month
     const eom = endOfMonth(elapsedEnd)
     const nextDay = new Date(elapsedEnd)

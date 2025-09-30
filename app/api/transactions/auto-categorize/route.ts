@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
+import { invalidateUserCache } from "@/lib/server/cache-service";
 
 export async function POST(request: Request) {
   try {
@@ -62,21 +63,8 @@ export async function POST(request: Request) {
       if (docs.length < pageSize) break;
     }
 
-    // Invalidate server-side transactions cache for this user so subsequent fetches reflect updates
-    try {
-      const globalAny = globalThis as any;
-      const cache: Map<string, { ts: number; payload: any }> | undefined = globalAny.__tx_cache;
-      if (cache && cache.size) {
-        for (const key of Array.from(cache.keys())) {
-          try {
-            const parsed = JSON.parse(key);
-            if (parsed && parsed.userId === userId) {
-              cache.delete(key);
-            }
-          } catch {}
-        }
-      }
-    } catch {}
+    // Invalidate centralized cache for this user
+    invalidateUserCache(userId, 'transactions');
 
     return NextResponse.json({ ok: true, processed });
   } catch (err: any) {

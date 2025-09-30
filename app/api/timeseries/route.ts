@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Client, Databases, Query } from "appwrite";
+import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
+import { getUserTransactionCache, filterTransactions } from "@/lib/server/cache-service";
 
 type AuthUser = { $id?: string; id?: string };
-type TxDoc = { amount?: string | number; bookingDate?: string; valueDate?: string };
-type DocWithId = TxDoc & { $id?: string };
-
-const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9') as string;
-const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,30 +41,15 @@ export async function GET(request: NextRequest) {
     }
     const databases = new Databases(client);
 
-    // Fetch transactions for the range with pagination
-    const base = [
-      Query.equal("userId", userId),
-      Query.greaterThanEqual("bookingDate", startStr),
-      Query.lessThanEqual("bookingDate", endStr),
-      Query.orderAsc("bookingDate"),
-      Query.or([
-        Query.equal("exclude", false),
-        Query.isNull("exclude"),
-      ]),
-      Query.limit(100)
-    ];
-    let cursor: string | undefined = undefined;
-    const txs: TxDoc[] = [];
-    while (true) {
-      const q = [...base];
-      if (cursor) q.push(Query.cursorAfter(cursor));
-      const resp = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, q);
-      const docs = resp.documents as DocWithId[];
-      txs.push(...docs);
-      if (docs.length < 100) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
-    }
+    // Get cached transactions (loads 365 days on first call)
+    const allTransactions = await getUserTransactionCache(userId, databases);
+    
+    // Filter transactions for the requested range
+    const txs = filterTransactions(allTransactions, {
+      from: startStr,
+      to: endStr,
+      excludeExcluded: true
+    });
 
     // Initialize daily buckets (ensure continuous dates)
     const daily: Record<string, { income: number; expenses: number }> = {};
@@ -81,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     // Accumulate
     for (const t of txs) {
-      const day = String(t.bookingDate || t.valueDate);
+      const day = String(t.bookingDate || t.valueDate || '');
       if (!day || !daily[day]) continue;
       const amt = parseFloat(String(t.amount ?? 0));
       if (amt > 0) daily[day].income += amt;

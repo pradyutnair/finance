@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
+import { invalidateUserCache } from "@/lib/server/cache-service"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -99,21 +100,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    // Invalidate server-side transactions cache for this user so refetches reflect updates immediately
-    try {
-      const globalAny = globalThis as any
-      const cache: Map<string, { ts: number; payload: any }> | undefined = globalAny.__tx_cache
-      if (cache && cache.size) {
-        for (const key of Array.from(cache.keys())) {
-          try {
-            const parsed = JSON.parse(key)
-            if (parsed && parsed.userId === userId) {
-              cache.delete(key)
-            }
-          } catch {}
-        }
-      }
-    } catch {}
+    // Invalidate centralized cache for this user
+    invalidateUserCache(userId, 'transactions')
 
     return NextResponse.json({ ok: true, transaction: updated })
   } catch (err: any) {
