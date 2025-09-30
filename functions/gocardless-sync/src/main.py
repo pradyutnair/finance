@@ -95,9 +95,9 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
             database_id,
             collection_id,
             queries=[
-                {"method": "equal", "attribute": "userId", "values": [user_id]},
-                {"method": "equal", "attribute": "accountId", "values": [account_id]},
-                {"method": "orderDesc", "attribute": "bookingDate"},
+                {"method": "equal", "column": "userId", "values": [user_id]},
+                {"method": "equal", "column": "accountId", "values": [account_id]},
+                {"method": "orderDesc", "column": "bookingDate"},
                 {"method": "limit", "values": [1]},
             ],
         )
@@ -140,7 +140,7 @@ def load_previous_categories(
             database_id,
             collection_id,
             queries=[
-                {"method": "equal", "attribute": "userId", "values": [user_id]},
+                {"method": "equal", "column": "userId", "values": [user_id]},
                 {"method": "limit", "values": [100]},
             ],
         )
@@ -257,7 +257,7 @@ def main(context):
             database_id,
             bank_accounts_collection,
             queries=[
-                {"method": "equal", "attribute": "status", "values": ["active"]},
+                {"method": "equal", "column": "status", "values": ["active"]},
                 {"method": "limit", "values": [50]},
             ],
         )
