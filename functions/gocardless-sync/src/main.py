@@ -10,10 +10,10 @@ import hashlib
 import re
 from datetime import datetime
 import openai
+
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
-#from appwrite.query import Query
 from appwrite.exception import AppwriteException
 
 ############################################################# GoCardless
@@ -88,10 +88,85 @@ def generate_doc_id(transaction_id, account_id, booking_date):
     return clean_id or f"tx_{int(time.time())}"
 
 
+# --- Query encoding + REST GET wrapper for list_documents ---------------------
+def _encode_query(q: object) -> str:
+    """
+    Convert dict or string to Appwrite query-string syntax:
+      {"method":"equal","column":"status","values":["active"]} -> 'equal("status", ["active"])'
+      {"method":"orderDesc","column":"bookingDate"} -> 'orderDesc("bookingDate")'
+      {"method":"limit","values":[50]} -> 'limit(50)'
+      {"cursorAfter":"docId"} -> 'cursorAfter("docId")'
+      {"limit": 100} -> 'limit(100)'
+      Already-strings pass through unchanged.
+    """
+    if isinstance(q, str):
+        return q
+    if not isinstance(q, dict):
+        # Fallback to string
+        return str(q)
+
+    # support both "column" and "attribute"
+    attr = q.get("column") or q.get("attribute")
+    method = q.get("method")
+
+    # cursor/limit/offset short forms
+    if "cursorAfter" in q:
+        return f'cursorAfter("{q["cursorAfter"]}")'
+    if "cursorBefore" in q:
+        return f'cursorBefore("{q["cursorBefore"]}")'
+    if "limit" in q and method is None:
+        return f'limit({int(q["limit"])})'
+    if "offset" in q and method is None:
+        return f'offset({int(q["offset"])})'
+
+    vals = q.get("values", [])
+    # serialise values compactly for embedding
+    def _val_str():
+        return json.dumps(vals, separators=(",", ":"))
+
+    if method in {"equal", "notEqual", "lessThan", "lessThanEqual",
+                  "greaterThan", "greaterThanEqual", "between", "contains"}:
+        return f'{method}("{attr}", {_val_str()})'
+    if method in {"orderDesc", "orderAsc"}:
+        return f'{method}("{attr}")'
+    if method in {"limit", "offset"}:
+        n = int(vals[0]) if vals else 0
+        return f"{method}({n})"
+    if method in {"cursorAfter", "cursorBefore"}:
+        v = vals[0] if vals else ""
+        return f'{method}("{v}")'
+
+    # last resort
+    return str(q)
+
+
+def list_documents_http(database_id: str, collection_id: str, queries=None):
+    """HTTP GET wrapper for Appwrite listDocuments using queries[] in the URL."""
+    import requests
+
+    endpoint = os.environ["APPWRITE_FUNCTION_API_ENDPOINT"].rstrip("/")
+    project_id = os.environ["APPWRITE_FUNCTION_PROJECT_ID"]
+    api_key = os.environ["APPWRITE_API_KEY"]
+
+    url = f"{endpoint}/databases/{database_id}/collections/{collection_id}/documents"
+    headers = {
+        "X-Appwrite-Project": project_id,
+        "X-Appwrite-Key": api_key,
+    }
+
+    params = []
+    for q in (queries or []):
+        params.append(("queries[]", _encode_query(q)))
+
+    resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_last_booking_date(databases, database_id, collection_id, user_id, account_id):
     """Get last transaction date for incremental sync"""
     try:
-        resp = databases.list_documents(
+        resp = list_documents_http(
             database_id,
             collection_id,
             queries=[
@@ -101,7 +176,7 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
                 {"method": "limit", "values": [1]},
             ],
         )
-        docs = resp.get("documents", []) if isinstance(resp, dict) else resp['documents']
+        docs = resp.get("documents", [])
         if docs:
             return docs[0].get("bookingDate") or docs[0].get("valueDate") or None
         return None
@@ -130,13 +205,12 @@ def load_categories():
     ]
 
 
-
 def load_previous_categories(
     databases, database_id: str, collection_id: str, user_id: str
 ) -> list[str]:
     """Load previous categories from the Appwrite database if it exists"""
     try:
-        resp = databases.list_documents(
+        resp = list_documents_http(
             database_id,
             collection_id,
             queries=[
@@ -174,6 +248,7 @@ def lazy_categorize(description, counterparty, amount):
     else:
         return "Uncategorized"
 
+
 def categorize_transaction(
     description: str,
     counterparty: str,
@@ -186,10 +261,8 @@ def categorize_transaction(
     """
     Categorize a transaction using OpenAI gpt-5-nano
     """
-    # Get the text to categorize
     text = f"{description} {counterparty} {amount}".lower()
-    
-    # Check if the transaction has already been categorized
+
     previous_categories = load_previous_categories(
         databases, database_id, collection_id, user_id
     )
@@ -197,15 +270,12 @@ def categorize_transaction(
         print(f"🔍 Transaction already categorized: {text}")
         return text
 
-    # Get the categories
     categories = load_categories()
 
-    # Do a simple heuristic categorization
     category = lazy_categorize(description, counterparty, amount)
     if category != "Uncategorized":
         return category
 
-    # Categorize using OpenAI as last resort
     try:
         response = openai.chat.completions.create(
             model="gpt-5-nano",
@@ -223,7 +293,6 @@ def categorize_transaction(
         category = response.choices[0].message.content.strip()
         print(f"Categorized transaction: {text} as {category} via OpenAI")
         return category if category in categories else "Uncategorized"
-
     except Exception as e:
         print(f"❌ Error categorizing transaction: {e}")
         return "Uncategorized"
@@ -252,8 +321,8 @@ def main(context):
         bank_accounts_collection = os.environ["APPWRITE_BANK_ACCOUNTS_COLLECTION_ID"]
         balances_collection = os.environ["APPWRITE_BALANCES_COLLECTION_ID"]
 
-        # Get all active bank accounts
-        accounts_response = databases.list_documents(
+        # Get all active bank accounts (via REST wrapper)
+        accounts_response = list_documents_http(
             database_id,
             bank_accounts_collection,
             queries=[
@@ -261,7 +330,7 @@ def main(context):
                 {"method": "limit", "values": [50]},
             ],
         )
-        accounts = accounts_response.get("documents", []) if isinstance(accounts_response, dict) else accounts_response['documents']
+        accounts = accounts_response.get("documents", [])
         context.log(f"🏦 Found {len(accounts)} active accounts")
 
         if not accounts:
