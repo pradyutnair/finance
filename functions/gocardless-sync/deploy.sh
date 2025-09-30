@@ -60,11 +60,11 @@ npm install
 
 # Deploy the function
 echo "🔄 Deploying function to Appwrite..."
-appwrite functions create \
+   appwrite functions create \
     --function-id "gocardless-sync" \
     --name "GoCardless Transaction Sync" \
     --runtime "node-20.0" \
-    --entrypoint "index.js" \
+    --entrypoint "src/main.js" \
     --execute "users" \
     --scopes "databases.read databases.write collections.read"
 

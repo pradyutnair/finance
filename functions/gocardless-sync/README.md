@@ -33,12 +33,12 @@ The following environment variables must be configured:
    - Go to Functions → Add Function
    - Name: `gocardless-sync`
    - Runtime: Node.js 20.0
-   - Entrypoint: `index.js`
+   - Entrypoint: `src/main.js`
 
 2. **Deploy the Function**:
    ```bash
    # From the function directory
-   appwrite functions create --function-id gocardless-sync --name "GoCardless Sync" --runtime node-20.0 --entrypoint index.js
+   appwrite functions create --function-id gocardless-sync --name "GoCardless Sync" --runtime node-20.0 --entrypoint src/main.js
 
    # Deploy the code
    appwrite functions deploy gocardless-sync

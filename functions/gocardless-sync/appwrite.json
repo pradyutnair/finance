@@ -1,7 +1,7 @@
 {
   "name": "gocardless-sync",
   "runtime": "node-20.0",
-  "entrypoint": "index.js",
+  "entrypoint": "src/main.js",
   "ignore": [
     "node_modules",
     "node_modules/**/*",
