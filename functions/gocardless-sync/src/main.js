@@ -3,15 +3,17 @@
  * Runs 4 times daily to fetch latest transactions and update database
  */
 
+import { Client, Databases, Query, ID } from 'appwrite';
+import { createHash } from 'crypto';
+
 // This Appwrite function will be executed every time your function is triggered
 export default async ({ req, res, log, error }) => {
   // Use context.log() for logging that will be visible in Appwrite logs
-  log('Starting GoCardless transaction sync...');
+  log('🚀 Starting GoCardless transaction sync...');
 
-  // Import modules (CommonJS style for compatibility)
-  const { Client, Databases, Query, ID } = require('appwrite');
-  const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = require('../lib/gocardless.js');
-  const { createHash } = require('crypto');
+  // Import GoCardless client (dynamic import for ES modules)
+  const gocardlessModule = await import('../lib/gocardless.js');
+  const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = gocardlessModule;
 
   // Initialize Appwrite client
   const client = new Client()
@@ -26,6 +28,12 @@ export default async ({ req, res, log, error }) => {
   const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
   const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
   const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
+
+  log(`🔧 Appwrite client initialized with endpoint: ${process.env.APPWRITE_ENDPOINT}`);
+  log(`📊 Database ID: ${DATABASE_ID}`);
+  log(`🏦 Bank accounts collection: ${BANK_ACCOUNTS_COLLECTION_ID}`);
+  log(`💰 Transactions collection: ${TRANSACTIONS_COLLECTION_ID}`);
+  log(`⚖️ Balances collection: ${BALANCES_COLLECTION_ID}`);
 
   // Rate limiting configuration
   const API_CALL_DELAY_MS = 1000; // 1 second between API calls
@@ -97,6 +105,7 @@ export default async ({ req, res, log, error }) => {
 
   // Main sync execution logic
   try {
+    const startTime = new Date();
     // Get all users with active bank accounts
     const accountsResponse = await databases.listDocuments(
       DATABASE_ID,
@@ -109,10 +118,10 @@ export default async ({ req, res, log, error }) => {
 
     // Get unique user IDs
     const userIds = [...new Set(accountsResponse.documents.map(account => account.userId))];
-    log(`Found ${userIds.length} users with active bank accounts`);
+    log(`🔍 Found ${userIds.length} users with active bank accounts`);
 
     if (userIds.length === 0) {
-      log('No users with active bank accounts found');
+      log('⚠️ No users with active bank accounts found');
       return res.json({ success: true, message: 'No users to sync', usersProcessed: 0 });
     }
 
@@ -128,7 +137,7 @@ export default async ({ req, res, log, error }) => {
       const userId = usersToProcess[i];
 
       try {
-        log(`Processing user ${userId} (${i + 1}/${usersToProcess.length})`);
+        log(`👤 Processing user ${userId} (${i + 1}/${usersToProcess.length})`);
 
         // Get all bank accounts for this user
         const userAccountsResponse = await databases.listDocuments(
@@ -141,7 +150,7 @@ export default async ({ req, res, log, error }) => {
         );
 
         const accounts = userAccountsResponse.documents;
-        log(`Found ${accounts.length} active accounts for user ${userId}`);
+        log(`🏦 Found ${accounts.length} active accounts for user ${userId}`);
 
         // Process accounts in batches with rate limiting
         for (let j = 0; j < accounts.length; j += MAX_ACCOUNTS_PER_BATCH) {
@@ -153,33 +162,38 @@ export default async ({ req, res, log, error }) => {
             const accountId = account.accountId;
 
             try {
-              log(`Processing account: ${accountId} (${k + 1}/${accountBatch.length})`);
+              log(`💳 Processing account: ${accountId} (${k + 1}/${accountBatch.length})`);
 
               // Get transactions from GoCardless
+              log(`📡 Calling GoCardless API for transactions on account ${accountId}`);
               const transactionsResponse = await getTransactions(accountId);
               const transactions = transactionsResponse?.transactions?.booked || [];
 
-              log(`Retrieved ${transactions.length} transactions for account ${accountId}`);
+              log(`📊 Retrieved ${transactions.length} transactions for account ${accountId}`);
 
               // Process and store transactions
               for (const transaction of transactions.slice(0, 100)) {
                 try {
+                  log(`🔄 Processing transaction: ${transaction.transactionId || 'unknown'} for account ${accountId}`);
                   await processTransaction(databases, account, transaction, userId, log);
                   totalTransactionsSynced++;
+                  log(`✅ Successfully processed transaction for account ${accountId}`);
                 } catch (error) {
                   if (error.message?.includes('already exists') || error.code === 409) {
-                    log(`Transaction already exists for ${accountId}`);
+                    log(`⏭️ Transaction already exists for ${accountId}, skipping`);
                   } else {
-                    log(`Error processing transaction for account ${accountId}: ${error.message}`);
+                    log(`❌ Error processing transaction for account ${accountId}: ${error.message}`);
                   }
                 }
               }
 
               // Update balances if needed
               try {
+                log(`⚖️ Updating balances for account ${accountId}`);
                 await updateAccountBalances(databases, accountId, userId, log);
+                log(`✅ Balances updated for account ${accountId}`);
               } catch (error) {
-                log(`Error updating balances for account ${accountId}: ${error.message}`);
+                log(`❌ Error updating balances for account ${accountId}: ${error.message}`);
               }
 
             } catch (error) {
@@ -188,54 +202,56 @@ export default async ({ req, res, log, error }) => {
 
             // Add delay between accounts within a batch
             if (k < accountBatch.length - 1) {
-              log(`Waiting ${API_CALL_DELAY_MS}ms before next account in batch...`);
+              log(`⏳ Waiting ${API_CALL_DELAY_MS}ms before next account in batch...`);
               await sleep(API_CALL_DELAY_MS / 2);
             }
           }
 
           // Add longer delay between batches
           if (j + MAX_ACCOUNTS_PER_BATCH < accounts.length) {
-            log(`Waiting ${API_CALL_DELAY_MS * 2}ms before next batch...`);
+            log(`⏳ Waiting ${API_CALL_DELAY_MS * 2}ms before next batch...`);
             await sleep(API_CALL_DELAY_MS * 2);
           }
         }
 
         totalUsersProcessed++;
-        log(`Successfully processed user ${userId}`);
+        log(`✅ Successfully processed user ${userId}`);
 
         // Add delay between users to respect rate limits
         if (i < usersToProcess.length - 1) {
-          log(`Waiting ${API_CALL_DELAY_MS}ms before next user...`);
+          log(`⏳ Waiting ${API_CALL_DELAY_MS}ms before next user...`);
           await sleep(API_CALL_DELAY_MS);
         }
 
       } catch (error) {
-        log(`Failed to sync user ${userId}: ${error.message}`);
+        log(`❌ Failed to sync user ${userId}: ${error.message}`);
         // Continue with other users even if one fails
       }
     }
 
     const endTime = new Date();
-    log(`Sync completed. Processed ${totalUsersProcessed} users, synced ${totalTransactionsSynced} transactions`);
+    const duration = endTime.getTime() - startTime.getTime();
+    log(`🎉 Sync completed in ${duration}ms`);
+    log(`📈 Final results: Processed ${totalUsersProcessed} users, synced ${totalTransactionsSynced} transactions`);
+    log(`📊 Total users found: ${userIds.length}, Success rate: ${((totalUsersProcessed / usersToProcess.length) * 100).toFixed(1)}%`);
 
     return res.json({
       success: true,
       usersProcessed: totalUsersProcessed,
       transactionsSynced: totalTransactionsSynced,
-      totalUsersFound: userIds.length
+      totalUsersFound: userIds.length,
+      duration: `${duration}ms`
     });
 
   } catch (error) {
-    log(`Critical sync failure: ${error.message}`);
-    error(`Sync error: ${error.message}`);
+    log(`💥 Critical sync failure: ${error.message}`);
+    error(`🚨 Sync error: ${error.message}`);
     return res.json({ success: false, error: error.message });
   }
 };
 
 // Helper functions
 async function processTransaction(databases, account, transaction, userId, log) {
-  const { createHash } = require('crypto');
-  const { ID } = require('appwrite');
 
   // Generate unique document ID to prevent duplicates
   const providerTransactionId = transaction.transactionId;
@@ -265,6 +281,7 @@ async function processTransaction(databases, account, transaction, userId, log) 
   let category = 'Uncategorized';
 
   try {
+    log(`🏷️ Categorizing transaction: ${txDescription.substring(0, 50)}...`);
     const existingCategory = await findExistingCategory(
       databases,
       DATABASE_ID,
@@ -277,12 +294,14 @@ async function processTransaction(databases, account, transaction, userId, log) 
       transaction.creditorName || transaction.debtorName || '',
       transaction.transactionAmount?.amount
     );
+    log(`🏷️ Categorized as: ${category}`);
   } catch (error) {
-    log(`Error getting category: ${error.message}`);
+    log(`❌ Error getting category: ${error.message}`);
     category = 'Uncategorized';
   }
 
   // Store transaction
+  log(`💾 Storing transaction in database: ${docId}`);
   await databases.createDocument(
     DATABASE_ID,
     TRANSACTIONS_COLLECTION_ID,
@@ -302,16 +321,21 @@ async function processTransaction(databases, account, transaction, userId, log) 
       raw: JSON.stringify(transaction).slice(0, 10000),
     }
   );
+  log(`✅ Transaction stored successfully: ${docId}`);
 }
 
 async function updateAccountBalances(databases, accountId, userId, log) {
   try {
+    log(`📡 Fetching balances from GoCardless for account ${accountId}`);
     const balancesResponse = await getBalances(accountId);
     const balances = balancesResponse?.balances || [];
+
+    log(`📊 Found ${balances.length} balance records for account ${accountId}`);
 
     for (const balance of balances) {
       const balanceType = balance.balanceType || 'closingBooked';
       const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
+      const amount = balance.balanceAmount?.amount || '0';
 
       // Check if balance already exists
       try {
@@ -326,14 +350,15 @@ async function updateAccountBalances(databases, accountId, userId, log) {
         );
 
         if (existingBalances.documents.length > 0) {
-          log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
+          log(`⏭️ Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
           continue;
         }
       } catch (queryError) {
-        log('Error checking existing balance, proceeding with creation');
+        log('❌ Error checking existing balance, proceeding with creation');
       }
 
       // Create balance record
+      log(`💾 Storing balance: ${amount} ${balance.balanceAmount?.currency} for ${accountId}`);
       await databases.createDocument(
         DATABASE_ID,
         BALANCES_COLLECTION_ID,
@@ -341,14 +366,15 @@ async function updateAccountBalances(databases, accountId, userId, log) {
         {
           userId: userId,
           accountId: accountId,
-          balanceAmount: balance.balanceAmount?.amount || '0',
+          balanceAmount: amount,
           currency: balance.balanceAmount?.currency || 'EUR',
           balanceType: balanceType,
           referenceDate: referenceDate,
         }
       );
+      log(`✅ Balance stored successfully for account ${accountId}`);
     }
   } catch (error) {
-    log(`Error updating balances for account ${accountId}: ${error.message}`);
+    log(`❌ Error updating balances for account ${accountId}: ${error.message}`);
   }
 }
