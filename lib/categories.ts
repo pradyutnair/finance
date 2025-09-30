@@ -11,6 +11,7 @@ export type CategoryKey =
   | "Income"
   | "Miscellaneous"
   | "Uncategorized"
+  | "Bank Transfer"
 
 export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Groceries: { color: "#c6cfc9" },         // silver (very light)
@@ -25,6 +26,7 @@ export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Income: { color: "#20d462" },            // green
   Miscellaneous: { color: "#9ca3af" },     // gray
   Uncategorized: { color: "#4f5952" },     // dark gray
+  'Bank Transfer': { color: "#585f96" },     // dark gray
 }
 
 export function getCategoryColor(category?: string): string {

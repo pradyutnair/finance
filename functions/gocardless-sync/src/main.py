@@ -1,30 +1,31 @@
 """
-Appwrite Function for ongoing GoCardless transaction sync
-Runs 4 times daily to fetch latest transactions and update database
+Simplified GoCardless Sync Function
+Fetches transactions and balances for all active bank accounts
 """
 
 import os
 import json
 import time
 import hashlib
-import hmac
-import base64
-from datetime import datetime, timedelta
+import re
+from datetime import datetime
 
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
-from appwrite.services.users import Users
 from appwrite.query import Query
 from appwrite.exception import AppwriteException
+import openai
 
+############################################################# GoCardless
 # GoCardless API configuration
 GOCARDLESS_BASE_URL = "https://bankaccountdata.gocardless.com/api/v2"
 DEFAULT_TIMEOUT = 20
-MAX_RETRIES = 5
+MAX_RETRIES = 3
+
 
 class GoCardlessClient:
-    """Lightweight GoCardless Bank Account Data client with token caching and retries"""
+    """Simple GoCardless client with token caching"""
 
     def __init__(self, secret_id, secret_key):
         self.secret_id = secret_id
@@ -32,528 +33,468 @@ class GoCardlessClient:
         self._access_token = None
         self._token_expires_at = 0
 
-    def _assert_env_vars(self):
-        """Ensure required environment variables are set"""
-        if not self.secret_id or not self.secret_key:
-            raise ValueError("Missing required GoCardless credentials")
-
-    def _is_expired(self):
-        """Check if token is expired (with 30 second buffer)"""
-        return not self._access_token or time.time() > (self._token_expires_at - 30)
-
-    def _request_new_token(self):
-        """Request a new access token from GoCardless"""
-        self._assert_env_vars()
+    def _get_access_token(self):
+        """Get valid access token"""
+        if self._access_token and time.time() < (self._token_expires_at - 30):
+            return self._access_token
 
         import requests
 
         url = f"{GOCARDLESS_BASE_URL}/token/new/"
-        data = {
-            "secret_id": self.secret_id,
-            "secret_key": self.secret_key,
-        }
+        data = {"secret_id": self.secret_id, "secret_key": self.secret_key}
 
-        response = requests.post(
-            url,
-            json=data,
-            timeout=DEFAULT_TIMEOUT,
-            headers={"Content-Type": "application/json"}
-        )
+        response = requests.post(url, json=data, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
         token_data = response.json()
         self._access_token = token_data["access"]
         self._token_expires_at = time.time() + token_data["access_expires"]
-
         return self._access_token
 
-    def _get_access_token(self):
-        """Get a valid access token"""
-        if not self._is_expired():
-            return self._access_token
-
-        return self._request_new_token()
-
-    def _fetch_with_auth(self, path, method="GET", **kwargs):
-        """Make an authenticated request to GoCardless API"""
+    def _request(self, path, params=None):
+        """Make authenticated request"""
         import requests
 
         token = self._get_access_token()
-        headers = kwargs.get("headers", {})
-        headers["Authorization"] = f"Bearer {token}"
-
+        headers = {"Authorization": f"Bearer {token}"}
         url = f"{GOCARDLESS_BASE_URL}{path}"
-
-        # Prepare request arguments - only pass valid parameters for the method
-        request_kwargs = {
-            "headers": headers,
-            "timeout": DEFAULT_TIMEOUT
-        }
-
-        # For GET requests, don't pass data/json parameters that would create a request body
-        if method.upper() == "GET":
-            # Remove any data/json parameters that would cause issues
-            request_kwargs = {k: v for k, v in request_kwargs.items() if k in ["headers", "timeout", "params"]}
-        else:
-            # For POST requests, we can pass json data
-            if "json" in kwargs:
-                request_kwargs["json"] = kwargs["json"]
 
         for attempt in range(MAX_RETRIES):
             try:
-                response = requests.request(method, url, **request_kwargs)
+                response = requests.get(
+                    url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT
+                )
                 response.raise_for_status()
                 return response.json()
-
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 if attempt == MAX_RETRIES - 1:
                     raise e
+                time.sleep(1)
 
-                # Exponential backoff with jitter
-                delay = (300 * (2 ** attempt)) + (abs(hash(str(attempt))) % 200)
-                time.sleep(delay / 1000)
+    def get_transactions(self, account_id, date_from=None):
+        """Get transactions for account"""
+        params = {"date_from": date_from} if date_from else {}
+        return self._request(f"/accounts/{account_id}/transactions/", params)
 
-        raise RuntimeError("Max retries exceeded")
+    def get_balances(self, account_id):
+        """Get balances for account"""
+        return self._request(f"/accounts/{account_id}/balances/")
 
-    def get_account_transactions(self, account_id, date_from=None, date_to=None):
-        """Get transactions for an account"""
-        params = {}
-        if date_from:
-            params["date_from"] = date_from
-        if date_to:
-            params["date_to"] = date_to
 
-        query_string = "&".join(f"{k}={v}" for k, v in params.items())
-        path = f"/accounts/{account_id}/transactions/"
-        if query_string:
-            path += f"?{query_string}"
+############################################################# Helper functions
+def generate_doc_id(transaction_id, account_id, booking_date):
+    """Generate unique document ID"""
+    raw_key = transaction_id or f"{account_id}_{booking_date}_{int(time.time())}"
+    clean_id = re.sub(r"[^a-zA-Z0-9_-]", "_", str(raw_key))[:36]
+    return clean_id or f"tx_{int(time.time())}"
 
-        return self._fetch_with_auth(path)
 
-    def get_account_balances(self, account_id):
-        """Get balances for an account"""
-        return self._fetch_with_auth(f"/accounts/{account_id}/balances/")
-
-    def get_account_details(self, account_id):
-        """Get account details"""
-        return self._fetch_with_auth(f"/accounts/{account_id}/details/")
-
-def suggest_category(description, counterparty, amount):
-    """Categorize transactions based on description and counterparty"""
-    if not description and not counterparty:
-        return "Uncategorized"
-
-    text = f"{counterparty or ''} {description or ''}".lower().strip()
-    value = float(amount or 0)
-
-    # Income detection
-    if ("salary" in text or "payroll" in text or
-        (value > 0 and "income" in text)):
-        return "Income"
-
-    # Restaurant/Food
-    if any(keyword in text for keyword in
-           ["restaurant", "cafe", "coffee", "mcdonald", "starbucks", "kfc", "burger", "pizza"]):
-        return "Restaurant"
-
-    # Transport
-    if any(keyword in text for keyword in
-           ["uber", "taxi", "fuel", "gas", "petrol", "shell", "bp", "esso"]):
-        return "Transport"
-
-    # Shopping
-    if any(keyword in text for keyword in
-           ["amazon", "store", "shopping", "mall", "retail"]):
-        return "Shopping"
-
-    # Entertainment
-    if any(keyword in text for keyword in
-           ["netflix", "spotify", "entertainment", "cinema", "theatre"]):
-        return "Entertainment"
-
-    # Utilities/Bills
-    if any(keyword in text for keyword in
-           ["electric", "gas", "water", "internet", "utility", "rent", "council tax"]):
-        return "Utilities"
-
-    # Groceries
-    if any(keyword in text for keyword in
-           ["grocery", "supermarket", "aldi", "tesco", "sainsbury", "asda", "morrisons"]):
-        return "Groceries"
-
-    return "Uncategorized"
-
-def list_documents_http(database_id, collection_id, queries):
-    """HTTP GET wrapper for Appwrite listDocuments to avoid request body on GET"""
-    import requests
-    endpoint = os.environ["APPWRITE_FUNCTION_API_ENDPOINT"].rstrip("/")
-    project_id = os.environ["APPWRITE_FUNCTION_PROJECT_ID"]
-    api_key = os.environ["APPWRITE_API_KEY"]
-
-    url = f"{endpoint}/databases/{database_id}/collections/{collection_id}/documents"
-    headers = {
-        "X-Appwrite-Project": project_id,
-        "X-Appwrite-Key": api_key,
-        "Content-Type": "application/json",
-    }
-    params = []
-    for q in queries or []:
-        params.append(("queries[]", q))
-
-    resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
-
-def find_existing_category(databases, database_id, collection_id, user_id, description):
-    """Find existing category for similar transactions"""
+def get_last_booking_date(databases, database_id, collection_id, user_id, account_id):
+    """Get last transaction date for incremental sync"""
     try:
-        # Search for existing transactions with similar description
-        response = list_documents_http(
+        response = databases.list_documents(
             database_id,
             collection_id,
             [
                 Query.equal("userId", user_id),
-                Query.search("description", description[:50]),
-                Query.limit(5)
-            ]
-        )
-
-        # Count categories
-        category_count = {}
-        for doc in response["documents"]:
-            category = doc.get("category")
-            if category and category != "Uncategorized":
-                category_count[category] = category_count.get(category, 0) + 1
-
-        # Return most common category if we have enough matches
-        if category_count:
-            top_category = max(category_count.items(), key=lambda x: x[1])
-            if top_category[1] >= 2:
-                return top_category[0]
-
-        return None
-
-    except Exception as e:
-        print(f"Error finding existing category: {e}")
-        return None
-
-def get_last_booking_date(database_id, transactions_collection_id, user_id, account_id):
-    """Return last bookingDate (YYYY-MM-DD) for a user's account, or None if none found"""
-    try:
-        resp = list_documents_http(
-            database_id,
-            transactions_collection_id,
-            [
-                Query.equal("userId", user_id),
                 Query.equal("accountId", account_id),
                 Query.order_desc("bookingDate"),
-                Query.limit(1)
-            ]
+                Query.limit(1),
+            ],
         )
-        docs = resp.get("documents", [])
-        if docs:
-            return (docs[0].get("bookingDate") or docs[0].get("valueDate") or None)
+        docs = response.get("documents", [])
+        return docs[0].get("bookingDate") if docs else None
+    except:
         return None
+
+
+############################################################# Categorization
+def load_categories():
+    """Return the list of available categories"""
+    return [
+        "Groceries",
+        "Restaurant", 
+        "Education",
+        "Transport",
+        "Travel",
+        "Shopping",
+        "Utilities",
+        "Entertainment",
+        "Health",
+        "Income",
+        "Miscellaneous",
+        "Uncategorized",
+        "Bank Transfer"
+    ]
+
+
+def load_previous_categories(
+    db: Databases, database_id: str, collection_id: str, user_id: str
+) -> list[str]:
+    """
+    Load previous categories from the Appwrite database if it exists
+    """
+    try:
+        response = db.list_documents(
+            database_id, collection_id, [Query.equal("userId", user_id), Query.limit(1)]
+        )
+        documents = response.get("documents", [])
+        if documents:
+            return [doc.get("category", "") for doc in documents if doc.get("category")]
+        return []
     except Exception as e:
-        print(f"Error fetching last booking date: {e}")
-        return None
+        print(f"❌ Error loading previous categories: {e}")
+        return []
 
-def generate_document_id(provider_transaction_id, internal_transaction_id, account_id, booking_date, amount, description):
-    """Generate unique document ID to prevent duplicates"""
-    fallback_base = f"{account_id}_{booking_date or ''}_{amount or ''}_{description or ''}"
-    raw_key = provider_transaction_id or internal_transaction_id or fallback_base or ""
 
-    # Create a hash for uniqueness - replace non-alphanumeric characters
-    import re
-    doc_id_candidate = re.sub(r'[^a-zA-Z0-9_-]', '_', raw_key)
+def lazy_categorize(description, counterparty, amount):
+    """Simple transaction categorization"""
+    text = f"{counterparty or ''} {description or ''}".lower()
 
-    if not doc_id_candidate or len(doc_id_candidate) > 36:
-        # Use SHA1 hash and truncate to 36 characters
-        hash_obj = hashlib.sha1(raw_key.encode())
-        doc_id_candidate = hash_obj.hexdigest()[:36]
+    if any(
+        word in text
+        for word in ["restaurant", "cafe", "coffee", "mcdonald", "starbucks"]
+    ):
+        return "Restaurant"
+    elif any(word in text for word in ["uber", "taxi", "fuel", "gas", "petrol"]):
+        return "Transport"
+    elif any(word in text for word in ["amazon", "store", "shopping", "mall"]):
+        return "Shopping"
+    elif any(word in text for word in ["netflix", "spotify", "entertainment"]):
+        return "Entertainment"
+    elif any(word in text for word in ["electric", "gas", "water", "internet", "rent"]):
+        return "Utilities"
+    elif any(word in text for word in ["grocery", "supermarket", "aldi", "tesco"]):
+        return "Groceries"
+    elif float(amount or 0) > 0 and any(
+        word in text for word in ["salary", "payroll", "income"]
+    ):
+        return "Income"
+    else:
+        return "Uncategorized"
 
-    return doc_id_candidate or f"tx_{int(time.time())}"
 
-def process_transaction(databases, database_id, transactions_collection_id, balances_collection_id,
-                       account, transaction, user_id):
-    """Process and store a single transaction"""
-
-    # Generate unique document ID
-    doc_id = generate_document_id(
-        transaction.get("transactionId"),
-        transaction.get("internalTransactionId"),
-        account.get("accountId"),
-        transaction.get("bookingDate"),
-        transaction.get("transactionAmount", {}).get("amount"),
-        transaction.get("remittanceInformationUnstructured") or transaction.get("additionalInformation")
+def categorize_transaction(
+    description: str,
+    counterparty: str,
+    amount: str,
+    db: Databases,
+    database_id: str,
+    collection_id: str,
+    user_id: str,
+) -> str:
+    """
+    Categorize a transaction using OpenAI gpt-5-nano
+    """
+    # Get the text to categorize
+    text = f"{description} {counterparty} {amount}".lower()
+    
+    # Check if the transaction has already been categorized
+    previous_categories = load_previous_categories(
+        db, database_id, collection_id, user_id
     )
+    if text in previous_categories:
+        print(f"🔍 Transaction already categorized: {text}")
+        return text
 
-    # Check if transaction already exists
+    # Get the categories
+    categories = load_categories()
+
+    # Do a simple heuristic categorization
+    category = lazy_categorize(description, counterparty, amount)
+    if category != "Uncategorized":
+        return category
+
+    # Categorize using OpenAI as last resort
     try:
-        databases.get_document(database_id, transactions_collection_id, doc_id)
-        return  # Already exists, skip
-    except AppwriteException:
-        pass  # Not found, proceed with creation
-
-    # Get category
-    tx_description = transaction.get("remittanceInformationUnstructured") or transaction.get("additionalInformation") or ""
-    category = "Uncategorized"
-
-    try:
-        existing_category = find_existing_category(
-            databases, database_id, transactions_collection_id, user_id, tx_description
+        response = openai.chat.completions.create(
+            model="gpt-5-nano",
+            max_tokens=100,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are a strict classifier. Reply with exactly one category name from this list and nothing else: {categories}.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Transaction\nCounterparty: {counterparty}\nDescription: {description}\nAmount: {amount}\nReturn one of: {categories}",
+                },
+            ],
+            temperature=0,
         )
-        category = existing_category or suggest_category(
-            tx_description,
-            transaction.get("creditorName") or transaction.get("debtorName"),
-            transaction.get("transactionAmount", {}).get("amount")
-        )
+        category = response.choices[0].message.content.strip()
+        return category if category in categories else "Uncategorized"
+
     except Exception as e:
-        print(f"Error getting category: {e}")
-        category = "Uncategorized"
+        print(f"❌ Error categorizing transaction: {e}")
+        return "Uncategorized"
 
-    # Store transaction
-    transaction_data = {
-        "userId": user_id,
-        "accountId": account.get("accountId"),
-        "transactionId": (transaction.get("transactionId") or transaction.get("internalTransactionId") or doc_id)[:255],
-        "amount": str(transaction.get("transactionAmount", {}).get("amount", "0")),
-        "currency": (transaction.get("transactionAmount", {}).get("currency") or "EUR").upper()[:3],
-        "bookingDate": transaction.get("bookingDate", "")[:10] if transaction.get("bookingDate") else None,
-        "bookingDateTime": transaction.get("bookingDateTime", "")[:25] if transaction.get("bookingDateTime") else None,
-        "valueDate": transaction.get("valueDate", "")[:10] if transaction.get("valueDate") else None,
-        "description": (transaction.get("remittanceInformationUnstructured") or transaction.get("additionalInformation") or "")[:500],
-        "counterparty": (transaction.get("creditorName") or transaction.get("debtorName") or "")[:255],
-        "category": category,
-        "raw": json.dumps(transaction)[:10000],
-    }
 
-    databases.create_document(database_id, transactions_collection_id, doc_id, transaction_data)
-    return doc_id
+############################################################# Main
 
 
 def main(context):
-    """Main Appwrite function entry point"""
-    context.log("🚀 Starting GoCardless transaction sync...")
+    """Main function"""
+    context.log("🚀 Starting GoCardless sync...")
 
     try:
-        # Initialize Appwrite client
+        # Initialize clients
         client = Client()
         client.set_endpoint(os.environ["APPWRITE_FUNCTION_API_ENDPOINT"])
         client.set_project(os.environ["APPWRITE_FUNCTION_PROJECT_ID"])
-        client.set_key(context.req.headers.get("x-appwrite-key", ""))
+        client.set_key(os.environ["APPWRITE_API_KEY"])
 
         databases = Databases(client)
+        gocardless = GoCardlessClient(
+            os.environ["GOCARDLESS_SECRET_ID"], os.environ["GOCARDLESS_SECRET_KEY"]
+        )
 
         # Configuration
-        database_id = os.environ.get("APPWRITE_DATABASE_ID", "68d42ac20031b27284c9")
-        transactions_collection_id = os.environ.get("APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions_dev")
-        bank_accounts_collection_id = os.environ.get("APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts_dev")
-        balances_collection_id = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances_dev")
+        database_id = os.environ["APPWRITE_DATABASE_ID"]
+        # Collections
+        # transactions_collection = os.environ.get(
+        #     "APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions"
+        # )
+        # bank_accounts_collection = os.environ.get(
+        #     "APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts"
+        # )
+        # balances_collection = os.environ.get(
+        #     "APPWRITE_BALANCES_COLLECTION_ID", "balances"
+        # )
+        transactions_collection = "transactions"
+        bank_accounts_collection = "bank_accounts"
+        balances_collection = "balances"
 
-        context.log(f"🔧 Database ID: {database_id}")
-        context.log(f"🏦 Bank accounts collection: {bank_accounts_collection_id}")
-        context.log(f"💰 Transactions collection: {transactions_collection_id}")
-        context.log(f"⚖️ Balances collection: {balances_collection_id}")
-
-        # Initialize GoCardless client
-        context.log("🔑 Initializing GoCardless client...")
-        gocardless = GoCardlessClient(
-            os.environ["GOCARDLESS_SECRET_ID"],
-            os.environ["GOCARDLESS_SECRET_KEY"]
+        # Get all active bank accounts
+        accounts_response = databases.list_documents(
+            database_id,
+            bank_accounts_collection,
+            [Query.equal("status", "active"), Query.limit(50)],
         )
-        context.log("✅ GoCardless client initialized successfully")
 
-        # Get all users with active bank accounts
-        try:
-            accounts_response = databases.list_documents(
-                database_id,
-                bank_accounts_collection_id,
-                [
-                    Query.equal("status", "active"),
-                    Query.limit(100)
-                ]
-            )
+        accounts = accounts_response.get("documents", [])
+        context.log(f"🏦 Found {len(accounts)} active accounts")
 
-            # Get unique user IDs
-            user_ids = list(set(account["userId"] for account in accounts_response["documents"]))
-            context.log(f"🔍 Found {len(user_ids)} users with active bank accounts")
+        if not accounts:
+            return context.res.json({"success": True, "message": "No accounts to sync"})
 
-            if not user_ids:
-                context.log("⚠️ No users with active bank accounts found")
-                return context.res.json({
-                    "success": True,
-                    "message": "No users to sync",
-                    "usersProcessed": 0
-                })
+        total_transactions = 0
+        total_balances = 0
 
-            # Process users in batches (limit to avoid timeouts)
-            users_to_process = user_ids[:10]  # Process max 10 users per execution
-            context.log(f"👥 Processing {len(users_to_process)} users (limited to 10 per execution)")
+        # Process each account
+        for i, account in enumerate(accounts):
+            account_id = account["accountId"]
+            user_id = account["userId"]
 
-            total_users_processed = 0
-            total_transactions_synced = 0
+            context.log(f"💳 Processing account {i+1}/{len(accounts)}: {account_id}")
 
-            # Process each user
-            for i, user_id in enumerate(users_to_process):
-                context.log(f"👤 Processing user {user_id} ({i + 1}/{len(users_to_process)})")
+            try:
+                # Get last transaction date for incremental sync
+                last_date = get_last_booking_date(
+                    databases, database_id, transactions_collection, user_id, account_id
+                )
 
+                if last_date:
+                    context.log(f"📅 Last transaction: {last_date}")
+                else:
+                    context.log("📅 No previous transactions found")
+
+                # Fetch transactions
                 try:
-                    # Get all bank accounts for this user
-                    user_accounts_response = databases.list_documents(
-                        database_id,
-                        bank_accounts_collection_id,
-                        [
-                            Query.equal("userId", user_id),
-                            Query.equal("status", "active")
-                        ]
-                    )
+                    tx_response = gocardless.get_transactions(account_id, last_date)
 
-                    accounts = user_accounts_response["documents"]
-                    context.log(f"🏦 Found {len(accounts)} active accounts for user {user_id}")
+                    # Ensure response is a dictionary
+                    if not isinstance(tx_response, dict):
+                        context.log(f"❌ Invalid transaction response type: {type(tx_response)}")
+                        continue
 
-                    # Process accounts in batches
-                    for j in range(0, len(accounts), 5):  # Process in batches of 5
-                        account_batch = accounts[j:j + 5]
-                        context.log(f"Processing account batch {j//5 + 1}/{(len(accounts) + 4)//5} ({len(account_batch)} accounts)")
+                    transactions_data = tx_response.get("transactions", {})
+                    if not isinstance(transactions_data, dict):
+                        context.log(f"❌ Invalid transactions data type: {type(transactions_data)}")
+                        continue
 
-                        for k, account in enumerate(account_batch):
-                            account_id = account["accountId"]
+                    transactions = transactions_data.get("booked", [])
 
-                            try:
-                                context.log(f"💳 Processing account: {account_id} ({k + 1}/{len(account_batch)})")
+                    # Ensure transactions is a list
+                    if not isinstance(transactions, list):
+                        context.log(f"❌ Invalid transactions list type: {type(transactions)}")
+                        continue
 
-                                # Get transactions from GoCardless
-                                # Determine incremental window using last bookingDate
-                                last_date = get_last_booking_date(
-                                    database_id,
-                                    transactions_collection_id,
-                                    user_id,
-                                    account_id
-                                )
-                                if last_date:
-                                    context.log(f"🗓️ Last bookingDate for {account_id}: {last_date} — fetching new transactions after this date")
-                                else:
-                                    context.log(f"🗓️ No previous transactions found for {account_id}, fetching full default window")
-
-                                context.log(f"📡 Calling GoCardless API for transactions on account {account_id}")
-                                try:
-                                    transactions_response = gocardless.get_account_transactions(
-                                        account_id,
-                                        date_from=last_date,
-                                        date_to=None
-                                    )
-                                    transactions = transactions_response.get("transactions", {}).get("booked", [])
-                                    context.log(f"📊 Retrieved {len(transactions)} transactions for account {account_id}")
-                                except Exception as e:
-                                    context.log(f"❌ Error calling GoCardless API for account {account_id}: {e}")
-                                    continue
-
-                                # Process and store transactions
-                                for transaction in transactions[:100]:  # Limit to avoid overwhelming
-                                    try:
-                                        doc_id = process_transaction(
-                                            databases, database_id, transactions_collection_id, balances_collection_id,
-                                            account, transaction, user_id
-                                        )
-                                        total_transactions_synced += 1
-                                        context.log(f"✅ Successfully processed transaction: {doc_id}")
-
-                                    except AppwriteException as e:
-                                        if "already exists" in str(e) or e.code == 409:
-                                            context.log(f"⏭️ Transaction already exists for {account_id}, skipping")
-                                        else:
-                                            context.log(f"❌ Error processing transaction for account {account_id}: {e}")
-
-                                # Update balances
-                                try:
-                                    context.log(f"⚖️ Fetching balances for account {account_id}")
-                                    balances_response = gocardless.get_account_balances(account_id)
-                                    balances = balances_response.get("balances", [])
-
-                                    context.log(f"📊 Found {len(balances)} balance records for account {account_id}")
-
-                                    for balance in balances:
-                                        balance_type = balance.get("balanceType") or "closingBooked"
-                                        reference_date = balance.get("referenceDate") or datetime.now().strftime("%Y-%m-%d")
-                                        amount = balance.get("balanceAmount", {}).get("amount") or "0"
-
-                                        # Check if balance already exists
-                                        try:
-                                            existing_balances = databases.list_documents(
-                                                database_id,
-                                                balances_collection_id,
-                                                [
-                                                    Query.equal("accountId", account_id),
-                                                    Query.equal("balanceType", balance_type),
-                                                    Query.equal("referenceDate", reference_date)
-                                                ]
-                                            )
-
-                                            if existing_balances["documents"]:
-                                                context.log(f"⏭️ Balance for {account_id} {balance_type} {reference_date} already exists, skipping")
-                                                continue
-                                        except AppwriteException:
-                                            context.log("❌ Error checking existing balance, proceeding with creation")
-
-                                        # Create balance record
-                                        context.log(f"💾 Storing balance: {amount} {balance.get('balanceAmount', {}).get('currency')} for {account_id}")
-                                        databases.create_document(
-                                            database_id,
-                                            balances_collection_id,
-                                            f"{account_id}_{balance_type}_{reference_date}",
-                                            {
-                                                "userId": user_id,
-                                                "accountId": account_id,
-                                                "balanceAmount": amount,
-                                                "currency": balance.get("balanceAmount", {}).get("currency") or "EUR",
-                                                "balanceType": balance_type,
-                                                "referenceDate": reference_date,
-                                            }
-                                        )
-                                        context.log(f"✅ Balance stored successfully for account {account_id}")
-
-                                except Exception as e:
-                                    context.log(f"❌ Error updating balances for account {account_id}: {e}")
-
-                            except Exception as e:
-                                context.log(f"❌ Error processing account {account_id}: {e}")
-
-                            # Rate limiting delay
-                            if k < len(account_batch) - 1:
-                                context.log("⏳ Waiting 500ms before next account in batch...")
-                                time.sleep(0.5)
-
-                        # Delay between batches
-                        if j + 5 < len(accounts):
-                            context.log("⏳ Waiting 2s before next batch...")
-                            time.sleep(2)
-
-                    total_users_processed += 1
-                    context.log(f"✅ Successfully processed user {user_id}")
-
-                    # Delay between users
-                    if i < len(users_to_process) - 1:
-                        context.log("⏳ Waiting 1s before next user...")
-                        time.sleep(1)
-
+                    context.log(f"📊 Found {len(transactions)} transactions")
                 except Exception as e:
-                    context.log(f"❌ Failed to sync user {user_id}: {e}")
+                    context.log(f"❌ Error fetching transactions: {e}")
                     continue
 
-            context.log(f"🎉 Sync completed. Processed {total_users_processed} users, synced {total_transactions_synced} transactions")
+                # Store transactions
+                for tx in transactions[:50]:  # Limit to 50 per account
+                    try:
+                        # Ensure transaction is a dictionary
+                        if not isinstance(tx, dict):
+                            context.log(f"❌ Invalid transaction data type: {type(tx)}, value: {tx}")
+                            continue
 
-            return context.res.json({
+                        tx_id = tx.get("transactionId") or tx.get(
+                            "internalTransactionId"
+                        )
+                        doc_id = generate_doc_id(
+                            tx_id, account_id, tx.get("bookingDate")
+                        )
+
+                        # Check if exists
+                        try:
+                            databases.get_document(
+                                database_id, transactions_collection, doc_id
+                            )
+                            continue  # Skip if exists
+                        except:
+                            pass
+
+                        # Prepare transaction data with safe access
+                        transaction_amount = tx.get("transactionAmount", {})
+                        if not isinstance(transaction_amount, dict):
+                            transaction_amount = {}
+
+                        amount = transaction_amount.get("amount", "0")
+                        description = (
+                            tx.get("remittanceInformationUnstructured")
+                            or tx.get("additionalInformation")
+                            or ""
+                        )
+                        counterparty = (
+                            tx.get("creditorName") or tx.get("debtorName") or ""
+                        )
+
+                        tx_data = {
+                            "userId": user_id,
+                            "accountId": account_id,
+                            "transactionId": str(tx_id)[:255] if tx_id else doc_id,
+                            "amount": str(amount),
+                            "currency": (
+                                transaction_amount.get("currency") or "EUR"
+                            )[:3],
+                            "bookingDate": (
+                                tx.get("bookingDate", "")[:10]
+                                if tx.get("bookingDate")
+                                else None
+                            ),
+                            "valueDate": (
+                                tx.get("valueDate", "")[:10]
+                                if tx.get("valueDate")
+                                else None
+                            ),
+                            "description": description[:500],
+                            "counterparty": counterparty[:255],
+                            "category": categorize_transaction(
+                                description,
+                                counterparty,
+                                amount,
+                                databases,
+                                database_id,
+                                transactions_collection,
+                                user_id,
+                            ),
+                            "raw": json.dumps(tx)[:10000],
+                        }
+
+                        databases.create_document(
+                            database_id, transactions_collection, doc_id, tx_data
+                        )
+                        total_transactions += 1
+                        context.log(f"✅ Stored transaction: {doc_id}")
+
+                    except Exception as e:
+                        context.log(f"❌ Error storing transaction: {e}")
+                        context.log(f"❌ Transaction data: {tx}")
+
+                # Fetch and store balances
+                try:
+                    balance_response = gocardless.get_balances(account_id)
+
+                    # Ensure response is a dictionary
+                    if not isinstance(balance_response, dict):
+                        context.log(f"❌ Invalid balance response type: {type(balance_response)}")
+                        balances = []
+                    else:
+                        balances = balance_response.get("balances", [])
+
+                    # Ensure balances is a list
+                    if not isinstance(balances, list):
+                        context.log(f"❌ Invalid balances list type: {type(balances)}")
+                        balances = []
+
+                    for balance in balances:
+                        # Ensure balance is a dictionary
+                        if not isinstance(balance, dict):
+                            context.log(f"❌ Invalid balance data type: {type(balance)}, value: {balance}")
+                            continue
+
+                        balance_type = balance.get("balanceType", "closingBooked")
+                        reference_date = balance.get(
+                            "referenceDate", datetime.now().strftime("%Y-%m-%d")
+                        )
+                        balance_amount = balance.get("balanceAmount", {})
+                        if not isinstance(balance_amount, dict):
+                            balance_amount = {}
+
+                        amount = balance_amount.get("amount", "0")
+
+                        balance_doc_id = (
+                            f"{account_id}_{balance_type}_{reference_date}"[:36]
+                        )
+
+                        # Check if exists
+                        try:
+                            databases.get_document(
+                                database_id, balances_collection, balance_doc_id
+                            )
+                            continue
+                        except:
+                            pass
+
+                        balance_data = {
+                            "userId": user_id,
+                            "accountId": account_id,
+                            "balanceAmount": str(amount),
+                            "currency": (
+                                balance_amount.get("currency")
+                                or "EUR"
+                            )[:3],
+                            "balanceType": balance_type,
+                            "referenceDate": reference_date,
+                        }
+
+                        databases.create_document(
+                            database_id,
+                            balances_collection,
+                            balance_doc_id,
+                            balance_data,
+                        )
+                        total_balances += 1
+                        context.log(f"✅ Stored balance: {balance_doc_id}")
+
+                except Exception as e:
+                    context.log(f"❌ Error storing balances: {e}")
+
+                # Rate limiting
+                if i < len(accounts) - 1:
+                    time.sleep(1)
+
+            except Exception as e:
+                context.log(f"❌ Error processing account {account_id}: {e}")
+
+        context.log(
+            f"🎉 Sync completed: {total_transactions} transactions, {total_balances} balances"
+        )
+
+        return context.res.json(
+            {
                 "success": True,
-                "usersProcessed": total_users_processed,
-                "transactionsSynced": total_transactions_synced,
-                "totalUsersFound": len(user_ids)
-            })
-
-        except AppwriteException as e:
-            context.error(f"💥 Critical sync failure: {e}")
-            return context.res.json({"success": False, "error": str(e)})
+                "transactionsSynced": total_transactions,
+                "balancesSynced": total_balances,
+                "accountsProcessed": len(accounts),
+            }
+        )
 
     except Exception as e:
-        context.error(f"💥 Critical error in main function: {e}")
+        context.error(f"💥 Sync failed: {e}")
         return context.res.json({"success": False, "error": str(e)})
