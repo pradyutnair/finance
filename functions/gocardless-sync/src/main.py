@@ -13,7 +13,7 @@ import openai
 # Appwrite SDK imports
 from appwrite.client import Client
 from appwrite.services.databases import Databases
-from appwrite.query import Query
+#from appwrite.query import Query
 from appwrite.exception import AppwriteException
 
 ############################################################# GoCardless
@@ -95,10 +95,10 @@ def get_last_booking_date(databases, database_id, collection_id, user_id, accoun
             database_id,
             collection_id,
             queries=[
-                Query.equal("userId", user_id),
-                Query.equal("accountId", account_id),
-                Query.order_desc("bookingDate"),
-                Query.limit(1),
+                {"method": "equal", "attribute": "userId", "values": [user_id]},
+                {"method": "equal", "attribute": "accountId", "values": [account_id]},
+                {"method": "orderDesc", "attribute": "bookingDate"},
+                {"method": "limit", "values": [1]},
             ],
         )
         docs = resp.get("documents", []) if isinstance(resp, dict) else resp['documents']
@@ -140,8 +140,8 @@ def load_previous_categories(
             database_id,
             collection_id,
             queries=[
-                Query.equal("userId", user_id),
-                Query.limit(100),
+                {"method": "equal", "attribute": "userId", "values": [user_id]},
+                {"method": "limit", "values": [100]},
             ],
         )
         documents = resp.get("documents", [])
@@ -257,8 +257,8 @@ def main(context):
             database_id,
             bank_accounts_collection,
             queries=[
-                Query.equal("status", "active"),
-                Query.limit(50),
+                {"method": "equal", "attribute": "status", "values": ["active"]},
+                {"method": "limit", "values": [50]},
             ],
         )
         accounts = accounts_response.get("documents", []) if isinstance(accounts_response, dict) else accounts_response['documents']
