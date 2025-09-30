@@ -223,6 +223,7 @@ def categorize_transaction(
             temperature=0,
         )
         category = response.choices[0].message.content.strip()
+        print(f"Categorized transaction: {text} as {category} via OpenAI")
         return category if category in categories else "Uncategorized"
 
     except Exception as e:
