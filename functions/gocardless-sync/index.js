@@ -3,188 +3,240 @@
  * Runs 4 times daily to fetch latest transactions and update database
  */
 
-const { Client, Databases, Query, ID } = require('appwrite');
-const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = require('./lib/gocardless.js');
-const { createHash } = require('crypto');
+// This Appwrite function will be executed every time your function is triggered
+export default async ({ req, res, log, error }) => {
+  // Use context.log() for logging that will be visible in Appwrite logs
+  log('Starting GoCardless transaction sync...');
 
-// Import the existing categorization functions
-async function loadCategorizeModule() {
-  // In a real deployment, you'd need to transpile the TypeScript or use a different approach
-  // For now, we'll use a simplified version that matches the existing logic
-  return {
-    suggestCategory: async (description, counterparty, amount, currency) => {
-      // Use simple heuristic-based categorization matching the existing logic
-      const text = `${counterparty || ''} ${description || ''}`.toLowerCase().trim();
-      const value = parseFloat(amount || '0');
+  // Import modules (CommonJS style for compatibility)
+  const { Client, Databases, Query, ID } = require('appwrite');
+  const { getTransactions, getAccounts, getBalances, getInstitution, HttpError } = require('./lib/gocardless.js');
+  const { createHash } = require('crypto');
 
-      // Basic categorization logic (simplified from existing categorize.ts)
-      if (text.includes('salary') || text.includes('payroll') || (value > 0 && text.includes('income'))) {
-        return 'Income';
-      }
-      if (text.includes('restaurant') || text.includes('cafe') || text.includes('mcdonald') || text.includes('starbucks')) {
-        return 'Restaurant';
-      }
-      if (text.includes('uber') || text.includes('taxi') || text.includes('fuel') || text.includes('gas')) {
-        return 'Transport';
-      }
-      if (text.includes('amazon') || text.includes('store') || text.includes('shopping')) {
-        return 'Shopping';
-      }
-      if (text.includes('netflix') || text.includes('spotify') || text.includes('entertainment')) {
-        return 'Entertainment';
-      }
-      if (text.includes('electric') || text.includes('gas') || text.includes('utility') || text.includes('rent')) {
-        return 'Utilities';
-      }
-      if (text.includes('grocery') || text.includes('supermarket') || text.includes('aldi') || text.includes('tesco')) {
-        return 'Groceries';
-      }
+  // Initialize Appwrite client
+  const client = new Client()
+    .setEndpoint(process.env.APPWRITE_ENDPOINT)
+    .setProject(process.env.APPWRITE_PROJECT_ID)
+    .setKey(req.headers['x-appwrite-key'] ?? '');
 
-      return 'Uncategorized';
-    },
+  const databases = new Databases(client);
 
-    findExistingCategory: async (databases, databaseId, collectionId, userId, description) => {
-      // Simplified version of findExistingCategory
-      try {
-        const response = await databases.listDocuments(
-          databaseId,
-          collectionId,
-          [
-            databases.Query.equal('userId', userId),
-            databases.Query.search('description', description.slice(0, 50)),
-            databases.Query.limit(5)
-          ]
-        );
+  // Configuration
+  const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+  const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+  const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
+  const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
-        const categoryCount = {};
-        for (const doc of response.documents) {
-          if (doc.category && doc.category !== 'Uncategorized') {
-            categoryCount[doc.category] = (categoryCount[doc.category] || 0) + 1;
-          }
-        }
+  // Rate limiting configuration
+  const API_CALL_DELAY_MS = 1000; // 1 second between API calls
+  const MAX_ACCOUNTS_PER_BATCH = 5; // Process accounts in small batches
+  const MAX_USERS_PER_EXECUTION = 10; // Limit users per execution to avoid timeouts
 
-        const topCategory = Object.entries(categoryCount).sort(([,a], [,b]) => b - a)[0];
-        return topCategory && topCategory[1] >= 2 ? topCategory[0] : null;
+  // Utility function for rate limiting
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-      } catch (error) {
-        console.error('[Categorize] Error finding existing category:', error);
-        return null;
-      }
+  // Categorization functions (simplified version of existing categorize.ts logic)
+  function suggestCategory(description, counterparty, amount) {
+    const text = `${counterparty || ''} ${description || ''}`.toLowerCase().trim();
+    const value = parseFloat(amount || '0');
+
+    if (text.includes('salary') || text.includes('payroll') || (value > 0 && text.includes('income'))) {
+      return 'Income';
     }
-  };
-}
+    if (text.includes('restaurant') || text.includes('cafe') || text.includes('mcdonald') || text.includes('starbucks')) {
+      return 'Restaurant';
+    }
+    if (text.includes('uber') || text.includes('taxi') || text.includes('fuel') || text.includes('gas')) {
+      return 'Transport';
+    }
+    if (text.includes('amazon') || text.includes('store') || text.includes('shopping')) {
+      return 'Shopping';
+    }
+    if (text.includes('netflix') || text.includes('spotify') || text.includes('entertainment')) {
+      return 'Entertainment';
+    }
+    if (text.includes('electric') || text.includes('gas') || text.includes('utility') || text.includes('rent')) {
+      return 'Utilities';
+    }
+    if (text.includes('grocery') || text.includes('supermarket') || text.includes('aldi') || text.includes('tesco')) {
+      return 'Groceries';
+    }
 
-// Initialize Appwrite client
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT)
-  .setProject(process.env.APPWRITE_PROJECT_ID)
-  .setKey(process.env.APPWRITE_API_KEY);
+    return 'Uncategorized';
+  }
 
-const databases = new Databases(client);
+  async function findExistingCategory(databases, databaseId, collectionId, userId, description) {
+    try {
+      const response = await databases.listDocuments(
+        databaseId,
+        collectionId,
+        [
+          Query.equal('userId', userId),
+          Query.search('description', description.slice(0, 50)),
+          Query.limit(5)
+        ]
+      );
 
-// Configuration
-const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
-const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
-const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
+      const categoryCount = {};
+      for (const doc of response.documents) {
+        if (doc.category && doc.category !== 'Uncategorized') {
+          categoryCount[doc.category] = (categoryCount[doc.category] || 0) + 1;
+        }
+      }
 
-// Rate limiting configuration
-const API_CALL_DELAY_MS = 1000; // 1 second between API calls
-const MAX_ACCOUNTS_PER_BATCH = 5; // Process accounts in small batches
-const MAX_USERS_PER_EXECUTION = 10; // Limit users per execution to avoid timeouts
+      const topCategory = Object.entries(categoryCount).sort(([,a], [,b]) => b - a)[0];
+      return topCategory && topCategory[1] >= 2 ? topCategory[0] : null;
 
-// Utility function for rate limiting
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+    } catch (error) {
+      log(`Error finding existing category: ${error.message}`);
+      return null;
+    }
+  }
 
-async function syncUserTransactions(userId, categorizeModule) {
-  console.log(`[Sync] Starting sync for user: ${userId}`);
-
+  // Main sync execution logic
   try {
-    // Get all bank accounts for this user
+    // Get all users with active bank accounts
     const accountsResponse = await databases.listDocuments(
       DATABASE_ID,
       BANK_ACCOUNTS_COLLECTION_ID,
       [
-        Query.equal('userId', userId),
-        Query.equal('status', 'active')
+        Query.equal('status', 'active'),
+        Query.limit(100) // Process in batches if needed
       ]
     );
 
-    const accounts = accountsResponse.documents;
-    console.log(`[Sync] Found ${accounts.length} active accounts for user ${userId}`);
+    // Get unique user IDs
+    const userIds = [...new Set(accountsResponse.documents.map(account => account.userId))];
+    log(`Found ${userIds.length} users with active bank accounts`);
 
+    if (userIds.length === 0) {
+      log('No users with active bank accounts found');
+      return res.json({ success: true, message: 'No users to sync', usersProcessed: 0 });
+    }
+
+    // Process users in batches to avoid overwhelming the system
+    const usersToProcess = userIds.slice(0, MAX_USERS_PER_EXECUTION);
+    log(`Processing ${usersToProcess.length} users (limited to ${MAX_USERS_PER_EXECUTION} per execution)`);
+
+    let totalUsersProcessed = 0;
     let totalTransactionsSynced = 0;
 
-    // Process accounts in batches with rate limiting
-    for (let i = 0; i < accounts.length; i += MAX_ACCOUNTS_PER_BATCH) {
-      const accountBatch = accounts.slice(i, i + MAX_ACCOUNTS_PER_BATCH);
-      console.log(`[Sync] Processing account batch ${Math.floor(i / MAX_ACCOUNTS_PER_BATCH) + 1}/${Math.ceil(accounts.length / MAX_ACCOUNTS_PER_BATCH)} (${accountBatch.length} accounts)`);
+    // Process each user with individual error handling and rate limiting
+    for (let i = 0; i < usersToProcess.length; i++) {
+      const userId = usersToProcess[i];
 
-      for (let j = 0; j < accountBatch.length; j++) {
-        const account = accountBatch[j];
-        const accountId = account.accountId;
+      try {
+        log(`Processing user ${userId} (${i + 1}/${usersToProcess.length})`);
 
-        try {
-          console.log(`[Sync] Processing account: ${accountId} (${j + 1}/${accountBatch.length})`);
+        // Get all bank accounts for this user
+        const userAccountsResponse = await databases.listDocuments(
+          DATABASE_ID,
+          BANK_ACCOUNTS_COLLECTION_ID,
+          [
+            Query.equal('userId', userId),
+            Query.equal('status', 'active')
+          ]
+        );
 
-          // Get transactions from GoCardless
-          const transactionsResponse = await getTransactions(accountId);
-          const transactions = transactionsResponse?.transactions?.booked || [];
+        const accounts = userAccountsResponse.documents;
+        log(`Found ${accounts.length} active accounts for user ${userId}`);
 
-          console.log(`[Sync] Retrieved ${transactions.length} transactions for account ${accountId}`);
+        // Process accounts in batches with rate limiting
+        for (let j = 0; j < accounts.length; j += MAX_ACCOUNTS_PER_BATCH) {
+          const accountBatch = accounts.slice(j, j + MAX_ACCOUNTS_PER_BATCH);
+          log(`Processing account batch ${Math.floor(j / MAX_ACCOUNTS_PER_BATCH) + 1}/${Math.ceil(accounts.length / MAX_ACCOUNTS_PER_BATCH)} (${accountBatch.length} accounts)`);
 
-          // Process and store transactions
-          for (const transaction of transactions.slice(0, 100)) { // Limit to avoid overwhelming
+          for (let k = 0; k < accountBatch.length; k++) {
+            const account = accountBatch[k];
+            const accountId = account.accountId;
+
             try {
-              await processTransaction(account, transaction, userId, categorizeModule);
-              totalTransactionsSynced++;
-            } catch (error) {
-              if (error.message?.includes('already exists') || error.code === 409) {
-                // Duplicate transaction, skip
-                console.log(`[Sync] Transaction already exists for ${accountId}`);
-              } else {
-                console.error(`[Sync] Error processing transaction for account ${accountId}:`, error);
+              log(`Processing account: ${accountId} (${k + 1}/${accountBatch.length})`);
+
+              // Get transactions from GoCardless
+              const transactionsResponse = await getTransactions(accountId);
+              const transactions = transactionsResponse?.transactions?.booked || [];
+
+              log(`Retrieved ${transactions.length} transactions for account ${accountId}`);
+
+              // Process and store transactions
+              for (const transaction of transactions.slice(0, 100)) {
+                try {
+                  await processTransaction(databases, account, transaction, userId, log);
+                  totalTransactionsSynced++;
+                } catch (error) {
+                  if (error.message?.includes('already exists') || error.code === 409) {
+                    log(`Transaction already exists for ${accountId}`);
+                  } else {
+                    log(`Error processing transaction for account ${accountId}: ${error.message}`);
+                  }
+                }
               }
+
+              // Update balances if needed
+              try {
+                await updateAccountBalances(databases, accountId, userId, log);
+              } catch (error) {
+                log(`Error updating balances for account ${accountId}: ${error.message}`);
+              }
+
+            } catch (error) {
+              log(`Error processing account ${accountId}: ${error.message}`);
+            }
+
+            // Add delay between accounts within a batch
+            if (k < accountBatch.length - 1) {
+              log(`Waiting ${API_CALL_DELAY_MS}ms before next account in batch...`);
+              await sleep(API_CALL_DELAY_MS / 2);
             }
           }
 
-          // Update balances if needed
-          try {
-            await updateAccountBalances(accountId, userId);
-          } catch (error) {
-            console.error(`[Sync] Error updating balances for account ${accountId}:`, error);
+          // Add longer delay between batches
+          if (j + MAX_ACCOUNTS_PER_BATCH < accounts.length) {
+            log(`Waiting ${API_CALL_DELAY_MS * 2}ms before next batch...`);
+            await sleep(API_CALL_DELAY_MS * 2);
           }
-
-        } catch (error) {
-          console.error(`[Sync] Error processing account ${accountId}:`, error);
         }
 
-        // Add delay between accounts within a batch
-        if (j < accountBatch.length - 1) {
-          console.log(`[Sync] Waiting ${API_CALL_DELAY_MS}ms before next account in batch...`);
-          await sleep(API_CALL_DELAY_MS / 2); // Shorter delay within batch
-        }
-      }
+        totalUsersProcessed++;
+        log(`Successfully processed user ${userId}`);
 
-      // Add longer delay between batches
-      if (i + MAX_ACCOUNTS_PER_BATCH < accounts.length) {
-        console.log(`[Sync] Waiting ${API_CALL_DELAY_MS * 2}ms before next batch...`);
-        await sleep(API_CALL_DELAY_MS * 2);
+        // Add delay between users to respect rate limits
+        if (i < usersToProcess.length - 1) {
+          log(`Waiting ${API_CALL_DELAY_MS}ms before next user...`);
+          await sleep(API_CALL_DELAY_MS);
+        }
+
+      } catch (error) {
+        log(`Failed to sync user ${userId}: ${error.message}`);
+        // Continue with other users even if one fails
       }
     }
 
-    console.log(`[Sync] Completed sync for user ${userId}. Total transactions synced: ${totalTransactionsSynced}`);
-    return totalTransactionsSynced;
+    const endTime = new Date();
+    log(`Sync completed. Processed ${totalUsersProcessed} users, synced ${totalTransactionsSynced} transactions`);
+
+    return res.json({
+      success: true,
+      usersProcessed: totalUsersProcessed,
+      transactionsSynced: totalTransactionsSynced,
+      totalUsersFound: userIds.length
+    });
 
   } catch (error) {
-    console.error(`[Sync] Error syncing user ${userId}:`, error);
-    throw error;
+    log(`Critical sync failure: ${error.message}`);
+    error(`Sync error: ${error.message}`);
+    return res.json({ success: false, error: error.message });
   }
-}
+};
 
-async function processTransaction(account, transaction, userId, categorizeModule) {
+// Helper functions
+async function processTransaction(databases, account, transaction, userId, log) {
+  const { createHash } = require('crypto');
+  const { ID } = require('appwrite');
+
   // Generate unique document ID to prevent duplicates
   const providerTransactionId = transaction.transactionId;
   const fallbackIdBase = transaction.internalTransactionId ||
@@ -213,21 +265,20 @@ async function processTransaction(account, transaction, userId, categorizeModule
   let category = 'Uncategorized';
 
   try {
-    const existingCategory = await categorizeModule.findExistingCategory(
+    const existingCategory = await findExistingCategory(
       databases,
       DATABASE_ID,
       TRANSACTIONS_COLLECTION_ID,
       userId,
       txDescription
     );
-    category = existingCategory || await categorizeModule.suggestCategory(
+    category = existingCategory || suggestCategory(
       txDescription,
       transaction.creditorName || transaction.debtorName || '',
-      transaction.transactionAmount?.amount,
-      transaction.transactionAmount?.currency
+      transaction.transactionAmount?.amount
     );
   } catch (error) {
-    console.warn('[Sync] Error getting category:', error);
+    log(`Error getting category: ${error.message}`);
     category = 'Uncategorized';
   }
 
@@ -253,7 +304,7 @@ async function processTransaction(account, transaction, userId, categorizeModule
   );
 }
 
-async function updateAccountBalances(accountId, userId) {
+async function updateAccountBalances(databases, accountId, userId, log) {
   try {
     const balancesResponse = await getBalances(accountId);
     const balances = balancesResponse?.balances || [];
@@ -275,11 +326,11 @@ async function updateAccountBalances(accountId, userId) {
         );
 
         if (existingBalances.documents.length > 0) {
-          console.log(`[Sync] Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
+          log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
           continue;
         }
       } catch (queryError) {
-        console.log('[Sync] Error checking existing balance, proceeding with creation');
+        log('Error checking existing balance, proceeding with creation');
       }
 
       // Create balance record
@@ -298,137 +349,7 @@ async function updateAccountBalances(accountId, userId) {
       );
     }
   } catch (error) {
-    console.error(`[Sync] Error updating balances for account ${accountId}:`, error);
+    log(`Error updating balances for account ${accountId}: ${error.message}`);
   }
 }
 
-async function getAllUsersWithBankAccounts() {
-  try {
-    const accountsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      BANK_ACCOUNTS_COLLECTION_ID,
-      [
-        Query.equal('status', 'active'),
-        Query.limit(100) // Process in batches if needed
-      ]
-    );
-
-    // Get unique user IDs
-    const userIds = [...new Set(accountsResponse.documents.map(account => account.userId))];
-    console.log(`[Sync] Found ${userIds.length} users with active bank accounts`);
-
-    return userIds;
-  } catch (error) {
-    console.error('[Sync] Error getting users with bank accounts:', error);
-    throw error;
-  }
-}
-
-async function main() {
-  const startTime = new Date();
-  console.log('[Sync] Starting GoCardless transaction sync...', {
-    timestamp: startTime.toISOString(),
-    functionVersion: '1.0.0'
-  });
-
-  let syncResults = {
-    usersProcessed: 0,
-    totalTransactionsSynced: 0,
-    errors: [],
-    warnings: []
-  };
-
-  try {
-    // Load categorize module
-    const categorizeModule = await loadCategorizeModule();
-
-    // Get all users with active bank accounts
-    const userIds = await getAllUsersWithBankAccounts();
-
-    if (userIds.length === 0) {
-      console.log('[Sync] No users with active bank accounts found');
-      return syncResults;
-    }
-
-    console.log(`[Sync] Found ${userIds.length} users with active bank accounts`);
-
-    // Process users in batches to avoid overwhelming the system
-    const usersToProcess = userIds.slice(0, MAX_USERS_PER_EXECUTION);
-    console.log(`[Sync] Processing ${usersToProcess.length} users (limited to ${MAX_USERS_PER_EXECUTION} per execution)`);
-
-    // Process each user with individual error handling and rate limiting
-    for (let i = 0; i < usersToProcess.length; i++) {
-      const userId = usersToProcess[i];
-
-      try {
-        console.log(`[Sync] Processing user ${userId} (${i + 1}/${usersToProcess.length})`);
-        const transactionsSynced = await syncUserTransactions(userId, categorizeModule);
-        syncResults.totalTransactionsSynced += transactionsSynced;
-        syncResults.usersProcessed++;
-        console.log(`[Sync] Successfully synced ${transactionsSynced} transactions for user ${userId}`);
-
-        // Add delay between users to respect rate limits
-        if (i < usersToProcess.length - 1) {
-          console.log(`[Sync] Waiting ${API_CALL_DELAY_MS}ms before next user...`);
-          await sleep(API_CALL_DELAY_MS);
-        }
-
-      } catch (error) {
-        const errorMessage = `Failed to sync user ${userId}: ${error.message}`;
-        console.error(`[Sync] ${errorMessage}`, error);
-        syncResults.errors.push({
-          userId,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
-        // Continue with other users even if one fails
-
-        // Add delay even after errors
-        if (i < usersToProcess.length - 1) {
-          console.log(`[Sync] Waiting ${API_CALL_DELAY_MS}ms before next user (after error)...`);
-          await sleep(API_CALL_DELAY_MS);
-        }
-      }
-    }
-
-    const endTime = new Date();
-    const duration = endTime.getTime() - startTime.getTime();
-
-    console.log(`[Sync] Sync completed in ${duration}ms`, {
-      usersProcessed: syncResults.usersProcessed,
-      totalTransactionsSynced: syncResults.totalTransactionsSynced,
-      errors: syncResults.errors.length,
-      warnings: syncResults.warnings.length,
-      successRate: `${((syncResults.usersProcessed / userIds.length) * 100).toFixed(1)}%`
-    });
-
-    // Log warnings if any
-    if (syncResults.warnings.length > 0) {
-      console.warn('[Sync] Warnings during sync:', syncResults.warnings);
-    }
-
-    // Log errors if any
-    if (syncResults.errors.length > 0) {
-      console.error('[Sync] Errors during sync:', syncResults.errors);
-    }
-
-    return syncResults;
-
-  } catch (error) {
-    const endTime = new Date();
-    const duration = endTime.getTime() - startTime.getTime();
-
-    console.error(`[Sync] Critical sync failure after ${duration}ms:`, error);
-
-    syncResults.errors.push({
-      type: 'critical',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-
-    throw error;
-  }
-}
-
-// Export for Appwrite Functions
-module.exports = { main };

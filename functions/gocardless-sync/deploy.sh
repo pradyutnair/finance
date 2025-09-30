@@ -25,6 +25,7 @@ REQUIRED_VARS=(
     "APPWRITE_ENDPOINT"
     "APPWRITE_PROJECT_ID"
     "APPWRITE_DATABASE_ID"
+    "APPWRITE_API_KEY"
     "GOCARDLESS_SECRET_ID"
     "GOCARDLESS_SECRET_KEY"
 )
@@ -45,6 +46,7 @@ if [ ${#MISSING_VARS[@]} -ne 0 ]; then
     echo "   export APPWRITE_ENDPOINT='your-appwrite-endpoint'"
     echo "   export APPWRITE_PROJECT_ID='your-project-id'"
     echo "   export APPWRITE_DATABASE_ID='your-database-id'"
+    echo "   export APPWRITE_API_KEY='your-appwrite-api-key'"
     echo "   export GOCARDLESS_SECRET_ID='your-gocardless-id'"
     echo "   export GOCARDLESS_SECRET_KEY='your-gocardless-key'"
     exit 1
