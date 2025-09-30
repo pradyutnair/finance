@@ -247,10 +247,10 @@ def main(context):
         )
 
         # Configuration
-        database_id = "68d42ac20031b27284c9"
-        transactions_collection = os.environ.get("APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions")
-        bank_accounts_collection = os.environ.get("APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts")
-        balances_collection = os.environ.get("APPWRITE_BALANCES_COLLECTION_ID", "balances")
+        database_id = os.environ["APPWRITE_DATABASE_ID"]
+        transactions_collection = os.environ["APPWRITE_TRANSACTIONS_COLLECTION_ID"]
+        bank_accounts_collection = os.environ["APPWRITE_BANK_ACCOUNTS_COLLECTION_ID"]
+        balances_collection = os.environ["APPWRITE_BALANCES_COLLECTION_ID"]
 
         # Get all active bank accounts
         accounts_response = databases.list_documents(
