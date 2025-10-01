@@ -114,7 +114,7 @@ type AggregatedDay = {
   expenses: number
   savings: number
   net: number
-  categories: Record<string, number>
+  categories: Record<string, { income: number; expenses: number; net: number }>
 }
 
 export function FinanceHeatmapCard() {
@@ -216,13 +216,35 @@ export function FinanceHeatmapCard() {
       const cat = (tx as any).category || "Uncategorized"
 
       if (amount > 0) {
+        // Income (positive amounts)
         map[key].income += amount
         if (SAVINGS_CATEGORIES.has(cat)) map[key].savings += amount
+
+        // Category income tracking
+        if (!map[key].categories[cat]) {
+          map[key].categories[cat] = { income: 0, expenses: 0, net: 0 }
+        }
+        map[key].categories[cat].income += amount
       } else if (amount < 0) {
-        map[key].expenses += Math.abs(amount)
+        // Expenses (negative amounts, store as positive)
+        const expenseAmount = Math.abs(amount)
+        map[key].expenses += expenseAmount
+
+        // Category expense tracking
+        if (!map[key].categories[cat]) {
+          map[key].categories[cat] = { income: 0, expenses: 0, net: 0 }
+        }
+        map[key].categories[cat].expenses += expenseAmount
       }
+
+      // Recalculate net for this day
       map[key].net = map[key].income - map[key].expenses
-      map[key].categories[cat] = (map[key].categories[cat] || 0) + Math.abs(amount)
+
+      // Update category net values
+      Object.keys(map[key].categories).forEach(catName => {
+        const catData = map[key].categories[catName]
+        catData.net = catData.income - catData.expenses
+      })
     }
     return map
   }, [transactions, weeks, convertAmount, baseCurrency])
@@ -338,7 +360,9 @@ export function FinanceHeatmapCard() {
     const d = dayMap[key]
     const disabled = date < startOfWeek(fromDate) || date > endOfWeek(toDate) || !d
     const filteredCats = d
-      ? Object.entries(d.categories).filter(([name]) => categoryFilter === "all" || name === categoryFilter)
+      ? Object.entries(d.categories)
+          .filter(([name]) => categoryFilter === "all" || name === categoryFilter)
+          .map(([name, catData]) => [name, catData] as [string, { income: number; expenses: number; net: number }])
       : []
 
     const raw = d ? dayValue(d) : 0
@@ -394,10 +418,12 @@ export function FinanceHeatmapCard() {
               {filteredCats.length > 0 && (
                 <div className="pt-1 border-t space-y-0.5">
                   <div className="text-[10px] font-medium opacity-60">Top Categories:</div>
-                  {filteredCats.slice(0, 3).map(([name, amt]) => (
+                  {filteredCats.slice(0, 3).map(([name, catData]) => (
                     <div key={name} className="flex justify-between gap-3 text-[11px]">
                       <span className="truncate">{name}</span>
-                      <span className="font-mono">{formatAmount(-Math.abs(amt), baseCurrency)}</span>
+                      <span className={`font-mono ${catData.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatAmount(catData.net, baseCurrency)}
+                      </span>
                     </div>
                   ))}
                   {filteredCats.length > 3 && (
