@@ -26,6 +26,7 @@ def main(context):
         )
         # Log messages and errors to the Appwrite Console
         # These logs won't be seen by your end users
+        context.log("Documents: " + str(documents["documents"]))
         context.log("Total users: " + str(response["total"]))
         context.log("Total documents: " + str(len(documents["documents"])))
     except AppwriteException as err:
