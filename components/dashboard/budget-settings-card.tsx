@@ -13,6 +13,7 @@ import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plan
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
 import { useDateRange } from "@/contexts/date-range-context"
+import { useCurrency } from "@/contexts/currency-context"
 
 interface BudgetCategory { key: string; label: string; categoryName: string }
 
@@ -44,6 +45,7 @@ const budgetCategories: BudgetCategory[] = [
 
 export function BudgetSettingsCard() {
   const { dateRange } = useDateRange()
+  const { formatAmount, baseCurrency: displayCurrency } = useCurrency()
   const [budgetData, setBudgetData] = useState<Partial<BudgetData>>({
     baseCurrency: 'EUR',
     groceriesBudget: 0,
@@ -325,7 +327,7 @@ export function BudgetSettingsCard() {
           <div className="flex items-center justify-between text-xs sm:text-sm">
             <span className="font-medium">Overall</span>
             <span className="font-mono">
-              {budgetData.baseCurrency} {totalSpent.toFixed(2)} / {budgetData.baseCurrency} {totalBudget.toFixed(2)}
+              {formatAmount(totalSpent)} / {formatAmount(totalBudget)}
             </span>
           </div>
           <Progress className="mt-2 [&>div]:bg-[#40221a] dark:[&>div]:bg-white" value={totalPct} />
@@ -360,7 +362,7 @@ export function BudgetSettingsCard() {
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-xs sm:text-sm">
                       <span className="font-mono">
-                        {isLoadingSpend ? '…' : `${budgetData.baseCurrency} ${spent.toFixed(2)}`}
+                        {isLoadingSpend ? '…' : formatAmount(spent)}
                       </span>
                       <span className="opacity-50">/</span>
                       <input
@@ -395,7 +397,7 @@ export function BudgetSettingsCard() {
             </Label>
             <Input
               id="baseCurrency"
-              value={budgetData.baseCurrency || 'EUR'}
+              value={budgetData.baseCurrency || displayCurrency}
               onChange={(e) => setBudgetData(prev => ({ ...prev, baseCurrency: e.target.value.toUpperCase() }))}
               className="w-20 text-center"
               maxLength={3}
