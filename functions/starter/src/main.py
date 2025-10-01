@@ -116,13 +116,15 @@ def main(context):
 
                     context.log(f"🔍 Checking if balance document exists: {balance_doc_id}")
                     if document_exists(databases, database_id, balances_collection, balance_doc_id):
-                        context.log(f"⏭️ Balance document {balance_doc_id} already exists, skipping")
-                        continue
+                        context.log(f"🔍 Updating existing balance document {balance_doc_id} in Appwrite...")
+                        databases.update_document(database_id, balances_collection, balance_doc_id, payload)
+                        context.log(f"✅ Updated balance: {balance_doc_id}")
+                    else:
+                        context.log(f"🔍 Creating new balance document {balance_doc_id} in Appwrite...")
+                        databases.create_document(database_id, balances_collection, balance_doc_id, payload)
+                        context.log(f"✅ Created balance: {balance_doc_id}")
 
-                    context.log(f"🔍 Creating balance document {balance_doc_id} in Appwrite...")
-                    databases.create_document(database_id, balances_collection, balance_doc_id, payload)
                     total_balances += 1
-                    context.log(f"✅ Stored balance: {balance_doc_id}")
 
                 if index < len(accounts) - 1:
                     time.sleep(1)
