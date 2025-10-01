@@ -24,7 +24,7 @@ export function categorizeHeuristic(description?: string | null, counterparty?: 
   if (has(["aldi","lidl","tesco","sainsbury","sainsbury's","asda","morrisons","whole foods","costco","grocery","supermarket","spar","coop","co-op"])) return "Groceries";
 
   // Restaurants, cafes, takeaways
-  if (has(["restaurant","cafe","coffee","starbucks","mcdonald","kfc","burger","pizza","domino","domino's","uber eats","deliveroo","doordash","just eat","pret","greggs","nando"])) return "Restaurant";
+  if (has(["restaurant","cafe","coffee","starbucks","mcdonald","kfc","burger","pizza","domino","domino's","uber eats","deliveroo","doordash","just eat","pret","greggs","nando"])) return "Restaurants";
 
   // Education
   if (has(["tuition","course","udemy","coursera","school","university","textbook","exam","udacity","edx"])) return "Education";

@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { useAccounts, getAuthHeader } from "@/lib/api"
 import { useCurrency } from "@/contexts/currency-context"
+import { DateRangeProvider } from "@/contexts/date-range-context"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -344,21 +345,22 @@ export default function BanksPage() {
 
   return (
     <AuthGuard requireAuth={true}>
-      <SidebarProvider
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)",
-          } as React.CSSProperties
-        }
-      >
-        <AppSidebar variant="inset" />
-        <SidebarInset>
-          <SiteHeader />
-          <div className="flex flex-1 flex-col">
-            <div className="@container/main flex flex-1 flex-col gap-2">
-              <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
-                <div className="px-4 lg:px-6">
+      <DateRangeProvider>
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": "calc(var(--spacing) * 72)",
+              "--header-height": "calc(var(--spacing) * 12)",
+            } as React.CSSProperties
+          }
+        >
+          <AppSidebar variant="inset" />
+          <SidebarInset>
+            <SiteHeader />
+            <div className="flex flex-1 flex-col">
+              <div className="@container/main flex flex-1 flex-col gap-2">
+                <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
+                  <div className="px-4 lg:px-6">
                   {/* Header Section */}
                   <div className="flex items-center justify-end mb-4">
                     <Link href="/link-bank" className="inline-flex">
@@ -438,6 +440,7 @@ export default function BanksPage() {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      </DateRangeProvider>
     </AuthGuard>
   )
 }

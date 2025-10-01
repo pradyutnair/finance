@@ -34,7 +34,7 @@ function createClient() {
 
 const CATEGORY_OPTIONS = [
   'Groceries',
-  'Restaurant',
+  'Restaurants',
   'Education',
   'Transport',
   'Travel',
@@ -56,7 +56,7 @@ function categorizeHeuristic(description, counterparty, amount) {
   const has = (arr) => arr.some((k) => text.includes(k));
 
   if (has(['aldi','lidl','tesco','sainsbury','asda','whole foods','costco','grocery','supermarket','spar'])) return 'Groceries';
-  if (has(['restaurant','cafe','coffee','starbucks','mcdonald','kfc','burger','pizza','domino','uber eats','deliveroo','doordash'])) return 'Restaurant';
+  if (has(['restaurant','cafe','coffee','starbucks','mcdonald','kfc','burger','pizza','domino','uber eats','deliveroo','doordash'])) return 'Restaurants';
   if (has(['tuition','course','udemy','coursera','school','university','textbook','exam'])) return 'Education';
   if (has(['uber','lyft','bolt','taxi','bus','train','metro','fuel','gas','petrol','shell','bp'])) return 'Transport';
   if (has(['hotel','airbnb','flight','airlines','ryanair','easyjet','booking.com','expedia'])) return 'Travel';
