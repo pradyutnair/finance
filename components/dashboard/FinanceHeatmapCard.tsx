@@ -176,7 +176,7 @@ export function FinanceHeatmapCard() {
     return undefined
   }, [dateRange, formatDateForAPI])
 
-  const { data, isLoading, error } = useTransactions({ dateRange: apiDateRange })
+  const { data, isLoading, error } = useTransactions({ dateRange: apiDateRange, limit: 10000, offset: 0 })
   const transactions = useMemo(() => {
     const arr = (data?.transactions as any[]) || []
     return arr.filter((tx) => !isExcludedTx(tx))
@@ -304,9 +304,12 @@ export function FinanceHeatmapCard() {
       setBoxH(r.height)
     })
     ro.observe(el)
-    const r0 = el.getBoundingClientRect()
-    setBoxW(r0.width)
-    setBoxH(r0.height)
+    // Measure on next frame to ensure layout has settled
+    requestAnimationFrame(() => {
+      const r0 = el.getBoundingClientRect()
+      setBoxW(r0.width)
+      setBoxH(r0.height)
+    })
     return () => ro.disconnect()
   }, [])
 
@@ -325,14 +328,19 @@ export function FinanceHeatmapCard() {
   const availableHeight = Math.max(0, boxH - headerH - 4)
 
   // Baseline cell size from width so grid always fills card width
-  const widthCell = Math.max(8, Math.floor((availableWidth - (cols - 1) * gapPx) / cols))
+  let widthCell = Math.max(8, Math.floor((availableWidth - (cols - 1) * gapPx) / cols))
+  widthCell = 48
 
   // Height-constrained cell size (only applied for short ranges)
-  const heightCell = Math.max(8, Math.floor((availableHeight - (rows - 1) * gapPx) / rows))
+  const heightCell: number | undefined = boxH > 0
+    ? Math.max(8, Math.floor((availableHeight - (rows - 1) * gapPx) / rows))
+    : undefined
 
   // If the range is short (<= 35 days), fit both width and height.
   // If longer, keep the width-driven size and allow vertical scrolling.
-  let cellPx = daysCount > 35 ? widthCell : Math.min(widthCell, heightCell)
+  let cellPx = daysCount > 35
+    ? widthCell
+    : (typeof heightCell === "number" ? Math.min(widthCell, heightCell) : widthCell)
 
   // Aesthetic caps for very short ranges
   if (daysCount <= 7) cellPx = Math.min(cellPx, 56)
