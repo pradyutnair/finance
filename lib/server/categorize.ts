@@ -71,8 +71,6 @@ export async function categorizeViaOpenAI(description?: string | null, counterpa
         { role: "system", content: sys },
         { role: "user", content: user },
       ],
-      temperature: 0,
-      max_tokens: 6,
     }),
   });
   if (!res.ok) return null;
