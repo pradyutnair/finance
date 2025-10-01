@@ -46,11 +46,19 @@ def main(context):
         context.log("✅ GoCardless client initialized")
 
         database_id = os.environ["APPWRITE_DATABASE_ID"]
-        transactions_collection = os.environ["APPWRITE_TRANSACTIONS_COLLECTION_ID"]
-        bank_accounts_collection = os.environ["APPWRITE_BANK_ACCOUNTS_COLLECTION_ID"]
-        balances_collection = os.environ["APPWRITE_BALANCES_COLLECTION_ID"]
+        transactions_collection = os.environ.get(
+            "APPWRITE_TRANSACTIONS_COLLECTION_ID", "transactions_dev"
+        )
+        bank_accounts_collection = os.environ.get(
+            "APPWRITE_BANK_ACCOUNTS_COLLECTION_ID", "bank_accounts_dev"
+        )
+        balances_collection = os.environ.get(
+            "APPWRITE_BALANCES_COLLECTION_ID", "balances_dev"
+        )
         
-        context.log(f"📋 Configuration: database_id={database_id}, transactions_collection={transactions_collection}")
+        context.log(
+            f"📋 Configuration: database_id={database_id}, transactions_collection={transactions_collection}"
+        )
 
         context.log("🔍 Fetching active bank accounts...")
         accounts = get_active_accounts(databases, database_id, bank_accounts_collection)
