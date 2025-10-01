@@ -5,6 +5,21 @@ from appwrite.query import Query
 from appwrite.exception import AppwriteException
 import os
 
+def get_active_accounts(databases: Databases, database_id: str, collection_id: str):
+    print(f"Getting active accounts from {database_id}/{collection_id}")
+    queries = [
+        Query.equal("status", "active"),
+        Query.limit(50),
+    ]
+    response = databases.list_documents(
+        database_id=database_id,
+        collection_id=collection_id,
+        queries=queries
+    )
+    documents = response["documents"]
+    print(f"Found {len(documents)} active accounts")
+    return documents if documents else []
+
 # This Appwrite function will be executed every time your function is triggered
 def main(context):
     # You can use the Appwrite SDK to interact with other services
@@ -15,19 +30,14 @@ def main(context):
         .set_project(os.environ["APPWRITE_FUNCTION_PROJECT_ID"])
         .set_key(context.req.headers["x-appwrite-key"])
     )
-    users = Users(client)
+
     databases = Databases(client)
     try:
-        response = users.list()
-        documents = databases.list_documents(
-            database_id="68d42ac20031b27284c9",
-            collection_id="users_private",
-            queries=[Query.limit(10)]
-        )
+        documents = get_active_accounts(databases, "68d42ac20031b27284c9", "bank_accounts")
         # Log messages and errors to the Appwrite Console
         # These logs won't be seen by your end users
         context.log("Documents: " + str(documents["documents"]))
-        context.log("Total users: " + str(response["total"]))
+        context.log("Total users: " + str(documents["total"]))
         context.log("Total documents: " + str(len(documents["documents"])))
     except AppwriteException as err:
         context.error("Could not list users: " + repr(err))
