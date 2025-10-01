@@ -7,10 +7,12 @@ from appwrite.exception import AppwriteException
 
 
 def create_databases_client(api_key: str) -> Databases:
-    client = Client()
-    client.set_endpoint(os.environ["APPWRITE_FUNCTION_API_ENDPOINT"])
-    client.set_project(os.environ["APPWRITE_FUNCTION_PROJECT_ID"])
-    client.set_key(api_key)
+    client = (
+        Client()
+        .set_endpoint(os.environ["APPWRITE_FUNCTION_API_ENDPOINT"])
+        .set_project(os.environ["APPWRITE_FUNCTION_PROJECT_ID"])
+        .set_key(api_key)
+    )
     return Databases(client)
 
 
