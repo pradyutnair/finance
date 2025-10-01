@@ -19,7 +19,7 @@ def create_databases_client(api_key: str) -> Databases:
 def get_active_accounts(databases: Databases, database_id: str, collection_id: str):
     print(f"Getting active accounts from {database_id}/{collection_id}")
     queries = [
-        Query.equal("status", ["active"]),
+        Query.equal("status", "active"),
         Query.limit(50),
     ]
     response = databases.list_documents(
@@ -41,8 +41,8 @@ def get_last_booking_date(
 ):
     try:
         queries = [
-            Query.equal("userId", [user_id]),
-            Query.equal("accountId", [account_id]),
+            Query.equal("userId", user_id),
+            Query.equal("accountId", account_id),
             Query.order_desc("bookingDate"),
             Query.limit(1),
         ]
@@ -78,8 +78,8 @@ def fetch_previous_categories(
 ) -> list[str]:
     try:
         queries = [
-            Query.equal("userId", [user_id]),
-            Query.limit(100),
+            Query.equal("userId", user_id),
+            Query.limit(1),
         ]
         response = databases.list_documents(
             database_id=database_id,
@@ -87,9 +87,8 @@ def fetch_previous_categories(
             queries=queries
         )
         documents = response["documents"]
-        if len(documents) > 1:
-            return [doc["category"] for doc in documents if doc["category"]]
-        return []
+        if documents:
+            return [documents[0]["category"]]
     except AppwriteException:
         return []
 
