@@ -33,6 +33,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updatePayload: Record<string, any> = {}
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
+    if (typeof body.counterparty === "string") updatePayload.counterparty = body.counterparty
+    if (body.counterparty === null || body.counterparty === undefined) {
+      // Allow clearing counterparty
+      updatePayload.counterparty = body.counterparty
+    }
+    if (typeof body.description === "string") updatePayload.description = body.description
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
     }

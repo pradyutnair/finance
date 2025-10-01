@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
+import { Edit2, Check } from "lucide-react"
 import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap, Sparkles } from "lucide-react"
 import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
@@ -97,10 +98,11 @@ export function TransactionsTable() {
     accountId: false
   })
   const [showFilters, setShowFilters] = useState(false)
+  const [editingCounterparty, setEditingCounterparty] = useState<{ id: string; value: string } | null>(null)
   const offset = pagination.pageIndex * pagination.pageSize
 
   const { dateRange, formatDateForAPI } = useDateRange()
-  const { baseCurrency, convertAmount, getCurrencySymbol } = useCurrency()
+  const { baseCurrency, convertAmount, getCurrencySymbol, formatAmount } = useCurrency()
   const updateTx = useUpdateTransaction()
   const autoCategorize = useAutoCategorize()
   const { data: accounts } = useAccounts()
@@ -164,6 +166,30 @@ export function TransactionsTable() {
     updateTx.mutate({ id: tx.id, category, description: tx.rawDescription, counterparty: tx.counterparty })
   }
 
+  function handleStartEditCounterparty(tx: TxRow) {
+    setEditingCounterparty({ id: tx.id, value: tx.counterparty || "" })
+  }
+
+  function handleSaveCounterparty() {
+    if (editingCounterparty) {
+      updateTx.mutate({
+        id: editingCounterparty.id,
+        counterparty: editingCounterparty.value.trim() || undefined
+      })
+      setEditingCounterparty(null)
+    }
+  }
+
+  function handleCancelEditCounterparty() {
+    setEditingCounterparty(null)
+  }
+
+  function handleCounterpartyChange(value: string) {
+    if (editingCounterparty) {
+      setEditingCounterparty({ ...editingCounterparty, value })
+    }
+  }
+
   const activeFilterCount = columnFilters.length
 
   const clearAllFilters = () => {
@@ -174,6 +200,13 @@ export function TransactionsTable() {
   useEffect(() => {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }, [columnFilters])
+
+  // Cancel editing when mutation succeeds
+  useEffect(() => {
+    if (updateTx.isSuccess && editingCounterparty) {
+      setEditingCounterparty(null)
+    }
+  }, [updateTx.isSuccess, editingCounterparty])
 
   const columns: ColumnDef<TxRow>[] = useMemo(
     () => [
@@ -199,21 +232,74 @@ export function TransactionsTable() {
       {
         accessorKey: "counterparty",
         header: "Payee",
-        cell: ({ row }) => (
-          <div className="flex flex-col max-w-[300px]">
-            <span className="font-medium text-sm truncate">
-              {row.getValue("counterparty") || row.original.description || "Unknown"}
-            </span>
-            <span className="text-xs text-muted-foreground">
-            {row.original.description &&
-            !/^[^\d]{0,2}\d/.test(row.original.description) &&
-            (row.original.description.length > 25
-              ? row.original.description.slice(0, 25) + "..."
-              : row.original.description)}
+        cell: ({ row }) => {
+          const isEditing = editingCounterparty?.id === row.original.id
+          const currentValue = isEditing ? editingCounterparty.value : String(row.getValue("counterparty") || "")
 
-            </span>
-          </div>
-        ),
+          if (isEditing) {
+            return (
+              <div className="flex items-center gap-2 min-w-[200px] edit-counterparty">
+                <Input
+                  value={currentValue}
+                  onChange={(e) => handleCounterpartyChange(e.target.value)}
+                  className="h-7 text-sm flex-1"
+                  placeholder="Enter payee..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSaveCounterparty()
+                    } else if (e.key === "Escape") {
+                      handleCancelEditCounterparty()
+                    }
+                  }}
+                  autoFocus
+                />
+                <div className="flex gap-1 edit-counterparty">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleSaveCounterparty}
+                    className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700"
+                  >
+                    <Check className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancelEditCounterparty}
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )
+          }
+
+          return (
+            <div className="flex items-center gap-2 group max-w-[300px]">
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="font-medium text-sm truncate">
+                  {currentValue || String(row.original.description || "") || "Unknown"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {row.original.description &&
+                  !/^[^\d]{0,2}\d/.test(row.original.description) &&
+                  (row.original.description.length > 25
+                    ? row.original.description.slice(0, 25) + "..."
+                    : row.original.description)}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleStartEditCounterparty(row.original)}
+                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )
+        },
       },
       {
         accessorKey: "bankName",
@@ -315,7 +401,7 @@ export function TransactionsTable() {
         },
       }
     ],
-    [baseCurrency, convertAmount, getCurrencySymbol]
+    [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange]
   )
 
   const table = useReactTable({
@@ -332,6 +418,41 @@ export function TransactionsTable() {
     manualPagination: true,
     pageCount: Math.max(1, Math.ceil(totalCount / pageSize)),
   })
+
+  const visibleTransactions = useMemo(() => {
+    if (hasActiveFilters) {
+      return table.getFilteredRowModel().rows.map(row => row.original)
+    }
+    return rows
+  }, [rows, table, hasActiveFilters])
+
+  const { totalIncome, totalExpenses, netTotal } = useMemo(() => {
+    const income = visibleTransactions
+      .filter(tx => {
+        const converted = convertAmount(tx.amount, tx.currency, baseCurrency)
+        return converted > 0
+      })
+      .reduce((sum, tx) => {
+        const converted = convertAmount(tx.amount, tx.currency, baseCurrency)
+        return sum + converted
+      }, 0)
+
+    const expenses = visibleTransactions
+      .filter(tx => {
+        const converted = convertAmount(tx.amount, tx.currency, baseCurrency)
+        return converted < 0
+      })
+      .reduce((sum, tx) => {
+        const converted = convertAmount(tx.amount, tx.currency, baseCurrency)
+        return sum + Math.abs(converted)
+      }, 0)
+
+    return {
+      totalIncome: income,
+      totalExpenses: expenses,
+      netTotal: income - expenses
+    }
+  }, [visibleTransactions, convertAmount, baseCurrency])
 
   const filteredRowCount = table.getFilteredRowModel().rows.length
   const showAllFilteredInOnePage = hasActiveFilters && filteredRowCount <= pageSize
@@ -364,7 +485,15 @@ export function TransactionsTable() {
   }
 
   return (
-    <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
+    <div
+      className="border rounded-xl overflow-hidden shadow-sm bg-card h-full flex flex-col"
+      onClick={(e) => {
+        // Cancel editing if clicking outside edit input
+        if (editingCounterparty && !(e.target as HTMLElement).closest('.edit-counterparty')) {
+          setEditingCounterparty(null)
+        }
+      }}
+    >
       {/* Header with Search and Filter Toggle */}
       <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/30 to-muted/10 border-b">
         <div className="flex items-center gap-3">
@@ -534,7 +663,7 @@ export function TransactionsTable() {
       )}
 
       {/* Table */}
-      <Table>
+      <Table className="flex-1">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/50">
@@ -578,15 +707,35 @@ export function TransactionsTable() {
       {/* Pagination */}
       {!showAllFilteredInOnePage && (
         <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
-          <div className="text-sm text-muted-foreground">
-            Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-muted-foreground">
+              Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
+            </div>
+            {(totalIncome > 0 || totalExpenses > 0) && (
+              <div className="flex items-center gap-3 text-sm">
+                {totalIncome > 0 && (
+                  <div className="font-medium">
+                    Income: <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      +{formatAmount(totalIncome)}
+                    </span>
+                  </div>
+                )}
+                {totalExpenses > 0 && (
+                  <div className="font-medium">
+                    Expenses: <span className="font-bold text-rose-600 dark:text-rose-400">
+                      -{formatAmount(totalExpenses)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          
+
           <div className="flex items-center gap-6">
             <div className="text-sm font-medium text-muted-foreground">
               Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
             </div>
-            
+
             <div className="flex items-center gap-1">
               <Button
                 variant="outline"
