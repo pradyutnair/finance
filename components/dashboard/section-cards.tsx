@@ -76,11 +76,11 @@ export function SectionCards() {
         const data = await response.json()
         if (data) {
           setBalanceGoal(data.balanceGoal || 0)
-          setSavingsRateGoal(data.savingsRateGoal || 20)
+          setSavingsRateGoal(data.savingsRateGoal || 0)
           try {
             sessionStorage.setItem('budgetGoals', JSON.stringify({
               balanceGoal: Number(data.balanceGoal || 0),
-              savingsRateGoal: Number(data.savingsRateGoal || 20),
+              savingsRateGoal: Number(data.savingsRateGoal || 0),
             }))
           } catch {}
         }
@@ -127,7 +127,7 @@ export function SectionCards() {
       if (cached) {
         const data = JSON.parse(cached)
         setBalanceGoal(Number(data.balanceGoal || 0))
-        setSavingsRateGoal(Number(data.savingsRateGoal || 20))
+        setSavingsRateGoal(Number(data.savingsRateGoal || 0))
         setInitialized(true)
         return
       }
