@@ -17,7 +17,6 @@ def create_databases_client(api_key: str) -> Databases:
 
 
 def get_active_accounts(databases: Databases, database_id: str, collection_id: str):
-    print(f"Getting active accounts from {database_id}/{collection_id}")
     queries = [
         Query.equal("status", "active"),
         Query.limit(50),

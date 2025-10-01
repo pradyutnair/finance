@@ -2,7 +2,6 @@
 
 import os
 import time
-from datetime import datetime
 
 from appwrite.exception import AppwriteException
 
@@ -119,24 +118,25 @@ def main(context):
                     existing_doc_id = find_balance_document(
                         databases, database_id, balances_collection, user_id, account_id, balance_type
                     )
+                    # Format the balance payload
+                    _, payload = format_balance_payload(balance, user_id, account_id)
                     
+                    # Update the balance document if it exists
                     if existing_doc_id:
-                        # Update only the balanceAmount for the existing document
-                        balance_amount = balance.get("balanceAmount", {})
-                        amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
-                        
-                        context.log(f"🔍 Updating balance amount for document {existing_doc_id}")
                         databases.update_document(
                             database_id, 
                             balances_collection, 
                             existing_doc_id, 
-                            {"balanceAmount": str(amount)}
+                            {
+                                "balanceAmount": payload["balanceAmount"],
+                                "referenceDate": payload["referenceDate"],
+                                "currency": payload["currency"]
+                            }
                         )
                         context.log(f"✅ Updated balance amount: {existing_doc_id}")
                     else:
-                        # Create new balance document
-                        balance_doc_id, payload = format_balance_payload(balance, user_id, account_id)
-                        context.log(f"🔍 Creating new balance document {balance_doc_id} in Appwrite...")
+                        # Create a new balance document if it doesn't exist
+                        balance_doc_id, _ = format_balance_payload(balance, user_id, account_id)
                         databases.create_document(database_id, balances_collection, balance_doc_id, payload)
                         context.log(f"✅ Created balance: {balance_doc_id}")
 
