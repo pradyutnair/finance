@@ -19,7 +19,7 @@ def main(context):
     databases = Databases(client)
     try:
         response = users.list()
-        response = databases.list_documents(
+        documents = databases.list_documents(
             database_id="68d42ac20031b27284c9",
             collection_id="transactions_dev",
             queries=[Query.limit(10)]
@@ -27,6 +27,7 @@ def main(context):
         # Log messages and errors to the Appwrite Console
         # These logs won't be seen by your end users
         context.log("Total users: " + str(response["total"]))
+        context.log("Total documents: " + str(len(documents["documents"])))
     except AppwriteException as err:
         context.error("Could not list users: " + repr(err))
 
