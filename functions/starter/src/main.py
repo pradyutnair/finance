@@ -22,7 +22,7 @@ def main(context):
         documents = databases.list_documents(
             database_id="68d42ac20031b27284c9",
             collection_id="transactions_dev",
-            queries=[Query.limit(10)]
+            queries=[Query.limit(10), Query.equal("userId", "68d446e7bf3ed043310a")]
         )
         # Log messages and errors to the Appwrite Console
         # These logs won't be seen by your end users
