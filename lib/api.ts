@@ -222,7 +222,12 @@ export const useUpdateTransaction = () => {
     mutationFn: async (args: { id: string; category?: string; exclude?: boolean; description?: string; counterparty?: string }) => {
       return apiRequest<{ ok: boolean; transaction: any }>(`/transactions/${args.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ category: args.category, exclude: args.exclude }),
+        body: JSON.stringify({
+          category: args.category,
+          exclude: args.exclude,
+          description: args.description,
+          counterparty: args.counterparty
+        }),
       });
     },
     onMutate: async (args) => {
@@ -244,6 +249,8 @@ export const useUpdateTransaction = () => {
               ...t,
               ...(typeof args.category === "string" ? { category: args.category } : {}),
               ...(typeof args.exclude === "boolean" ? { exclude: args.exclude } : {}),
+              ...(typeof args.counterparty === "string" ? { counterparty: args.counterparty } : {}),
+              ...(typeof args.description === "string" ? { description: args.description } : {}),
             };
           }
 
