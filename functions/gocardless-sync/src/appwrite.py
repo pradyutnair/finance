@@ -21,9 +21,9 @@ def get_active_accounts(databases: Databases, database_id: str, collection_id: s
         Query.limit(50),
     ]
     response = databases.list_documents(
-        database_id,
-        collection_id,
-        queries
+        database_id=database_id,
+        collection_id=collection_id,
+        queries=queries
     )
     documents = response["documents"]
     print(f"Found {len(documents)} active accounts")
@@ -45,9 +45,9 @@ def get_last_booking_date(
             Query.limit(1),
         ]
         response = databases.list_documents(
-            database_id,
-            collection_id,
-            queries
+            database_id=database_id,
+            collection_id=collection_id,
+            queries=queries
         )
         documents = response["documents"]
         if documents:
@@ -80,9 +80,9 @@ def fetch_previous_categories(
             Query.limit(100),
         ]
         response = databases.list_documents(
-            database_id,
-            collection_id,
-            queries
+            database_id=database_id,
+            collection_id=collection_id,
+            queries=queries
         )
         documents = response["documents"]
         if len(documents) > 1:
