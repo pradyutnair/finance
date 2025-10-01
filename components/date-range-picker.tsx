@@ -59,13 +59,6 @@ const presetRanges = [
     }),
   },
   {
-    label: "This Month",
-    getValue: () => ({
-      from: startOfMonth(new Date()),
-      to: new Date(),
-    }),
-  },
-  {
     label: "Last Month",
     getValue: () => {
       const lastMonth = subMonths(new Date(), 1)
@@ -74,6 +67,13 @@ const presetRanges = [
         to: endOfMonth(lastMonth),
       }
     },
+  },
+  {
+    label: "This Month",
+    getValue: () => ({
+      from: startOfMonth(new Date()),
+      to: new Date(),
+    }),
   },
   {
     label: "This Year",

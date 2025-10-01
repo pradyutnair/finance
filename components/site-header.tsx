@@ -17,6 +17,7 @@ export function SiteHeader() {
   const pathname = usePathname()
   const isDashboard = pathname === "/dashboard"
   const isTransactions = pathname === "/transactions"
+  const isBanks = pathname === "/banks"
   const dateRangeContext = useContext(DateRangeContext)
   
   // Only use date range if we're on dashboard and context is available
@@ -63,7 +64,7 @@ export function SiteHeader() {
               ))}
             </SelectContent>
           </Select>
-          {(isDashboard || isTransactions) && dateRange && setDateRange && (
+          {(isDashboard || isTransactions || isBanks) && dateRange && setDateRange && (
             <DateRangePicker
               date={dateRange}
               onDateChange={setDateRange}

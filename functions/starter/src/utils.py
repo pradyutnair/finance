@@ -17,7 +17,7 @@ def lazy_categorize(description: str, counterparty: str, amount: str) -> str:
     text = f"{counterparty or ''} {description or ''}".lower()
 
     if any(word in text for word in ["restaurant", "cafe", "coffee", "mcdonald", "starbucks"]):
-        return "Restaurant"
+        return "Restaurants"
     if any(word in text for word in ["uber", "taxi", "fuel", "gas", "petrol"]):
         return "Transport"
     if any(word in text for word in ["amazon", "store", "shopping", "mall"]):
@@ -54,7 +54,7 @@ def categorize_transaction(
 
     categories = [
         "Groceries",
-        "Restaurant",
+        "Restaurants",
         "Education",
         "Transport",
         "Travel",

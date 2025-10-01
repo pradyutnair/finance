@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+    const forceRefresh = searchParams.get("refresh") === "true";
     
     // Create Appwrite client for cache service
     const client = new Client()
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     const databases = new Databases(client);
 
     // Get cached transactions (loads 365 days on first call)
-    const allTransactions = await getUserTransactionCache(userId, databases);
+    const allTransactions = await getUserTransactionCache(userId, databases, forceRefresh);
     
     // Filter for expenses only within date range
     const transactions = filterTransactions(allTransactions, {

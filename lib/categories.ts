@@ -1,6 +1,6 @@
 export type CategoryKey =
   | "Groceries"
-  | "Restaurant"
+  | "Restaurants"
   | "Education"
   | "Transport"
   | "Travel"
@@ -15,7 +15,7 @@ export type CategoryKey =
 
 export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Groceries: { color: "#c6cfc9" },         // silver (very light)
-  Restaurant: { color: "#ef4444" },        // red
+  Restaurants: { color: "#ef4444" },       // red
   Education: { color: "#8fc2db" },         // sky blue
   Transport: { color: "#fde68a" },         // light amber
   Travel: { color: "#3b82f6" },            // blue

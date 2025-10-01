@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check } from "lucide-react"
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
+import { useDateRange } from "@/contexts/date-range-context"
 
 interface BudgetCategory { key: string; label: string; categoryName: string }
 
@@ -31,7 +32,7 @@ interface BudgetData {
 
 const budgetCategories: BudgetCategory[] = [
   { key: 'groceriesBudget', label: 'Groceries', categoryName: 'Groceries' },
-  { key: 'restaurantsBudget', label: 'Restaurants', categoryName: 'Restaurant' },
+  { key: 'restaurantsBudget', label: 'Restaurants', categoryName: 'Restaurants' },
   { key: 'transportBudget', label: 'Transport', categoryName: 'Transport' },
   { key: 'travelBudget', label: 'Travel', categoryName: 'Travel' },
   { key: 'shoppingBudget', label: 'Shopping', categoryName: 'Shopping' },
@@ -42,6 +43,7 @@ const budgetCategories: BudgetCategory[] = [
 ]
 
 export function BudgetSettingsCard() {
+  const { dateRange } = useDateRange()
   const [budgetData, setBudgetData] = useState<Partial<BudgetData>>({
     baseCurrency: 'EUR',
     groceriesBudget: 0,
@@ -98,6 +100,14 @@ export function BudgetSettingsCard() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [])
 
+  // Re-fetch category spend when date range changes
+  useEffect(() => {
+    if (didInitRef.current) {
+      fetchCategorySpend(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange])
+
   useEffect(() => {
     budgetRef.current = budgetData
   }, [budgetData])
@@ -115,7 +125,16 @@ export function BudgetSettingsCard() {
   }
 
   const refreshAll = async () => {
-    await Promise.all([fetchBudgets(), fetchCategorySpend()])
+    // Clear sessionStorage cache for category spend
+    try {
+      const today = new Date()
+      const from = dateRange?.from || new Date(today.getFullYear(), today.getMonth(), 1)
+      const to = dateRange?.to || today
+      const cacheKey = `categorySpend:${fmtDate(from)}:${fmtDate(to)}`
+      sessionStorage.removeItem(cacheKey)
+    } catch {}
+    
+    await Promise.all([fetchBudgets(), fetchCategorySpend(true)])
   }
 
   const fetchBudgets = async () => {
@@ -145,23 +164,30 @@ export function BudgetSettingsCard() {
     return `${y}-${m}-${day}`
   }
 
-  const fetchCategorySpend = async () => {
+  const fetchCategorySpend = async (skipCache = false) => {
     try {
       setIsLoadingSpend(true)
+      // Use date range from context if available, otherwise default to current month
       const today = new Date()
-      const from = new Date(today.getFullYear(), today.getMonth(), 1)
-      const to = today
+      const from = dateRange?.from || new Date(today.getFullYear(), today.getMonth(), 1)
+      const to = dateRange?.to || today
       const cacheKey = `categorySpend:${fmtDate(from)}:${fmtDate(to)}`
-      try {
-        const cached = sessionStorage.getItem(cacheKey)
-        if (cached) {
-          setCategorySpend(JSON.parse(cached))
-          setIsLoadingSpend(false)
-          return
-        }
-      } catch {}
+      
+      // Use cache only if not skipping
+      if (!skipCache) {
+        try {
+          const cached = sessionStorage.getItem(cacheKey)
+          if (cached) {
+            setCategorySpend(JSON.parse(cached))
+            setIsLoadingSpend(false)
+            return
+          }
+        } catch {}
+      }
 
-      const resp = await fetch(`/api/categories?from=${fmtDate(from)}&to=${fmtDate(to)}`, { headers: await authHeaders() })
+      // Add refresh parameter to bust server-side cache
+      const url = `/api/categories?from=${fmtDate(from)}&to=${fmtDate(to)}${skipCache ? '&refresh=true' : ''}`
+      const resp = await fetch(url, { headers: await authHeaders() })
       if (resp.ok) {
         const data: Array<{ name: string; amount: number }> = await resp.json()
         const map: Record<string, number> = {}
@@ -314,7 +340,7 @@ export function BudgetSettingsCard() {
             const color = getCategoryColor(category.categoryName)
             const Icon = (
               category.categoryName === 'Groceries' ? ShoppingCart :
-              category.categoryName === 'Restaurant' ? Utensils :
+              category.categoryName === 'Restaurants' ? Utensils :
               category.categoryName === 'Transport' ? Car :
               category.categoryName === 'Travel' ? Plane :
               category.categoryName === 'Shopping' ? ShoppingBag :
@@ -380,11 +406,11 @@ export function BudgetSettingsCard() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchBudgets}
-              disabled={isSaving}
+              onClick={refreshAll}
+              disabled={isSaving || isLoadingSpend}
               className="hover:bg-chart-1/80"
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading || isLoadingSpend ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           </div>
