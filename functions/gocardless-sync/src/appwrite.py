@@ -23,8 +23,9 @@ def get_active_accounts(databases: Databases, database_id: str, collection_id: s
             Query.limit(50),
         ],
     )
-    return response.get("documents", [])
-
+    documents = response["documents"]
+    return documents if documents else []
+    
 
 def get_last_booking_date(
     databases: Databases,
@@ -44,10 +45,10 @@ def get_last_booking_date(
                 Query.limit(1),
             ],
         )
-        documents = response.get("documents", [])
+        documents = response["documents"]
         if documents:
             doc = documents[0]
-            return doc.get("bookingDate") or doc.get("valueDate")
+            return doc["bookingDate"] or doc["valueDate"]
         return None
     except AppwriteException:
         return None
@@ -78,8 +79,10 @@ def fetch_previous_categories(
                 Query.limit(100),
             ],
         )
-        documents = response.get("documents", [])
-        return [doc.get("category", "") for doc in documents if doc.get("category")]
+        documents = response["documents"]
+        if len(documents) > 1:
+            return [doc["category"] for doc in documents if doc["category"]]
+        return []
     except AppwriteException:
         return []
 
