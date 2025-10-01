@@ -93,3 +93,32 @@ def fetch_previous_categories(
         return []
 
 
+def find_balance_document(
+    databases: Databases,
+    database_id: str,
+    collection_id: str,
+    user_id: str,
+    account_id: str,
+    balance_type: str,
+) -> str | None:
+    """Find the document ID for a balance record matching userId, accountId, and balanceType."""
+    try:
+        queries = [
+            Query.equal("userId", user_id),
+            Query.equal("accountId", account_id),
+            Query.equal("balanceType", balance_type),
+            Query.limit(1),
+        ]
+        response = databases.list_documents(
+            database_id=database_id,
+            collection_id=collection_id,
+            queries=queries
+        )
+        documents = response["documents"]
+        if documents:
+            return documents[0]["$id"]
+        return None
+    except AppwriteException:
+        return None
+
+

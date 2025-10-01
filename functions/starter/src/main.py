@@ -9,6 +9,7 @@ from appwrite.exception import AppwriteException
 from .appwrite import (
     create_databases_client,
     document_exists,
+    find_balance_document,
     get_active_accounts,
     get_last_booking_date,
 )
@@ -111,15 +112,30 @@ def main(context):
                 balances = _fetch_balances(gocardless, account_id)
 
                 for balance in balances:
-                    context.log(f"🔍 Processing balance: {balance.get('balanceType', 'unknown')}")
-                    balance_doc_id, payload = format_balance_payload(balance, user_id, account_id)
-
-                    context.log(f"🔍 Checking if balance document exists: {balance_doc_id}")
-                    if document_exists(databases, database_id, balances_collection, balance_doc_id):
-                        context.log(f"🔍 Updating existing balance document {balance_doc_id} in Appwrite...")
-                        databases.update_document(database_id, balances_collection, balance_doc_id, payload)
-                        context.log(f"✅ Updated balance: {balance_doc_id}")
+                    balance_type = balance.get("balanceType", "expected")
+                    context.log(f"🔍 Processing balance: {balance_type}")
+                    
+                    # Find the exact document by userId, accountId, and balanceType
+                    existing_doc_id = find_balance_document(
+                        databases, database_id, balances_collection, user_id, account_id, balance_type
+                    )
+                    
+                    if existing_doc_id:
+                        # Update only the balanceAmount for the existing document
+                        balance_amount = balance.get("balanceAmount", {})
+                        amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
+                        
+                        context.log(f"🔍 Updating balance amount for document {existing_doc_id}")
+                        databases.update_document(
+                            database_id, 
+                            balances_collection, 
+                            existing_doc_id, 
+                            {"balanceAmount": str(amount)}
+                        )
+                        context.log(f"✅ Updated balance amount: {existing_doc_id}")
                     else:
+                        # Create new balance document
+                        balance_doc_id, payload = format_balance_payload(balance, user_id, account_id)
                         context.log(f"🔍 Creating new balance document {balance_doc_id} in Appwrite...")
                         databases.create_document(database_id, balances_collection, balance_doc_id, payload)
                         context.log(f"✅ Created balance: {balance_doc_id}")
