@@ -6,11 +6,11 @@ from appwrite.query import Query
 from appwrite.exception import AppwriteException
 
 
-def create_databases_client() -> Databases:
+def create_databases_client(api_key: str) -> Databases:
     client = Client()
     client.set_endpoint(os.environ["APPWRITE_FUNCTION_API_ENDPOINT"])
     client.set_project(os.environ["APPWRITE_FUNCTION_PROJECT_ID"])
-    client.set_key(os.environ["APPWRITE_API_KEY"])
+    client.set_key(api_key)
     return Databases(client)
 
 

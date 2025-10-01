@@ -35,16 +35,24 @@ def main(context):
     context.log("🚀 Starting GoCardless sync...")
 
     try:
-        databases = create_databases_client()
+        context.log("🔧 Initializing Appwrite client...")
+        databases = create_databases_client(context.req.headers['x-appwrite-key'])
+        context.log("✅ Appwrite client initialized")
+        
+        context.log("🔧 Initializing GoCardless client...")
         gocardless = GoCardlessClient(
             os.environ["GOCARDLESS_SECRET_ID"], os.environ["GOCARDLESS_SECRET_KEY"]
         )
+        context.log("✅ GoCardless client initialized")
 
         database_id = os.environ["APPWRITE_DATABASE_ID"]
         transactions_collection = os.environ["APPWRITE_TRANSACTIONS_COLLECTION_ID"]
         bank_accounts_collection = os.environ["APPWRITE_BANK_ACCOUNTS_COLLECTION_ID"]
         balances_collection = os.environ["APPWRITE_BALANCES_COLLECTION_ID"]
+        
+        context.log(f"📋 Configuration: database_id={database_id}, transactions_collection={transactions_collection}")
 
+        context.log("🔍 Fetching active bank accounts...")
         accounts = get_active_accounts(databases, database_id, bank_accounts_collection)
         context.log(f"🏦 Found {len(accounts)} active accounts")
 
@@ -60,24 +68,30 @@ def main(context):
             context.log(f"💳 Processing account {index + 1}/{len(accounts)}: {account_id}")
 
             try:
+                context.log(f"🔍 Getting last booking date for account {account_id}...")
                 last_date = get_last_booking_date(
                     databases, database_id, transactions_collection, user_id, account_id
                 )
                 context.log(f"📅 Last transaction date: {last_date}" if last_date else "📅 No previous transactions")
 
+                context.log(f"🔍 Fetching transactions for account {account_id}...")
                 transactions = _fetch_transactions(gocardless, account_id, last_date)
                 context.log(f"📊 Found {len(transactions)} transactions")
 
                 for tx in transactions[:50]:
+                    context.log(f"🔍 Processing transaction: {tx.get('transactionId', 'unknown')}")
                     doc_id = generate_doc_id(
                         tx.get("transactionId") or tx.get("internalTransactionId"),
                         account_id,
                         tx.get("bookingDate"),
                     )
 
+                    context.log(f"🔍 Checking if document exists: {doc_id}")
                     if document_exists(databases, database_id, transactions_collection, doc_id):
+                        context.log(f"⏭️ Document {doc_id} already exists, skipping")
                         continue
 
+                    context.log(f"🔍 Formatting transaction payload for {doc_id}...")
                     payload = format_transaction_payload(
                         tx,
                         user_id,
@@ -88,18 +102,24 @@ def main(context):
                         transactions_collection,
                     )
 
+                    context.log(f"🔍 Creating document {doc_id} in Appwrite...")
                     databases.create_document(database_id, transactions_collection, doc_id, payload)
                     total_transactions += 1
                     context.log(f"✅ Stored transaction: {doc_id}")
 
+                context.log(f"🔍 Fetching balances for account {account_id}...")
                 balances = _fetch_balances(gocardless, account_id)
 
                 for balance in balances:
+                    context.log(f"🔍 Processing balance: {balance.get('balanceType', 'unknown')}")
                     balance_doc_id, payload = format_balance_payload(balance, user_id, account_id)
 
+                    context.log(f"🔍 Checking if balance document exists: {balance_doc_id}")
                     if document_exists(databases, database_id, balances_collection, balance_doc_id):
+                        context.log(f"⏭️ Balance document {balance_doc_id} already exists, skipping")
                         continue
 
+                    context.log(f"🔍 Creating balance document {balance_doc_id} in Appwrite...")
                     databases.create_document(database_id, balances_collection, balance_doc_id, payload)
                     total_balances += 1
                     context.log(f"✅ Stored balance: {balance_doc_id}")
@@ -109,6 +129,8 @@ def main(context):
 
             except Exception as error:  # pylint: disable=broad-except
                 context.log(f"❌ Error processing account {account_id}: {error}")
+                context.log(f"❌ Error type: {type(error).__name__}")
+                context.log(f"❌ Error details: {str(error)}")
 
         context.log(
             f"🎉 Sync completed: {total_transactions} transactions, {total_balances} balances"
@@ -124,7 +146,11 @@ def main(context):
 
     except AppwriteException as error:
         context.error(f"💥 Appwrite error: {error}")
+        context.error(f"💥 Appwrite error type: {type(error).__name__}")
+        context.error(f"💥 Appwrite error details: {str(error)}")
         return context.res.json({"success": False, "error": str(error)})
     except Exception as error:  # pylint: disable=broad-except
         context.error(f"💥 Sync failed: {error}")
+        context.error(f"💥 Error type: {type(error).__name__}")
+        context.error(f"💥 Error details: {str(error)}")
         return context.res.json({"success": False, "error": str(error)})
