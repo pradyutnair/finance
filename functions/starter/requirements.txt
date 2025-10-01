@@ -1,1 +1,3 @@
 appwrite
+requests
+openai

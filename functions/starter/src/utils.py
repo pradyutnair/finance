@@ -132,12 +132,13 @@ def format_transaction_payload(
 
 
 def format_balance_payload(balance, user_id, account_id):
-    balance_type = balance.get("balanceType", "closingBooked")
+    balance_type = balance.get("balanceType", "expected")
     reference_date = balance.get("referenceDate", datetime.now().strftime("%Y-%m-%d"))
     balance_amount = balance.get("balanceAmount", {})
     amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
 
-    doc_id = f"{account_id}_{balance_type}_{reference_date}"[:36]
+    # Use a simpler doc_id based on account_id and balance_type only
+    doc_id = f"{account_id}_{balance_type}"[:36]
     payload = {
         "userId": user_id,
         "accountId": account_id,
