@@ -36,9 +36,7 @@ def main(context):
         documents = get_active_accounts(databases, "68d42ac20031b27284c9", "bank_accounts")
         # Log messages and errors to the Appwrite Console
         # These logs won't be seen by your end users
-        context.log("Documents: " + str(documents["documents"]))
-        context.log("Total users: " + str(documents["total"]))
-        context.log("Total documents: " + str(len(documents["documents"])))
+        context.log("Documents: ", documents)
     except AppwriteException as err:
         context.error("Could not list users: " + repr(err))
 
