@@ -1,9 +1,13 @@
 /**
  * Centralized cache service for transaction data
  * Loads 365 days of transactions once and serves all requests from memory
+ * Now supports encrypted data via transactions_public and transactions_enc tables
  */
 
+import 'server-only';
 import { Client, Databases, Query } from 'appwrite';
+import { readEncrypted, EncryptionRouteConfig } from '@/lib/http/withEncryption';
+import { isEncryptionEnabled } from './encryption-service';
 
 type TransactionDoc = {
   $id?: string;
@@ -57,6 +61,7 @@ const ymd = (d: Date) => {
 
 /**
  * Get or load user's transaction cache (365 days)
+ * Supports both encrypted and legacy unencrypted collections
  */
 export async function getUserTransactionCache(
   userId: string,
@@ -104,38 +109,112 @@ export async function getUserTransactionCache(
     console.log(`[Cache] Loading ${DEFAULT_DAYS} days of transactions for user ${userId}: ${fromDate} to ${toDate}`);
 
     const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
-
-    // Fetch all transactions in the date range with pagination
-    const allTransactions: TransactionDoc[] = [];
-    let cursor: string | undefined;
-    const pageSize = 100;
     
-    while (true) {
-      const queries = [
-        Query.equal('userId', userId),
-        Query.greaterThanEqual('bookingDate', fromDate),
-        Query.lessThanEqual('bookingDate', toDate),
-        Query.orderDesc('bookingDate'),
-        Query.limit(pageSize)
-      ];
+    // Check if encryption is enabled
+    const useEncryption = isEncryptionEnabled();
+    
+    let allTransactions: TransactionDoc[] = [];
+
+    if (useEncryption) {
+      console.log('[Cache] Using encrypted collections');
+      const TRANSACTIONS_PUBLIC_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID || 'transactions_public';
+      const TRANSACTIONS_ENC_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc';
+
+      // Fetch public records with pagination
+      let cursor: string | undefined;
+      const pageSize = 100;
       
-      if (cursor) {
-        queries.push(Query.cursorAfter(cursor));
+      while (true) {
+        const queries = [
+          Query.equal('userId', userId),
+          Query.greaterThanEqual('bookingDate', fromDate),
+          Query.lessThanEqual('bookingDate', toDate),
+          Query.orderDesc('bookingDate'),
+          Query.limit(pageSize)
+        ];
+        
+        if (cursor) {
+          queries.push(Query.cursorAfter(cursor));
+        }
+
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          TRANSACTIONS_PUBLIC_COLLECTION_ID,
+          queries
+        );
+
+        const docs = response.documents;
+        
+        // Decrypt each transaction in parallel
+        const decryptedBatch = await Promise.allSettled(
+          docs.map(async (doc: any) => {
+            try {
+              const config: EncryptionRouteConfig = {
+                databases,
+                databaseId: DATABASE_ID,
+                publicCollectionId: TRANSACTIONS_PUBLIC_COLLECTION_ID,
+                encryptedCollectionId: TRANSACTIONS_ENC_COLLECTION_ID,
+                userId,
+              };
+              
+              const decrypted = await readEncrypted(doc.record_id || doc.$id, config);
+              return {
+                ...doc,
+                ...decrypted,
+                $id: doc.$id,
+              };
+            } catch (err) {
+              console.error(`[Cache] Failed to decrypt transaction ${doc.record_id}:`, err);
+              // Return public data only if decryption fails
+              return doc;
+            }
+          })
+        );
+
+        const successfulDecrypts = decryptedBatch
+          .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled')
+          .map(result => result.value);
+        
+        allTransactions.push(...successfulDecrypts);
+
+        if (docs.length < pageSize) break;
+        cursor = docs[docs.length - 1].$id;
+        if (!cursor) break;
       }
+    } else {
+      console.log('[Cache] Using legacy unencrypted collection');
+      const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+      
+      // Fetch all transactions in the date range with pagination
+      let cursor: string | undefined;
+      const pageSize = 100;
+      
+      while (true) {
+        const queries = [
+          Query.equal('userId', userId),
+          Query.greaterThanEqual('bookingDate', fromDate),
+          Query.lessThanEqual('bookingDate', toDate),
+          Query.orderDesc('bookingDate'),
+          Query.limit(pageSize)
+        ];
+        
+        if (cursor) {
+          queries.push(Query.cursorAfter(cursor));
+        }
 
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        TRANSACTIONS_COLLECTION_ID,
-        queries
-      );
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          TRANSACTIONS_COLLECTION_ID,
+          queries
+        );
 
-      const docs = response.documents as TransactionDoc[];
-      allTransactions.push(...docs);
+        const docs = response.documents as TransactionDoc[];
+        allTransactions.push(...docs);
 
-      if (docs.length < pageSize) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
+        if (docs.length < pageSize) break;
+        cursor = docs[docs.length - 1].$id;
+        if (!cursor) break;
+      }
     }
 
     console.log(`[Cache] Loaded ${allTransactions.length} transactions for user ${userId}`);

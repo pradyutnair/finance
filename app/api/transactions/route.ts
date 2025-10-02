@@ -5,6 +5,13 @@ import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { getUserTransactionCache, filterTransactions, invalidateUserCache } from "@/lib/server/cache-service";
 
+// NOTE: This route automatically supports encryption via the cache service.
+// When ENCRYPTION_PROVIDER is set, getUserTransactionCache will:
+// 1. Query transactions_public for queryable fields
+// 2. Decrypt corresponding transactions_enc records
+// 3. Merge and return decrypted data
+// No changes needed here - encryption is transparent!
+
 export async function GET(request: Request) {
   try {
     // Require authenticated user
