@@ -278,7 +278,7 @@ export function filterTransactions(
 
   // Apply exclude filter
   if (options.excludeExcluded) {
-    filtered = filtered.filter(t => !t.exclude || t.exclude === false);
+    filtered = filtered.filter(t => !t.exclude);
   }
 
   // Apply category filter
