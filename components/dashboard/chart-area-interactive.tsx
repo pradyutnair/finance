@@ -82,7 +82,7 @@ export function ChartAreaInteractive() {
     const from = new Date(dateRange.from);
     from.setHours(0, 0, 0, 0);
     const to = new Date(dateRange.to);
-    to.setHours(23, 59, 59, 999);
+    to.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -105,36 +105,12 @@ export function ChartAreaInteractive() {
       return entry.income - entry.expenses;
     };
 
-    const elapsedEnd = new Date(Math.min(to.getTime(), today.getTime()));
-    let projectEnd = elapsedEnd;
-    let runRate = 0;
-    let doProject = false;
-
-    if (metric === 'expenses' || metric === 'savings') {
-      // For expenses and savings, project to end of current month
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
-      const monthEnd = new Date(currentYear, currentMonth + 1, 0);
-      monthEnd.setHours(23, 59, 59, 999);
-      projectEnd = new Date(Math.min(to.getTime(), monthEnd.getTime()));
-      
-      const elapsedDates = getAllDates(from, elapsedEnd);
-      const D_elapsed = elapsedDates.length;
-      let S_actual = 0;
-      elapsedDates.forEach((dt) => {
-        S_actual += getValueForDate(dt, metric);
-      });
-      runRate = D_elapsed >= 3 ? S_actual / D_elapsed : 0;
-      doProject = projectEnd > today;
-      if (!doProject) projectEnd = elapsedEnd;
-    } else if (metric === 'income') {
-      projectEnd = elapsedEnd;
-    }
-
-    const chartDates = getAllDates(from, projectEnd);
+    // Build data for every day in the selected range.
+    // Future days are included with a value of 0 so the X axis shows them.
+    const chartDates = getAllDates(from, to);
     const chartData: ChartDatum[] = chartDates.map((dt) => {
       const isProjected = dt > today;
-      let value = isProjected ? runRate : getValueForDate(dt, metric);
+      const value = isProjected ? 0 : getValueForDate(dt, metric);
       return {
         date: dt.toISOString(),
         value,
@@ -146,7 +122,21 @@ export function ChartAreaInteractive() {
 
     let cum = 0;
     chartData.forEach((d) => {
-      cum += d.value;
+      // For future dates, optionally show a projected cumulative using
+      // the last observed daily average. Keep bars at zero.
+      if (d.isProjected && (metric === 'expenses' || metric === 'savings')) {
+        const elapsedEnd = new Date(Math.min(today.getTime(), to.getTime()));
+        const elapsedDates = getAllDates(from, elapsedEnd);
+        const D_elapsed = elapsedDates.length;
+        let S_actual = 0;
+        elapsedDates.forEach((dt) => {
+          S_actual += getValueForDate(dt, metric);
+        });
+        const runRate = D_elapsed >= 3 ? S_actual / D_elapsed : 0;
+        cum += runRate;
+      } else {
+        cum += d.value;
+      }
       d.cumulative = cum;
     });
 
@@ -187,12 +177,9 @@ export function ChartAreaInteractive() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    const elapsedEnd = new Date(Math.min(to.getTime(), today.getTime()))
-
-    // Focus projection on the current month-to-date window
-    const monthStart = new Date(elapsedEnd.getFullYear(), elapsedEnd.getMonth(), 1)
-    monthStart.setHours(0, 0, 0, 0)
-    const start = from > monthStart ? from : monthStart
+    // Use the selected date range for projection calculation
+    const elapsedEnd = today;
+    const start = from;
 
     const dataMap = new Map<number, { expenses: number; income: number }>()
     data?.forEach((d: TimeseriesPoint) => {
@@ -217,16 +204,15 @@ export function ChartAreaInteractive() {
     // Expenses are negative, so use absolute value for projection
     const actualAbsolute = Math.abs(actualMtd)
 
-    // Calculate remaining days in current month
-    const eom = endOfMonth(elapsedEnd)
+    // Calculate remaining days in selected date range
     const nextDay = new Date(elapsedEnd)
     nextDay.setDate(nextDay.getDate() + 1)
-    const remainingDates = nextDay <= eom ? getAllDates(nextDay, eom) : []
+    const remainingDates = nextDay <= to ? getAllDates(nextDay, to) : []
     const remainingDays = remainingDates.length
 
     if (remainingDays <= 0) return actualAbsolute
 
-    // Calculate burn rate (daily average) and project to end of month
+    // Calculate burn rate (daily average) and project to end of selected range
     const burnRate = daysElapsed > 0 ? actualAbsolute / daysElapsed : 0
     const projectedEom = actualAbsolute + (burnRate * remainingDays)
     
@@ -359,7 +345,7 @@ export function ChartAreaInteractive() {
     }
 
     if (metric === "expenses") {
-      const barKey = (d: ChartDatum): number | null => d.isProjected ? null : d.value
+      const barKey = (d: ChartDatum): number | null => d.isProjected ? 0 : d.value
       const doProject = current.some((d: ChartDatum) => d.isProjected)
       const lastPoint = current[current.length - 1]
       
@@ -591,7 +577,7 @@ export function ChartAreaInteractive() {
             <div className="absolute left-0 mt-2 z-10 hidden w-72 rounded-lg bg-popover p-3 text-xs text-muted-foreground shadow-lg group-hover:block">
               Projected = Current total + (Daily burn rate × Remaining days).<br />
               Daily burn rate = Total so far ÷ Days elapsed.<br />
-              This estimates your end-of-month expenses if you continue spending at the current daily average.
+              This estimates your expenses for the selected date range if you continue spending at the current daily average.
             </div>
           </CardDescription>
         )}

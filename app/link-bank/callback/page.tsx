@@ -26,7 +26,15 @@ function BankCallbackContent() {
         });
         
         if (error) {
-          throw new Error(error);
+          console.log('⚠️ User cancelled session or error occurred:', error);
+          setStatus('error');
+          setMessage('Bank connection was cancelled. Redirecting back to try again...');
+          
+          // Redirect back to bank connection screen after a short delay
+          setTimeout(() => {
+            router.push('/link-bank');
+          }, 2000);
+          return;
         }
 
         if (!ref) {
