@@ -19,7 +19,7 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { useMetrics } from "@/lib/api"
+import { useMetrics, useTimeseries } from "@/lib/api"
 import { useDateRange } from "@/contexts/date-range-context"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
@@ -51,11 +51,33 @@ export function SectionCards() {
   console.log('SectionCards render - baseCurrency:', baseCurrency, 'rates loaded:', !!rates)
   
   const dateRangeForAPI = dateRange?.from && dateRange?.to ? {
-    from: formatDateForAPI(dateRange.from),
-    to: formatDateForAPI(dateRange.to)
+    from: formatDateForAPI(new Date(new Date(dateRange.from).setHours(0,0,0,0))),
+    to: formatDateForAPI(new Date(new Date(dateRange.to).setHours(0,0,0,0)))
   } : undefined
 
   const { data: metrics, isLoading, error } = useMetrics(dateRangeForAPI)
+  const { data: timeseries } = useTimeseries(dateRangeForAPI)
+
+  // Derive totals from inclusive timeseries to ensure parity with the chart
+  const incomeTotalEUR = React.useMemo(() => {
+    if (!timeseries || !Array.isArray(timeseries)) return Number(metrics?.income || 0)
+    const sum = timeseries.reduce((acc: number, p: any) => acc + (Number(p?.income || 0)), 0)
+    return Number(sum.toFixed(2))
+  }, [timeseries, metrics?.income])
+
+  const expensesTotalEUR = React.useMemo(() => {
+    if (!timeseries || !Array.isArray(timeseries)) return Number(metrics?.expenses || 0)
+    const sum = timeseries.reduce((acc: number, p: any) => acc + (Number(p?.expenses || 0)), 0)
+    return Number(sum.toFixed(2))
+  }, [timeseries, metrics?.expenses])
+
+  // Savings rate derived from inclusive totals
+  const savingsRate = React.useMemo(() => {
+    const inc = incomeTotalEUR
+    const exp = expensesTotalEUR
+    const net = inc - exp
+    return inc > 0 ? (net / inc) * 100 : 0
+  }, [incomeTotalEUR, expensesTotalEUR])
 
   // Auth headers for API calls
   const authHeaders = async (): Promise<HeadersInit> => {
@@ -181,7 +203,6 @@ export function SectionCards() {
     )
   }
 
-  const savingsRate = metrics.savingsRate
   const savingsProgress = Math.max(0, Math.min(100, (savingsRate / savingsRateGoal) * 100))
   
   // Convert balance goal to display currency for progress calculation
@@ -212,7 +233,7 @@ export function SectionCards() {
     },
     {
       label: "Income",
-      value: formatCurrency(convertAmount(metrics.income || 0, 'EUR', baseCurrency), baseCurrency),
+      value: formatCurrency(convertAmount(incomeTotalEUR || 0, 'EUR', baseCurrency), baseCurrency),
       icon: <IconCoins className="size-5" />,
       delta: metrics.deltas?.incomePct ?? 0,
       kind: "income" as const,
@@ -222,7 +243,7 @@ export function SectionCards() {
     },
     {
       label: "Expenses",
-      value: formatCurrency(convertAmount(metrics.expenses || 0, 'EUR', baseCurrency), baseCurrency),
+      value: formatCurrency(convertAmount(expensesTotalEUR || 0, 'EUR', baseCurrency), baseCurrency),
       icon: <IconCreditCard className="size-5" />,
       delta: metrics.deltas?.expensesPct ?? 0,
       kind: "expenses" as const,

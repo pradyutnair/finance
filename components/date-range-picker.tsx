@@ -103,14 +103,23 @@ export function DateRangePicker({ className, date, onDateChange }: DateRangePick
 
     // If both from and to are set, this is a complete range
     if (range.from && range.to) {
-      setSelectedRange(range)
-      onDateChange?.(range)
+      // Normalize to local midnight to avoid UTC timezone shifts
+      const from = new Date(range.from)
+      from.setHours(0, 0, 0, 0)
+      const to = new Date(range.to)
+      to.setHours(0, 0, 0, 0)
+      const normalized = { from, to }
+      setSelectedRange(normalized)
+      onDateChange?.(normalized)
       setOpen(false)
     }
     // If only from is set, this is the start of a new selection
     else if (range.from && !range.to) {
-      setSelectedRange({ from: range.from, to: undefined })
-      onDateChange?.({ from: range.from, to: undefined })
+      const from = new Date(range.from)
+      from.setHours(0, 0, 0, 0)
+      const normalized = { from, to: undefined }
+      setSelectedRange(normalized)
+      onDateChange?.(normalized)
       setOpen(true)
     }
     // Handle any other edge cases by clearing the selection

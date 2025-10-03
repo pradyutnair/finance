@@ -109,7 +109,11 @@ export function TransactionsTable() {
 
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
-      return { from: formatDateForAPI(dateRange.from), to: formatDateForAPI(dateRange.to) }
+      const from = new Date(dateRange.from)
+      from.setHours(0,0,0,0)
+      const to = new Date(dateRange.to)
+      to.setHours(0,0,0,0)
+      return { from: formatDateForAPI(from), to: formatDateForAPI(to) }
     }
     return undefined
   }, [dateRange, formatDateForAPI])

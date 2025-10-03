@@ -48,7 +48,11 @@ export function DateRangeProvider({ children }: { children: React.ReactNode }) {
   }, [dateRange])
 
   const formatDateForAPI = (date: Date) => {
-    return date.toISOString().split('T')[0] // YYYY-MM-DD format
+    // Format using local calendar date to avoid UTC shift (off-by-one)
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
   }
 
   return (
