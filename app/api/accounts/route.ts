@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
+import { isEncryptionEnabled } from "@/lib/server/encryption-service";
+import { readEncrypted, EncryptionRouteConfig } from "@/lib/http/withEncryption";
 
 export async function GET(request: Request) {
   try {
@@ -55,8 +57,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Merge connection metadata into accounts
-    const enriched = (accountsResponse.documents || []).map((acc: any) => {
+    // Check if encryption is enabled
+    const useEncryption = isEncryptionEnabled();
+
+    // Merge connection metadata and decrypt sensitive account data
+    const enrichedPromises = (accountsResponse.documents || []).map(async (acc: any) => {
       const accountId = acc?.accountId || acc?.$id;
       const conn = acc?.institutionId ? institutionIdToConnection[acc.institutionId] : undefined;
 
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
         ? conn.maxAccessValidforDays
         : (typeof conn?.max_access_valid_for_days === 'number' ? conn.max_access_valid_for_days : undefined);
 
-      return {
+      let accountData = {
         ...acc,
         logoUrl: conn?.logoUrl || conn?.logo || null,
         maxAccessValidforDays: maxAccessValidforDays ?? null,
@@ -74,7 +79,33 @@ export async function GET(request: Request) {
         connectionStatus: conn?.status || null,
         connectionInstitutionName: conn?.institutionName || null,
       };
+
+      // If encryption is enabled, decrypt sensitive account data
+      if (useEncryption && accountId) {
+        try {
+          const config: EncryptionRouteConfig = {
+            databases,
+            databaseId: DATABASE_ID,
+            encryptedCollectionId: process.env.APPWRITE_BANK_ACCOUNTS_ENC_COLLECTION_ID || 'bank_accounts_enc',
+            userId,
+          };
+
+          const decrypted = await readEncrypted(accountId, config);
+          // Merge decrypted sensitive data (iban, accountName, etc.)
+          accountData = {
+            ...accountData,
+            ...decrypted,
+          };
+        } catch (err) {
+          console.warn(`Failed to decrypt account ${accountId}:`, err);
+          // Continue with public data only
+        }
+      }
+
+      return accountData;
     });
+
+    const enriched = await Promise.all(enrichedPromises);
 
     return NextResponse.json({
       ok: true,
