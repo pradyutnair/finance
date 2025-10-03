@@ -105,12 +105,13 @@ appwrite deploy collection
 ```
 
 This will create:
-- `transactions_public` - Queryable transaction metadata
-- `transactions_enc` - Encrypted transaction data
+- `transactions_enc` - **FULLY** encrypted transaction data (ALL fields)
 - `bank_accounts_enc` - Encrypted account details
 - `bank_balances_enc` - Encrypted balance data
 - `bank_connections_enc` - Encrypted connection metadata
 - `requisitions_enc` - Encrypted requisition data
+
+**Note**: Transactions have NO public table - everything is encrypted for maximum security.
 
 **Verify**: Check Appwrite Console to confirm all collections were created with correct attributes and indexes.
 
@@ -140,7 +141,7 @@ INDEX_KEY_MERCHANT=<generated-key-from-step-2>
 INDEX_KEY_DESC=<generated-key-from-step-2>
 
 # Appwrite encrypted collection IDs
-APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID=transactions_public
+# Note: Transactions are FULLY encrypted - no public table
 APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID=transactions_enc
 APPWRITE_BANK_ACCOUNTS_ENC_COLLECTION_ID=bank_accounts_enc
 APPWRITE_BANK_BALANCES_ENC_COLLECTION_ID=bank_balances_enc
@@ -163,24 +164,22 @@ APPWRITE_REQUISITIONS_ENC_COLLECTION_ID=requisitions_enc
 3. **Test the flow**:
    - Connect a test bank account via GoCardless
    - Verify data is encrypted in Appwrite:
-     - Check `transactions_enc` table: should see base64 cipher text
-     - Check `transactions_public` table: should see amounts/dates but NO descriptions/merchants
+     - Check `transactions_enc` table: should see base64 cipher text ONLY
+     - **NO** `transactions_public` table - everything is encrypted
    - Verify data is decrypted correctly in the app:
      - View transactions in the dashboard
-     - All sensitive fields should be visible (decrypted on the server)
+     - All fields should be visible (decrypted on the server)
 
 4. **Verify encryption in Appwrite Console**:
    ```bash
-   # transactions_public should have:
-   # - amount, currency, bookingDate ✅
-   # - NO description, NO counterparty ✅
-   # - merchant_hmac, desc_hmac (blind indexes) ✅
-   
    # transactions_enc should have:
-   # - record_id (links to public)
-   # - cipher (base64 encrypted blob)
+   # - record_id (transaction ID)
+   # - userId (for queries)
+   # - cipher (base64 encrypted blob with ALL data)
    # - dek_wrapped (KMS-wrapped key)
    # - iv, tag (AES-GCM metadata)
+   
+   # Verify: NO plaintext amounts, dates, or descriptions visible
    ```
 
 ## 🔍 Step 6: Verify Security
@@ -209,12 +208,12 @@ npm run build
 # Verify: Successful API calls with correct key ARN
 ```
 
-### Check 4: Blind Index Queries
+### Check 4: Query Performance
 ```bash
-# In the app, search for a transaction by merchant name
-# Open browser DevTools → Network tab
-# Verify: API request contains merchant_hmac, not plaintext merchant
-# Verify: Server logs show HMAC computation
+# Transactions are fully encrypted - no blind indexes
+# Filtering happens after decryption in cache layer
+# Performance is acceptable due to 30-minute cache TTL
+# Monitor cache load times in server logs
 ```
 
 ## 📊 Step 7: Monitor Performance

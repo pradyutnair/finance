@@ -35,11 +35,12 @@ interface StoreTransactionParams {
 
 /**
  * Store a transaction with encryption.
+ * ALL transaction data is encrypted - no public table.
  */
 export async function storeEncryptedTransaction(params: StoreTransactionParams): Promise<string> {
   const { gcTransaction, userId, accountId, category, databases, databaseId } = params;
 
-  // Split into public and sensitive data
+  // Get public and sensitive data
   const publicData = toPublicTransaction(gcTransaction, userId, accountId);
   if (category) {
     publicData.category = category;
@@ -47,20 +48,21 @@ export async function storeEncryptedTransaction(params: StoreTransactionParams):
 
   const sensitiveData = toSensitiveTransaction(gcTransaction);
 
-  // Store encrypted
+  // Combine everything - ALL fields are encrypted
+  const fullData = {
+    ...publicData,
+    ...sensitiveData,
+  };
+
+  // Store encrypted (no public collection for transactions)
   const config: EncryptionRouteConfig = {
     databases,
     databaseId,
-    publicCollectionId: process.env.APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID || 'transactions_public',
     encryptedCollectionId: process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc',
     userId,
-    useBlindIndex: {
-      merchant: true,
-      description: true,
-    },
   };
 
-  const result = await writeEncrypted(publicData, sensitiveData, config, publicData.transactionId);
+  const result = await writeEncrypted({}, fullData, config, publicData.transactionId);
   return result.recordId;
 }
 
@@ -226,37 +228,76 @@ interface QueryTransactionsParams {
 
 /**
  * Query transactions with decryption.
+ * Queries transactions_enc directly since all data is encrypted.
  */
 export async function queryEncryptedTransactions(params: QueryTransactionsParams): Promise<any[]> {
   const { userId, accountId, from, to, limit = 50, offset = 0, databases, databaseId } = params;
 
+  const TRANSACTIONS_ENC_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc';
+
   const queries: string[] = [Query.equal('userId', userId)];
-  
-  if (accountId) {
-    queries.push(Query.equal('accountId', accountId));
-  }
-  
-  if (from) {
-    queries.push(Query.greaterThanEqual('bookingDate', from));
-  }
-  
-  if (to) {
-    queries.push(Query.lessThanEqual('bookingDate', to));
-  }
   
   queries.push(Query.limit(limit));
   queries.push(Query.offset(offset));
-  queries.push(Query.orderDesc('bookingDate'));
+
+  // Fetch encrypted records
+  const response = await databases.listDocuments(
+    databaseId,
+    TRANSACTIONS_ENC_COLLECTION_ID,
+    queries
+  );
 
   const config: EncryptionRouteConfig = {
     databases,
     databaseId,
-    publicCollectionId: process.env.APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID || 'transactions_public',
-    encryptedCollectionId: process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc',
+    encryptedCollectionId: TRANSACTIONS_ENC_COLLECTION_ID,
     userId,
   };
 
-  const results = await queryAndDecrypt(queries, config);
+  // Decrypt all records in parallel
+  const decryptedResults = await Promise.allSettled(
+    response.documents.map(async (doc: any) => {
+      try {
+        const decrypted = await readEncrypted(doc.record_id, config);
+        return decrypted;
+      } catch (err) {
+        console.error(`Failed to decrypt transaction ${doc.record_id}:`, err);
+        return null;
+      }
+    })
+  );
+
+  // Filter successful decryptions and apply filters
+  let results = decryptedResults
+    .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled' && result.value !== null)
+    .map(result => result.value);
+
+  // Apply filters on decrypted data
+  if (accountId) {
+    results = results.filter(t => t.accountId === accountId);
+  }
+  
+  if (from) {
+    results = results.filter(t => {
+      const date = t.bookingDate || t.valueDate || '';
+      return date >= from;
+    });
+  }
+  
+  if (to) {
+    results = results.filter(t => {
+      const date = t.bookingDate || t.valueDate || '';
+      return date <= to;
+    });
+  }
+
+  // Sort by booking date descending
+  results.sort((a, b) => {
+    const dateA = a.bookingDate || a.valueDate || '';
+    const dateB = b.bookingDate || b.valueDate || '';
+    return dateB.localeCompare(dateA);
+  });
+
   return results;
 }
 
@@ -281,7 +322,7 @@ export function getCollectionIds() {
 
   return {
     transactions: useEncryption
-      ? process.env.APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID || 'transactions_public'
+      ? process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc'
       : process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev',
     transactionsEnc: process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc',
     bankAccounts: process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev',

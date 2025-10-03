@@ -413,7 +413,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         databases,
                         DATABASE_ID,
                         useEncryption 
-                          ? (process.env.APPWRITE_TRANSACTIONS_PUBLIC_COLLECTION_ID || 'transactions_public')
+                          ? (process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc')
                           : TRANSACTIONS_COLLECTION_ID,
                         userId,
                         txDescription
