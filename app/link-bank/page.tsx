@@ -67,6 +67,14 @@ export default function LinkBankPage() {
     { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
     { code: 'AT', name: 'Austria', flag: '🇦🇹' },
     { code: 'BE', name: 'Belgium', flag: '🇧🇪' },
+    { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+    { code: 'PL', name: 'Poland', flag: '🇵🇱' },
+    { code: 'RO', name: 'Romania', flag: '🇷🇴' },
+    { code: 'SE', name: 'Sweden', flag: '🇸🇪' },
+    { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+    { code: 'NO', name: 'Norway', flag: '🇳🇴' },
+    { code: 'DK', name: 'Denmark', flag: '🇩🇰' },
+    { code: 'FI', name: 'Finland', flag: '🇫🇮' },
   ];
 
   // Fetch institutions when country changes
