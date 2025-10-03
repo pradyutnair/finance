@@ -8,11 +8,13 @@ This implementation provides enterprise-grade encryption for all financial data 
 
 ## 🎯 What's Encrypted
 
-- **Transactions**: Descriptions, merchant names, counterparty details, raw data
+- **Transactions**: 🔒 **FULLY ENCRYPTED** - ALL fields including amounts, dates, descriptions, merchants, everything
 - **Bank Accounts**: IBAN, account names, owner information, raw account details
 - **Bank Balances**: Detailed balance metadata, raw balance data
 - **Bank Connections**: Agreement IDs, account lists, metadata
 - **Requisitions**: References, redirect URIs, account lists
+
+**Important**: Unlike typical encryption schemes, transactions have NO public/queryable table. Every single field is encrypted.
 
 ---
 
@@ -23,10 +25,10 @@ This implementation provides enterprise-grade encryption for all financial data 
 - **KEK (Key Encryption Key)**: Managed by AWS KMS, never exposed
 - **Process**: DEK encrypts data → KMS wraps DEK → Store cipher + wrapped DEK
 
-### Blind Indexes
-- **Purpose**: Search encrypted fields without decryption
-- **Method**: HMAC-SHA256 of normalized strings
-- **Storage**: Stored in public tables for equality queries
+### No Blind Indexes for Transactions
+- **Transactions**: NO blind indexes - fully encrypted, filtered after decryption
+- **Trade-off**: Slight performance cost, but maximum security
+- **Note**: Other data types could use blind indexes if needed in the future
 
 ### Dual-Mode Operation
 - **Disabled**: Uses existing `*_dev` tables (no changes)
@@ -144,12 +146,12 @@ npm run build
 ```bash
 # Set up test environment
 export AWS_KMS_KEY_ARN=...
-export INDEX_KEY_MERCHANT=...
-export INDEX_KEY_DESC=...
 
 # Run tests (requires Jest setup)
 npm test lib/crypto/encryption.test.ts
 ```
+
+**Note**: Blind index keys are no longer used for transactions since everything is fully encrypted.
 
 ---
 
@@ -243,10 +245,11 @@ npm test lib/crypto/encryption.test.ts
 - **Security**: Keys managed by KMS, never exposed
 - **Flexibility**: Can rotate KEK without re-encrypting data
 
-### Why Blind Indexes?
-- **Problem**: Appwrite cannot query encrypted fields
-- **Solution**: HMAC of normalized strings for equality searches
-- **Trade-off**: Supports equality only, not ranges or partial matches
+### Why NO Blind Indexes for Transactions?
+- **Decision**: Maximum security - even amounts and dates are encrypted
+- **Trade-off**: Must decrypt all transactions and filter in-memory
+- **Performance**: Acceptable with caching (30-minute TTL)
+- **Future**: Could add blind indexes if query performance becomes critical
 
 ### Why Server-Only?
 - **Security**: Encryption keys never sent to client
