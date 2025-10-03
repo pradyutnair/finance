@@ -158,6 +158,7 @@ export async function POST(request: Request) {
           category = cat;
           break;
         }
+
       }
 
       const searchTokens = focus.filter(w => derivedCategory(w) == null);
@@ -436,5 +437,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: error?.message || "Internal Server Error" }, { status });
   }
 }
+
 
 
