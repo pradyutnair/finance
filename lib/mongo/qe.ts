@@ -21,14 +21,21 @@ export async function ensureCollections() {
   // Define encrypted fields maps
   const cmk = gcpCustomerMasterKey();
 
-  // Plaintext: userId, institutionId, bookingDate, category, exclude, logoUrl, maxAccessValidforDays, transactionTotalDays
-  // Encrypted with equality: requisitionId, accountId, transactionId, description, counterparty
-  // Encrypted (no queries): all other sensitive fields
+  // Plaintext fields (for efficient indexing and queries):
+  // - userId, institutionId, accountId (all collections)
+  // - bookingDate, category, exclude (transactions)
+  // - logoUrl, maxAccessValidforDays, transactionTotalDays (connections)
+  // - balanceType, referenceDate (balances)
+  //
+  // Encrypted fields (sensitive data):
+  // - requisitionId, status, reference, redirectUri, institutionName
+  // - iban, accountName, currency, raw
+  // - transactionId, amount, bookingDateTime, valueDate, description, counterparty
   
   const requisitionsEnc: any = {
     encryptedFields: {
       fields: [
-        { path: 'requisitionId', bsonType: 'string', queries: { queryType: 'equality' } },
+        { path: 'requisitionId', bsonType: 'string' },
         { path: 'status', bsonType: 'string' },
         { path: 'reference', bsonType: 'string' },
         { path: 'redirectUri', bsonType: 'string' },
@@ -40,7 +47,7 @@ export async function ensureCollections() {
   const bankConnectionsEnc: any = {
     encryptedFields: {
       fields: [
-        { path: 'requisitionId', bsonType: 'string', queries: { queryType: 'equality' } },
+        { path: 'requisitionId', bsonType: 'string' },
         { path: 'status', bsonType: 'string' },
         { path: 'institutionName', bsonType: 'string' },
       ],
@@ -50,7 +57,6 @@ export async function ensureCollections() {
   const bankAccountsEnc: any = {
     encryptedFields: {
       fields: [
-        { path: 'accountId', bsonType: 'string', queries: { queryType: 'equality' } },
         { path: 'iban', bsonType: 'string' },
         { path: 'accountName', bsonType: 'string' },
         { path: 'currency', bsonType: 'string' },
@@ -64,14 +70,13 @@ export async function ensureCollections() {
   const transactionsEnc: any = {
     encryptedFields: {
       fields: [
-        { path: 'accountId', bsonType: 'string', queries: { queryType: 'equality' } },
-        { path: 'transactionId', bsonType: 'string', queries: { queryType: 'equality' } },
+        { path: 'transactionId', bsonType: 'string' },
         { path: 'amount', bsonType: 'string' },
         { path: 'currency', bsonType: 'string' },
         { path: 'bookingDateTime', bsonType: 'string' },
         { path: 'valueDate', bsonType: 'string' },
-        { path: 'description', bsonType: 'string', queries: { queryType: 'equality' } },
-        { path: 'counterparty', bsonType: 'string', queries: { queryType: 'equality' } },
+        { path: 'description', bsonType: 'string' },
+        { path: 'counterparty', bsonType: 'string' },
         { path: 'raw', bsonType: 'string' },
       ],
     },
@@ -119,6 +124,7 @@ export async function ensureCollections() {
 
   // Define balances encrypted fields
   // Plaintext: userId, accountId, balanceType, referenceDate (needed for indexing/querying)
+  // Only balanceAmount and currency are encrypted
   const balancesEnc: any = {
     encryptedFields: {
       fields: [

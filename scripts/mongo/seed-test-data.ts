@@ -108,7 +108,9 @@ async function seedTestData() {
   );
   console.log(`✅ Balance: ${balResult.upsertedCount ? 'created' : 'updated'}`);
   
-  // 5. Create test transactions (auto-encrypted)
+  // 5. Create test transactions
+  // NOTE: In production, these come from GoCardless as plaintext,
+  // get categorized via suggestCategory(), then encrypted on insert
   const transactions = [
     {
       transactionId: 'tx-tesco-001',

@@ -160,14 +160,18 @@ export async function storeTransactionMongo(
   const counterparty = transaction.creditorName || transaction.debtorName || '';
   const providerTransactionId = transaction.transactionId || transaction.internalTransactionId || '';
   
-  // Get or suggest category (auto-categorize on ingestion)
-  const existingCategory = await findExistingCategoryMongo(db, 'transactions_dev', userId, txDescription, counterparty);
-  const category = existingCategory || await suggestCategory(
+  // CRITICAL: Categorize on PLAINTEXT data from GoCardless BEFORE encryption
+  // This is the raw unencrypted data from GoCardless API
+  // suggestCategory uses heuristic rules + OpenAI on this plaintext
+  // Then we encrypt and store in MongoDB with the category already assigned
+  const category = await suggestCategory(
     txDescription,
     counterparty,
     transaction.transactionAmount?.amount,
     transaction.transactionAmount?.currency
   );
+  
+  console.log(`[Categorize] "${txDescription}" → ${category}`);
   
   // Build document, omitting null values for encrypted fields
   const doc: any = {
