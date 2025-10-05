@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, ID, Query } from "appwrite";
 import { getRequisition, HttpError } from "@/lib/gocardless";
+import { getDb } from "@/lib/mongo/client";
 
 type RenewBody = {
   requisitionId: string;
@@ -37,7 +38,59 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "'institutionId' is required (could not derive from provider)" }, { status: 400 });
     }
 
-    // Appwrite setup
+    // MongoDB path
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      
+      // Update bank_connections_dev
+      await db.collection('bank_connections_dev').updateOne(
+        { userId, institutionId },
+        {
+          $set: {
+            requisitionId,
+            status: 'active',
+            institutionId,
+            ...(institutionName ? { institutionName } : {}),
+            updatedAt: new Date().toISOString(),
+          },
+          $setOnInsert: {
+            userId,
+            createdAt: new Date().toISOString(),
+          }
+        },
+        { upsert: true }
+      );
+
+      // Update requisitions_dev
+      await db.collection('requisitions_dev').updateOne(
+        { userId, institutionId },
+        {
+          $set: {
+            requisitionId,
+            institutionId,
+            ...(institutionName ? { institutionName } : {}),
+            status: 'LINKED',
+            updatedAt: new Date().toISOString(),
+          },
+          $setOnInsert: {
+            userId,
+            createdAt: new Date().toISOString(),
+          }
+        },
+        { upsert: true }
+      );
+
+      return NextResponse.json({ ok: true, requisitionId, institutionId });
+    }
+
+    // Appwrite writes disabled - MongoDB is now the primary backend
+    console.log('⚠️  Appwrite writes disabled. Use DATA_BACKEND=mongodb for renew.');
+    return NextResponse.json({
+      ok: false,
+      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to renew requisitions.'
+    }, { status: 400 });
+
+    /* Legacy Appwrite code (disabled)
     const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
     const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
     const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
@@ -174,6 +227,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, requisitionId, institutionId });
+    */
   } catch (err: any) {
     console.error('Error in renew requisition endpoint:', err);
     if (err instanceof HttpError) {

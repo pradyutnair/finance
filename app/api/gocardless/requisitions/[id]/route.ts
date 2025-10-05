@@ -7,14 +7,14 @@ import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
 import { createHash } from "crypto";
-import { 
-  isEncryptionEnabled,
-  storeEncryptedTransaction,
-  storeEncryptedBankAccount,
-  storeEncryptedBalance,
-  storeEncryptedRequisition
-} from "@/lib/server/encryption-service";
 import { invalidateUserCache } from "@/lib/server/cache-service";
+import {
+  storeRequisitionMongo,
+  storeBankConnectionMongo,
+  storeBankAccountMongo,
+  storeBalanceMongo,
+  storeTransactionMongo
+} from "@/lib/server/mongo-ingestion";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -89,7 +89,109 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     // If requisition is linked, process the accounts
     if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {
-      // Resolve DB and collection IDs from env with sensible defaults
+      
+      // MongoDB ingestion path
+      if (process.env.DATA_BACKEND === 'mongodb') {
+        try {
+          // Fetch institution metadata
+          let logoUrl: string | null = null;
+          let transactionTotalDays: number | null = null;
+          let maxAccessValidForDays: number | null = null;
+          try {
+            const institution = await getInstitution(requisition.institution_id);
+            logoUrl = (institution && (institution.logo as string)) || null;
+            transactionTotalDays = institution?.transaction_total_days || null;
+            maxAccessValidForDays = institution?.max_access_valid_for_days || null;
+          } catch {
+            // proceed without institution metadata
+          }
+
+          // Store requisition
+          await storeRequisitionMongo(requisition, userId);
+          console.log('✅ Stored requisition in MongoDB');
+
+          // Store bank connection
+          await storeBankConnectionMongo(
+            userId,
+            requisition.institution_id,
+            requisition.institution_name || 'Unknown Bank',
+            requisition.id,
+            logoUrl,
+            transactionTotalDays,
+            maxAccessValidForDays
+          );
+          console.log('✅ Stored bank connection in MongoDB');
+
+          // Process each account
+          for (const accountId of requisition.accounts) {
+            try {
+              const accountDetails = await getAccounts(accountId);
+              
+              // Store bank account
+              await storeBankAccountMongo(
+                accountId,
+                userId,
+                requisition.institution_id,
+                requisition.institution_name || 'Unknown Bank',
+                accountDetails
+              );
+              console.log(`✅ Stored bank account ${accountId} in MongoDB`);
+
+              // Get and store balances
+              try {
+                const balancesResponse = await getBalances(accountId);
+                const balances = balancesResponse?.balances || [];
+                for (const balance of balances) {
+                  await storeBalanceMongo(userId, accountId, balance);
+                }
+                console.log(`✅ Stored ${balances.length} balances for ${accountId}`);
+              } catch (balanceError) {
+                console.error(`Error fetching balances for ${accountId}:`, balanceError);
+              }
+
+              // Get and store transactions (auto-categorized on ingestion)
+              try {
+                const transactionsResponse = await getTransactions(accountId);
+                const transactions = transactionsResponse?.transactions?.booked || [];
+                for (const transaction of transactions.slice(0, 100)) {
+                  await storeTransactionMongo(userId, accountId, transaction);
+                }
+                console.log(`✅ Stored ${transactions.length} transactions for ${accountId}`);
+              } catch (transactionError) {
+                console.error(`Error fetching transactions for ${accountId}:`, transactionError);
+              }
+            } catch (accountError) {
+              console.error(`Error processing account ${accountId}:`, accountError);
+            }
+          }
+
+          // Invalidate cache after ingestion
+          invalidateUserCache(userId, 'all');
+
+          return NextResponse.json({
+            ok: true,
+            status: requisition.status,
+            institutionName: requisition.institution_name,
+            accountCount: requisition.accounts?.length || 0,
+            requisition
+          });
+        } catch (dbError) {
+          console.error("Error storing data in MongoDB:", dbError);
+          return NextResponse.json({ ok: false, error: "Failed to store data in MongoDB" }, { status: 500 });
+        }
+      }
+
+      // Appwrite ingestion path disabled - MongoDB is now the primary backend
+      // Keeping this code for reference but not executing Appwrite writes
+      console.log('⚠️  Appwrite writes disabled. Use DATA_BACKEND=mongodb for ingestion.');
+      return NextResponse.json({
+        ok: false,
+        error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to enable ingestion.',
+        requisition
+      }, { status: 400 });
+
+      // Legacy code below (disabled)
+      /*
       const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
       const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
       const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
@@ -124,22 +226,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
         // Upsert requisition in database (idempotent)
-        const useEncryption = isEncryptionEnabled();
+        // const useEncryption = isEncryptionEnabled();
         
-        if (useEncryption) {
-          // Store encrypted requisition
-          try {
-            await storeEncryptedRequisition({
-              requisition,
-              userId,
-              databases,
-              databaseId: DATABASE_ID,
-            });
-            console.log('✅ Stored encrypted requisition');
-          } catch (error) {
-            console.error('Error storing encrypted requisition:', error);
-          }
-        } else {
+        // if (useEncryption) {
+        //   // Store encrypted requisition
+        //   try {
+        //     await storeEncryptedRequisition({
+        //       requisition,
+        //       userId,
+        //       databases,
+        //       databaseId: DATABASE_ID,
+        //     });
+        //     console.log('✅ Stored encrypted requisition');
+        //   } catch (error) {
+        //     console.error('Error storing encrypted requisition:', error);
+        //   }
+        // } else {
           // Legacy unencrypted storage
           try {
             await databases.createDocument(
@@ -178,7 +280,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               console.error('Error storing requisition:', error);
             }
           }
-        }
+        // }
 
         // Create bank connection record first to get connectionId
         let connectionDocId = '';
@@ -216,83 +318,40 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             
             // Store bank account in database (skip if $id exists)
             try {
-              if (useEncryption) {
-                // Store with encryption
-                try {
-                  await storeEncryptedBankAccount({
-                    gcAccount: accountDetails,
-                    userId,
-                    accountId,
+              // Appwrite unencrypted storage (MongoDB uses queryable encryption automatically)
+              let exists = false;
+              try {
+                await databases.getDocument(
+                  DATABASE_ID,
+                  BANK_ACCOUNTS_COLLECTION_ID,
+                  accountId
+                );
+                exists = true;
+                console.log(`Bank account ${accountId} already exists, skipping create.`);
+              } catch (checkErr: any) {
+                const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
+                if (code && code !== 404) {
+                  console.warn('Error checking existing bank account, will attempt create:', checkErr);
+                }
+              }
+
+              if (!exists) {
+                await databases.createDocument(
+                  DATABASE_ID,
+                  BANK_ACCOUNTS_COLLECTION_ID,
+                  accountId,
+                  {
+                    userId: userId,
+                    accountId: accountId,
                     institutionId: requisition.institution_id,
                     institutionName: requisition.institution_name || 'Unknown Bank',
-                    databases,
-                    databaseId: DATABASE_ID,
-                  });
-                  console.log(`✅ Stored encrypted bank account ${accountId}`);
-                } catch (error) {
-                  console.error(`Error storing encrypted bank account ${accountId}:`, error);
-                }
-
-                // Also store public metadata in legacy bank_accounts_dev for backward compatibility
-                try {
-                  await databases.createDocument(
-                    DATABASE_ID,
-                    BANK_ACCOUNTS_COLLECTION_ID,
-                    accountId,
-                    {
-                      userId: userId,
-                      accountId: accountId,
-                      institutionId: requisition.institution_id,
-                      institutionName: requisition.institution_name || 'Unknown Bank',
-                      currency: accountDetails.currency || 'EUR',
-                      status: 'active',
-                      // Don't store sensitive fields in the public collection
-                      iban: null,
-                      accountName: null,
-                      raw: null,
-                    }
-                  );
-                } catch (err: any) {
-                  if (err?.code !== 409) {
-                    console.error('Error storing public account metadata:', err);
+                    iban: accountDetails.iban || null,
+                    accountName: accountDetails.name || null,
+                    currency: accountDetails.currency || 'EUR',
+                    status: 'active',
+                    raw: JSON.stringify(accountDetails),
                   }
-                }
-              } else {
-                // Legacy unencrypted storage
-                let exists = false;
-                try {
-                  await databases.getDocument(
-                    DATABASE_ID,
-                    BANK_ACCOUNTS_COLLECTION_ID,
-                    accountId
-                  );
-                  exists = true;
-                  console.log(`Bank account ${accountId} already exists, skipping create.`);
-                } catch (checkErr: any) {
-                  const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
-                  if (code && code !== 404) {
-                    console.warn('Error checking existing bank account, will attempt create:', checkErr);
-                  }
-                }
-
-                if (!exists) {
-                  await databases.createDocument(
-                    DATABASE_ID,
-                    BANK_ACCOUNTS_COLLECTION_ID,
-                    accountId,
-                    {
-                      userId: userId,
-                      accountId: accountId,
-                      institutionId: requisition.institution_id,
-                      institutionName: requisition.institution_name || 'Unknown Bank',
-                      iban: accountDetails.iban || null,
-                      accountName: accountDetails.name || null,
-                      currency: accountDetails.currency || 'EUR',
-                      status: 'active',
-                      raw: JSON.stringify(accountDetails),
-                    }
-                  );
-                }
+                );
               }
 
               // Get and store balances
@@ -305,86 +364,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       const balanceType = balance.balanceType || 'closingBooked';
                       const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
                       
-                      if (useEncryption) {
-                        // Store with encryption
-                        try {
-                          await storeEncryptedBalance({
-                            gcBalance: balance,
-                            userId,
-                            accountId,
-                            databases,
-                            databaseId: DATABASE_ID,
-                          });
-                          console.log(`✅ Stored encrypted balance for ${accountId}`);
-                        } catch (error) {
-                          console.error(`Error storing encrypted balance:`, error);
-                        }
-
-                        // Also store in legacy balances_dev for backward compatibility
-                        try {
-                          const existingBalances = await databases.listDocuments(
-                            DATABASE_ID,
-                            BALANCES_COLLECTION_ID,
-                            [
-                              Query.equal('accountId', accountId),
-                              Query.equal('balanceType', balanceType),
-                              Query.equal('referenceDate', referenceDate)
-                            ]
-                          );
-                          
-                          if (existingBalances.documents.length === 0) {
-                            await databases.createDocument(
-                              DATABASE_ID,
-                              BALANCES_COLLECTION_ID,
-                              ID.unique(),
-                              {
-                                userId: userId,
-                                accountId: accountId,
-                                balanceAmount: balance.balanceAmount?.amount || '0',
-                                currency: balance.balanceAmount?.currency || 'EUR',
-                                balanceType: balanceType,
-                                referenceDate: referenceDate,
-                              }
-                            );
-                          }
-                        } catch (err) {
-                          // Ignore errors for backward compatibility storage
-                        }
-                      } else {
-                        // Legacy unencrypted storage
-                        try {
-                          const existingBalances = await databases.listDocuments(
-                            DATABASE_ID,
-                            BALANCES_COLLECTION_ID,
-                            [
-                              Query.equal('accountId', accountId),
-                              Query.equal('balanceType', balanceType),
-                              Query.equal('referenceDate', referenceDate)
-                            ]
-                          );
-                          
-                          if (existingBalances.documents.length > 0) {
-                            console.log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
-                            continue;
-                          }
-                        } catch (queryError) {
-                          console.log('Error checking existing balance, proceeding with creation');
-                        }
-                        
-                        await databases.createDocument(
+                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
+                      try {
+                        const existingBalances = await databases.listDocuments(
                           DATABASE_ID,
                           BALANCES_COLLECTION_ID,
-                          ID.unique(),
-                          {
-                            userId: userId,
-                            accountId: accountId,
-                            balanceAmount: balance.balanceAmount?.amount || '0',
-                            currency: balance.balanceAmount?.currency || 'EUR',
-                            balanceType: balanceType,
-                            referenceDate: referenceDate,
-                          }
+                          [
+                            Query.equal('accountId', accountId),
+                            Query.equal('balanceType', balanceType),
+                            Query.equal('referenceDate', referenceDate)
+                          ]
                         );
+                        
+                        if (existingBalances.documents.length > 0) {
+                          console.log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
+                          continue;
+                        }
+                      } catch (queryError) {
+                        console.log('Error checking existing balance, proceeding with creation');
                       }
+                      
+                      await databases.createDocument(
+                        DATABASE_ID,
+                        BALANCES_COLLECTION_ID,
+                        ID.unique(),
+                        {
+                          userId: userId,
+                          accountId: accountId,
+                          balanceAmount: balance.balanceAmount?.amount || '0',
+                          currency: balance.balanceAmount?.currency || 'EUR',
+                          balanceType: balanceType,
+                          referenceDate: referenceDate,
+                        }
+                      );
                     } catch (error: any) {
                       if (error.message?.includes('already exists')) {
                         console.log('Balance already exists, skipping');
@@ -412,9 +424,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       const existingCategory = await findExistingCategory(
                         databases,
                         DATABASE_ID,
-                        useEncryption 
-                          ? (process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc')
-                          : TRANSACTIONS_COLLECTION_ID,
+                        TRANSACTIONS_COLLECTION_ID,
                         userId,
                         txDescription
                       );
@@ -425,25 +435,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         transaction.transactionAmount?.currency
                       );
 
-                      if (useEncryption) {
-                        // Store with encryption
-                        try {
-                          await storeEncryptedTransaction({
-                            gcTransaction: transaction,
-                            userId,
-                            accountId,
-                            category,
-                            databases,
-                            databaseId: DATABASE_ID,
-                          });
-                          console.log(`✅ Stored encrypted transaction`);
-                        } catch (error: any) {
-                          if (!error?.message?.includes('already exists')) {
-                            console.error('Error storing encrypted transaction:', error);
-                          }
-                        }
-                      } else {
-                        // Legacy unencrypted storage
+                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
                         const providerTransactionId: string | undefined = transaction.transactionId || undefined;
                         const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${txDescription}`;
 
@@ -492,7 +484,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                             raw: JSON.stringify(transaction).slice(0, 10000),
                           }
                         );
-                      }
                     } catch (error: any) {
                       // Ignore duplicates silently; continue processing
                       if (error?.message?.includes('already exists') || error?.code === 409) {
@@ -505,9 +496,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 }
                 
                 // Invalidate cache after storing transactions
-                if (useEncryption) {
-                  invalidateUserCache(userId, 'transactions');
-                }
+                invalidateUserCache(userId, 'transactions');
               } catch (transactionError) {
                 console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
               }
@@ -528,6 +517,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         console.error("Error storing data in database:", dbError);
         // Still return success if GoCardless connection worked
       }
+      */
     }
 
     return NextResponse.json({

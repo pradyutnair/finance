@@ -6,8 +6,7 @@
 
 import 'server-only';
 import { Client, Databases, Query } from 'appwrite';
-import { readEncrypted, EncryptionRouteConfig } from '@/lib/http/withEncryption';
-import { isEncryptionEnabled } from './encryption-service';
+import { getDb } from '@/lib/mongo/client';
 
 type TransactionDoc = {
   $id?: string;
@@ -108,86 +107,40 @@ export async function getUserTransactionCache(
 
     console.log(`[Cache] Loading ${DEFAULT_DAYS} days of transactions for user ${userId}: ${fromDate} to ${toDate}`);
 
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    
-    // Check if encryption is enabled
-    const useEncryption = isEncryptionEnabled();
-    
     let allTransactions: TransactionDoc[] = [];
 
-    if (useEncryption) {
-      console.log('[Cache] Using encrypted collections (transactions_enc only)');
-      const TRANSACTIONS_ENC_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_ENC_COLLECTION_ID || 'transactions_enc';
-
-      // Fetch encrypted records with pagination
-      let cursor: string | undefined;
-      const pageSize = 100;
-      
-      while (true) {
-        const queries = [
-          Query.equal('userId', userId),
-          Query.limit(pageSize)
-        ];
-        
-        if (cursor) {
-          queries.push(Query.cursorAfter(cursor));
-        }
-
-        const response = await databases.listDocuments(
-          DATABASE_ID,
-          TRANSACTIONS_ENC_COLLECTION_ID,
-          queries
-        );
-
-        const docs = response.documents;
-        
-        // Decrypt each transaction in parallel
-        const decryptedBatch = await Promise.allSettled(
-          docs.map(async (doc: any) => {
-            try {
-              const config: EncryptionRouteConfig = {
-                databases,
-                databaseId: DATABASE_ID,
-                encryptedCollectionId: TRANSACTIONS_ENC_COLLECTION_ID,
-                userId,
-              };
-              
-              const decrypted = await readEncrypted(doc.record_id || doc.$id, config);
-              return {
-                $id: doc.$id,
-                ...decrypted,
-              };
-            } catch (err) {
-              console.error(`[Cache] Failed to decrypt transaction ${doc.record_id}:`, err);
-              return null;
-            }
-          })
-        );
-
-        const successfulDecrypts = decryptedBatch
-          .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled' && result.value !== null)
-          .map(result => result.value);
-        
-        allTransactions.push(...successfulDecrypts);
-
-        if (docs.length < pageSize) break;
-        cursor = docs[docs.length - 1].$id;
-        if (!cursor) break;
-      }
-
-      // Filter by date range after decryption
-      allTransactions = allTransactions.filter(t => {
-        const date = t.bookingDate || t.valueDate || '';
-        return date >= fromDate && date <= toDate;
-      });
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      console.log('[Cache] Using MongoDB backend (transactions_dev)');
+      const db = await getDb();
+      const coll = db.collection('transactions_dev');
+      const cursor = coll
+        .find({ userId, bookingDate: { $gte: fromDate, $lte: toDate } })
+        .sort({ bookingDate: -1 })
+        .limit(20000);
+      const docs = await cursor.toArray();
+      allTransactions = docs.map((d: any) => ({
+        $id: d._id?.toString?.() || d._id,
+        userId: d.userId,
+        accountId: d.accountId,
+        amount: d.amount,
+        currency: d.currency,
+        bookingDate: d.bookingDate,
+        valueDate: d.valueDate,
+        description: d.description,
+        counterparty: d.counterparty,
+        category: d.category,
+        exclude: d.exclude,
+        $createdAt: d.createdAt,
+      }));
     } else {
-      console.log('[Cache] Using legacy unencrypted collection');
+      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+      console.log('[Cache] Using legacy Appwrite unencrypted collection');
       const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
-      
+
       // Fetch all transactions in the date range with pagination
       let cursor: string | undefined;
       const pageSize = 100;
-      
+
       while (true) {
         const queries = [
           Query.equal('userId', userId),
@@ -196,7 +149,7 @@ export async function getUserTransactionCache(
           Query.orderDesc('bookingDate'),
           Query.limit(pageSize)
         ];
-        
+
         if (cursor) {
           queries.push(Query.cursorAfter(cursor));
         }
@@ -313,37 +266,57 @@ export async function getUserBalanceCache(
   }
 
   try {
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
+    let allBalances: BalanceDoc[] = [];
 
-    // Fetch all balances for the user
-    const allBalances: BalanceDoc[] = [];
-    let cursor: string | undefined;
-    const pageSize = 100;
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      const docs = await db
+        .collection('balances_dev')
+        .find({ userId })
+        .sort({ referenceDate: -1 })
+        .toArray();
+      
+      allBalances = docs.map((d: any) => ({
+        $id: d._id?.toString?.() || d._id,
+        userId: d.userId,
+        accountId: d.accountId,
+        balanceAmount: d.balanceAmount,
+        currency: d.currency,
+        balanceType: d.balanceType,
+        referenceDate: d.referenceDate,
+      }));
+    } else {
+      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+      const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
-    while (true) {
-      const queries = [
-        Query.equal('userId', userId),
-        Query.orderDesc('referenceDate'),
-        Query.limit(pageSize)
-      ];
+      // Fetch all balances for the user
+      let cursor: string | undefined;
+      const pageSize = 100;
 
-      if (cursor) {
-        queries.push(Query.cursorAfter(cursor));
+      while (true) {
+        const queries = [
+          Query.equal('userId', userId),
+          Query.orderDesc('referenceDate'),
+          Query.limit(pageSize)
+        ];
+
+        if (cursor) {
+          queries.push(Query.cursorAfter(cursor));
+        }
+
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          BALANCES_COLLECTION_ID,
+          queries
+        );
+
+        const docs = response.documents as BalanceDoc[];
+        allBalances.push(...docs);
+
+        if (docs.length < pageSize) break;
+        cursor = docs[docs.length - 1].$id;
+        if (!cursor) break;
       }
-
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        BALANCES_COLLECTION_ID,
-        queries
-      );
-
-      const docs = response.documents as BalanceDoc[];
-      allBalances.push(...docs);
-
-      if (docs.length < pageSize) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
     }
 
     console.log(`[Cache] Loaded ${allBalances.length} balances for user ${userId}`);

@@ -4,6 +4,8 @@ import { NextResponse } from "next/server"
 import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
+import { getDb } from "@/lib/mongo/client"
+import { ObjectId } from "mongodb"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,6 +14,64 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { id } = await params
     const body = await request.json()
 
+    // Only allow updating specific fields
+    const updatePayload: Record<string, any> = {}
+    if (typeof body.category === "string") updatePayload.category = body.category
+    if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
+    if (typeof body.counterparty === "string") updatePayload.counterparty = body.counterparty
+    if (body.counterparty === null || body.counterparty === undefined) {
+      updatePayload.counterparty = body.counterparty
+    }
+    if (typeof body.description === "string") updatePayload.description = body.description
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
+    }
+
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb()
+      const coll = db.collection('transactions_dev')
+      
+      const result = await coll.findOneAndUpdate(
+        { _id: new ObjectId(id), userId },
+        { $set: updatePayload },
+        { returnDocument: 'after' }
+      )
+
+      if (!result) {
+        return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 })
+      }
+
+      // When category is updated, propagate to similar transactions
+      if (typeof updatePayload.category === "string") {
+        const newCategory = updatePayload.category
+        const description = result.description
+        const counterparty = result.counterparty
+
+        if (description && typeof description === "string") {
+          await coll.updateMany(
+            { userId, description: description.trim(), category: { $ne: newCategory } },
+            { $set: { category: newCategory } }
+          )
+        }
+        if (counterparty && typeof counterparty === "string") {
+          await coll.updateMany(
+            { userId, counterparty: counterparty.trim(), category: { $ne: newCategory } },
+            { $set: { category: newCategory } }
+          )
+        }
+      }
+
+      invalidateUserCache(userId, 'transactions')
+      return NextResponse.json({ ok: true, transaction: result })
+    }
+
+    // Appwrite writes disabled - MongoDB is the primary backend
+    return NextResponse.json({ 
+      ok: false, 
+      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to update transactions.' 
+    }, { status: 400 })
+
+    /* Legacy Appwrite code (disabled)
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
@@ -29,21 +89,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || "68d42ac20031b27284c9") as string
     const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || "transactions_dev"
 
-    // Only allow updating specific fields
-    const updatePayload: Record<string, any> = {}
-    if (typeof body.category === "string") updatePayload.category = body.category
-    if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
-    if (typeof body.counterparty === "string") updatePayload.counterparty = body.counterparty
-    if (body.counterparty === null || body.counterparty === undefined) {
-      // Allow clearing counterparty
-      updatePayload.counterparty = body.counterparty
-    }
-    if (typeof body.description === "string") updatePayload.description = body.description
-    if (Object.keys(updatePayload).length === 0) {
-      return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
-    }
-
-    // Ensure the doc belongs to the user by relying on Appwrite permissions or fetching first if needed
     const updated = await databases.updateDocument(
       DATABASE_ID,
       TRANSACTIONS_COLLECTION_ID,
@@ -51,7 +96,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       updatePayload
     )
 
-    // When category is updated, also apply to similar transactions with same description or counterparty
     if (typeof updatePayload.category === "string") {
       const newCategory = updatePayload.category
       const description = (updated as any)?.description
@@ -106,10 +150,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    // Invalidate centralized cache for this user
     invalidateUserCache(userId, 'transactions')
-
     return NextResponse.json({ ok: true, transaction: updated })
+    */
   } catch (err: any) {
     console.error("Error updating transaction:", err)
     const status = err?.status || 500
