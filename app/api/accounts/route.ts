@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
-import { isEncryptionEnabled } from "@/lib/server/encryption-service";
-import { readEncrypted, EncryptionRouteConfig } from "@/lib/http/withEncryption";
+import { getDb } from "@/lib/mongo/client";
 
 export async function GET(request: Request) {
   try {
@@ -12,7 +11,51 @@ export async function GET(request: Request) {
     const user: any = await requireAuthUser(request);
     const userId = user.$id || user.id;
 
-    // Create Appwrite client
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      const accounts = await db
+        .collection('bank_accounts_dev')
+        .find({ userId })
+        .toArray();
+
+      const connections = await db
+        .collection('bank_connections_dev')
+        .find({ userId })
+        .toArray();
+
+      const byInstitution: Record<string, any> = {};
+      for (const c of connections) {
+        const inst = c.institutionId;
+        if (!inst) continue;
+        const prev = byInstitution[inst];
+        const prevTs = prev?.createdAt ? Date.parse(prev.createdAt) : 0;
+        const ts = c.createdAt ? Date.parse(c.createdAt) : 0;
+        if (!prev || ts >= prevTs) byInstitution[inst] = c;
+      }
+
+      const enriched = accounts.map((acc: any) => {
+        const conn = acc?.institutionId ? byInstitution[acc.institutionId] : undefined;
+        const maxAccessValidforDays = typeof conn?.maxAccessValidforDays === 'number' ? conn.maxAccessValidforDays : null;
+        return {
+          ...acc,
+          logoUrl: conn?.logoUrl || null,
+          maxAccessValidforDays,
+          connectionCreatedAt: conn?.createdAt || null,
+          connectionStatus: conn?.status || null,
+          connectionInstitutionName: conn?.institutionName || null,
+        };
+      });
+
+      return NextResponse.json({ ok: true, accounts: enriched });
+    }
+
+    // Appwrite reads disabled for migrated collections - MongoDB is the primary backend
+    return NextResponse.json({ 
+      ok: false, 
+      error: 'Appwrite reads are disabled for accounts. Set DATA_BACKEND=mongodb.' 
+    }, { status: 400 })
+
+    /* Legacy Appwrite code (disabled)
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
@@ -111,6 +154,7 @@ export async function GET(request: Request) {
       ok: true,
       accounts: enriched,
     });
+    */
 
   } catch (err: any) {
     console.error('Error fetching accounts:', err);

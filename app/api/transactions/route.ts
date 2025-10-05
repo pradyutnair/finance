@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { getUserTransactionCache, filterTransactions, invalidateUserCache } from "@/lib/server/cache-service";
+import { getDb } from "@/lib/mongo/client";
 
 // NOTE: This route automatically supports encryption via the cache service.
 // When ENCRYPTION_PROVIDER is set, getUserTransactionCache will:
