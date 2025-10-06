@@ -2,7 +2,7 @@
 
 import os
 from pymongo import MongoClient
-from pymongo.encryption import ClientEncryption
+from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
 
 
 _client = None
@@ -44,13 +44,15 @@ def get_encrypted_mongo_client():
     key_vault_namespace = get_key_vault_namespace()
     crypt_shared_lib_path = os.environ.get("SHARED_LIB_PATH")
 
-    auto_encryption_opts = {
-        "keyVaultNamespace": key_vault_namespace,
-        "kmsProviders": kms_providers,
-    }
-    
+    extra_options = {}
     if crypt_shared_lib_path:
-        auto_encryption_opts["extraOptions"] = {"cryptSharedLibPath": crypt_shared_lib_path}
+        extra_options["cryptSharedLibPath"] = crypt_shared_lib_path
+
+    auto_encryption_opts = AutoEncryptionOpts(
+        kms_providers=kms_providers,
+        key_vault_namespace=key_vault_namespace,
+        **({'extra_options': extra_options} if extra_options else {})
+    )
 
     _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
     return _client
