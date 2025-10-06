@@ -102,6 +102,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             logoUrl = (institution && (institution.logo as string)) || null;
             transactionTotalDays = institution?.transaction_total_days || null;
             maxAccessValidForDays = institution?.max_access_valid_for_days || null;
+
+            // Change transactionTotalDays and maxAccessValidForDays to number if they are strings
+            if (typeof transactionTotalDays === 'string') {
+              transactionTotalDays = Number(transactionTotalDays);
+            }
+            if (typeof maxAccessValidForDays === 'string') {
+              maxAccessValidForDays = Number(maxAccessValidForDays);
+            }
           } catch {
             // proceed without institution metadata
           }
