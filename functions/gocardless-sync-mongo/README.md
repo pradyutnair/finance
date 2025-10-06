@@ -65,9 +65,9 @@ Required environment variables for MongoDB and GoCardless integration:
 
 ## 🔐 Data Encryption
 
-This function uses MongoDB Queryable Encryption (QE) with GCP KMS to encrypt sensitive financial data:
+This function writes data to MongoDB collections configured with Queryable Encryption (QE). Encryption is handled at the **server-side** by MongoDB based on collection schemas.
 
-### Encrypted Fields
+### Encrypted Fields (server-side)
 - Transaction IDs, amounts, currencies
 - Descriptions and counterparty information
 - Account IBANs and names
@@ -80,6 +80,8 @@ This function uses MongoDB Queryable Encryption (QE) with GCP KMS to encrypt sen
 - Booking dates
 - Categories
 - Balance types
+
+**Note:** The function attempts to enable client-side auto-encryption if `pymongocrypt` is available, but falls back to server-side encryption if the library is not present. Server-side encryption is sufficient for queryable encryption collections.
 
 ## 📊 Collections Used
 
