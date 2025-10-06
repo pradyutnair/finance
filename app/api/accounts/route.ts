@@ -35,7 +35,11 @@ export async function GET(request: Request) {
 
       const enriched = accounts.map((acc: any) => {
         const conn = acc?.institutionId ? byInstitution[acc.institutionId] : undefined;
-        const maxAccessValidforDays = typeof conn?.maxAccessValidforDays === 'number' ? conn.maxAccessValidforDays : null;
+        let maxAccessValidforDays: number | null = null;
+        if (conn?.maxAccessValidforDays !== undefined && conn?.maxAccessValidforDays !== null) {
+          const parsed = Number(conn.maxAccessValidforDays);
+          maxAccessValidforDays = isNaN(parsed) ? null : parsed;
+        }
         return {
           ...acc,
           logoUrl: conn?.logoUrl || null,
