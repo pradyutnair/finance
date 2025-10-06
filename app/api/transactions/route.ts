@@ -23,8 +23,9 @@ export async function GET(request: Request) {
     const accountId = searchParams.get("accountId");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
-    const limit = Math.max(1, parseInt(searchParams.get("limit") || "50"));
-    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
+    const all = searchParams.get("all") === "true";
+    const limit = all ? 999999 : Math.max(1, parseInt(searchParams.get("limit") || "50"));
+    const offset = all ? 0 : Math.max(0, parseInt(searchParams.get("offset") || "0"));
     const searchTerm = searchParams.get("search")?.trim() || null;
     const includeExcluded = searchParams.get("includeExcluded") === "true";
 
@@ -42,8 +43,8 @@ export async function GET(request: Request) {
     }
     const databases = new Databases(client);
 
-    // Get cached transactions (loads 365 days on first call)
-    const allTransactions = await getUserTransactionCache(userId!, databases);
+    // Get cached transactions (loads 365 days on first call, or all time if all=true)
+    const allTransactions = await getUserTransactionCache(userId!, databases, false, all);
 
     // Filter transactions based on request parameters
     const filtered = filterTransactions(allTransactions, {
