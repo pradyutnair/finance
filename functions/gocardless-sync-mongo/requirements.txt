@@ -1,0 +1,6 @@
+appwrite
+requests
+openai
+pymongo[srv]>=4.6.0
+pymongo[encryption]>=4.6.0
+

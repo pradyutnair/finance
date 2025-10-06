@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const userId = user.$id || user.id;
 
     const globalAny = globalThis as any;
-    let clearedCaches = [];
+    const clearedCaches = [];
     
     // Clear global caches
     if (globalAny.__tx_cache) {
