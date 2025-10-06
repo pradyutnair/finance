@@ -44,15 +44,16 @@ def get_encrypted_mongo_client():
     key_vault_namespace = get_key_vault_namespace()
     crypt_shared_lib_path = os.environ.get("SHARED_LIB_PATH")
 
-    extra_options = {}
+    # Build AutoEncryptionOpts with optional crypt_shared_lib_path
+    opts_kwargs = {
+        "kms_providers": kms_providers,
+        "key_vault_namespace": key_vault_namespace,
+    }
+    
     if crypt_shared_lib_path:
-        extra_options["cryptSharedLibPath"] = crypt_shared_lib_path
+        opts_kwargs["crypt_shared_lib_path"] = crypt_shared_lib_path
 
-    auto_encryption_opts = AutoEncryptionOpts(
-        kms_providers=kms_providers,
-        key_vault_namespace=key_vault_namespace,
-        **({'extra_options': extra_options} if extra_options else {})
-    )
+    auto_encryption_opts = AutoEncryptionOpts(**opts_kwargs)
 
     _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
     return _client
