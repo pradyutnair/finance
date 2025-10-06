@@ -1,6 +1,6 @@
 appwrite
 requests
 openai
-pymongo[srv]>=4.6.0
-pymongo[encryption]>=4.6.0
+pymongo[srv]==4.6.1
+pymongocrypt==1.8.0
 

@@ -35,21 +35,36 @@ def main(context):
     context.log("🚀 Starting GoCardless sync to MongoDB...")
 
     try:
+        # Validate required environment variables
+        required_env_vars = ["GOCARDLESS_SECRET_ID", "GOCARDLESS_SECRET_KEY", "MONGODB_URI"]
+        missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+        if missing_vars:
+            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+            context.error(f"💥 {error_msg}")
+            return context.res.json({"success": False, "error": error_msg}, 400)
+
         context.log("🔧 Initializing GoCardless client...")
         gocardless = GoCardlessClient(
             os.environ["GOCARDLESS_SECRET_ID"], os.environ["GOCARDLESS_SECRET_KEY"]
         )
         context.log("✅ GoCardless client initialized")
 
-        context.log("🔍 Fetching active bank accounts from MongoDB...")
-        accounts = get_active_accounts()
-        context.log(f"🏦 Found {len(accounts)} active accounts")
+        context.log("🔍 Connecting to MongoDB and fetching active bank accounts...")
+        try:
+            accounts = get_active_accounts()
+            context.log(f"🏦 Found {len(accounts)} active accounts")
+        except Exception as db_error:
+            error_msg = f"Failed to connect to MongoDB: {str(db_error)}"
+            context.error(f"💥 {error_msg}")
+            return context.res.json({"success": False, "error": error_msg}, 500)
 
         if not accounts:
+            context.log("✅ No accounts to sync")
             return context.res.json({"success": True, "message": "No accounts to sync"})
 
         total_transactions = 0
         total_balances = 0
+        failed_accounts = []
 
         for index, account in enumerate(accounts):
             account_id = account["accountId"]
@@ -127,21 +142,30 @@ def main(context):
                     time.sleep(1)
 
             except Exception as error:  # pylint: disable=broad-except
-                context.log(f"❌ Error processing account {account_id}: {error}")
-                context.log(f"❌ Error type: {type(error).__name__}")
-                context.log(f"❌ Error details: {str(error)}")
+                error_msg = f"{type(error).__name__}: {str(error)}"
+                context.log(f"❌ Error processing account {account_id}: {error_msg}")
+                failed_accounts.append({"accountId": account_id, "error": error_msg})
 
+        # Prepare response
+        success = len(failed_accounts) == 0
         context.log(
             f"🎉 Sync completed: {total_transactions} transactions, {total_balances} balances"
         )
-        return context.res.json(
-            {
-                "success": True,
-                "transactionsSynced": total_transactions,
-                "balancesSynced": total_balances,
-                "accountsProcessed": len(accounts),
-            }
-        )
+        if failed_accounts:
+            context.log(f"⚠️ {len(failed_accounts)} account(s) failed to process")
+        
+        response_data = {
+            "success": success,
+            "transactionsSynced": total_transactions,
+            "balancesSynced": total_balances,
+            "accountsProcessed": len(accounts),
+            "accountsFailed": len(failed_accounts),
+        }
+        
+        if failed_accounts:
+            response_data["failures"] = failed_accounts
+            
+        return context.res.json(response_data)
 
     except Exception as error:  # pylint: disable=broad-except
         context.error(f"💥 Sync failed: {error}")

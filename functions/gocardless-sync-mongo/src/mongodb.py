@@ -2,7 +2,13 @@
 
 import os
 from pymongo import MongoClient
-from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
+
+try:
+    from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
+    ENCRYPTION_AVAILABLE = True
+except ImportError:
+    ENCRYPTION_AVAILABLE = False
+    print("Warning: pymongocrypt not available, encryption disabled")
 
 
 _client = None
@@ -26,36 +32,49 @@ def get_encrypted_mongo_client():
     if not uri:
         raise ValueError("MONGODB_URI is not set")
 
-    gcp_email = os.environ.get("GCP_EMAIL")
-    gcp_private_key_raw = os.environ.get("GCP_PRIVATE_KEY")
-    if not gcp_email or not gcp_private_key_raw:
-        raise ValueError("GCP_EMAIL or GCP_PRIVATE_KEY is not set")
+    # Try to enable auto-encryption if available
+    if ENCRYPTION_AVAILABLE:
+        gcp_email = os.environ.get("GCP_EMAIL")
+        gcp_private_key_raw = os.environ.get("GCP_PRIVATE_KEY")
+        
+        if gcp_email and gcp_private_key_raw:
+            try:
+                # Handle newline escaping
+                gcp_private_key = gcp_private_key_raw.replace("\\n", "\n") if "\\n" in gcp_private_key_raw else gcp_private_key_raw
 
-    # Handle newline escaping
-    gcp_private_key = gcp_private_key_raw.replace("\\n", "\n") if "\\n" in gcp_private_key_raw else gcp_private_key_raw
+                kms_providers = {
+                    "gcp": {
+                        "email": gcp_email,
+                        "privateKey": gcp_private_key,
+                    }
+                }
 
-    kms_providers = {
-        "gcp": {
-            "email": gcp_email,
-            "privateKey": gcp_private_key,
-        }
-    }
+                key_vault_namespace = get_key_vault_namespace()
+                crypt_shared_lib_path = os.environ.get("SHARED_LIB_PATH")
 
-    key_vault_namespace = get_key_vault_namespace()
-    crypt_shared_lib_path = os.environ.get("SHARED_LIB_PATH")
+                # Build AutoEncryptionOpts
+                opts_kwargs = {
+                    "kms_providers": kms_providers,
+                    "key_vault_namespace": key_vault_namespace,
+                    "bypass_auto_encryption": False,
+                }
+                
+                if crypt_shared_lib_path:
+                    opts_kwargs["crypt_shared_lib_path"] = crypt_shared_lib_path
 
-    # Build AutoEncryptionOpts with optional crypt_shared_lib_path
-    opts_kwargs = {
-        "kms_providers": kms_providers,
-        "key_vault_namespace": key_vault_namespace,
-    }
-    
-    if crypt_shared_lib_path:
-        opts_kwargs["crypt_shared_lib_path"] = crypt_shared_lib_path
+                auto_encryption_opts = AutoEncryptionOpts(**opts_kwargs)
+                _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+                print("✅ MongoDB client initialized with auto-encryption")
+                return _client
+            except Exception as e:
+                print(f"⚠️ Failed to enable auto-encryption: {e}")
+                print("⚠️ Falling back to connection without auto-encryption")
+                print("⚠️ Server-side encryption will still be applied based on collection schema")
 
-    auto_encryption_opts = AutoEncryptionOpts(**opts_kwargs)
-
-    _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+    # Fallback: Connect without auto-encryption
+    # Server-side encryption will still apply based on encrypted collection schema
+    _client = MongoClient(uri)
+    print("✅ MongoDB client initialized (server-side encryption only)")
     return _client
 
 
