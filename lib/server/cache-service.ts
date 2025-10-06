@@ -65,47 +65,53 @@ const ymd = (d: Date) => {
 export async function getUserTransactionCache(
   userId: string,
   databases: Databases,
-  forceRefresh = false
+  forceRefresh = false,
+  fetchAllTime = false
 ): Promise<TransactionDoc[]> {
   const cache: Map<string, UserCache> = globalAny.__user_cache;
   const now = Date.now();
   const cached = cache.get(userId);
 
-  // Return cached data if valid and not forcing refresh
-  if (cached && !forceRefresh && (now - cached.lastFetched < CACHE_TTL_MS)) {
-    // Wait if another request is loading
-    if (cached.isLoading) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return getUserTransactionCache(userId, databases, false);
+  // Skip cache if fetching all time (cache is only for 365 days)
+  if (!fetchAllTime) {
+    // Return cached data if valid and not forcing refresh
+    if (cached && !forceRefresh && (now - cached.lastFetched < CACHE_TTL_MS)) {
+      // Wait if another request is loading
+      if (cached.isLoading) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return getUserTransactionCache(userId, databases, false, false);
+      }
+      return cached.transactions;
     }
-    return cached.transactions;
   }
 
-  // Check if another request is already loading
-  if (cached?.isLoading) {
+  // Check if another request is already loading (skip if fetching all time)
+  if (!fetchAllTime && cached?.isLoading) {
     await new Promise(resolve => setTimeout(resolve, 100));
-    return getUserTransactionCache(userId, databases, false);
+    return getUserTransactionCache(userId, databases, false, false);
   }
 
-  // Mark as loading
-  if (cached) {
-    cached.isLoading = true;
-  } else {
-    cache.set(userId, {
-      transactions: [],
-      fromDate: '',
-      toDate: '',
-      lastFetched: 0,
-      isLoading: true
-    });
+  // Mark as loading (skip if fetching all time, we don't cache that)
+  if (!fetchAllTime) {
+    if (cached) {
+      cached.isLoading = true;
+    } else {
+      cache.set(userId, {
+        transactions: [],
+        fromDate: '',
+        toDate: '',
+        lastFetched: 0,
+        isLoading: true
+      });
+    }
   }
 
   try {
-    // Calculate date range (365 days from today)
+    // Calculate date range (365 days from today, or all time if requested)
     const toDate = ymd(new Date());
-    const fromDate = ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
+    const fromDate = fetchAllTime ? '1900-01-01' : ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
 
-    console.log(`[Cache] Loading ${DEFAULT_DAYS} days of transactions for user ${userId}: ${fromDate} to ${toDate}`);
+    console.log(`[Cache] Loading ${fetchAllTime ? 'ALL TIME' : DEFAULT_DAYS + ' days'} transactions for user ${userId}: ${fromDate} to ${toDate}`);
 
     let allTransactions: TransactionDoc[] = [];
 
@@ -116,7 +122,7 @@ export async function getUserTransactionCache(
       const cursor = coll
         .find({ userId, bookingDate: { $gte: fromDate, $lte: toDate } })
         .sort({ bookingDate: -1 })
-        .limit(20000);
+        .limit(fetchAllTime ? 100000 : 20000);
       const docs = await cursor.toArray();
       allTransactions = docs.map((d: any) => ({
         $id: d._id?.toString?.() || d._id,
@@ -171,22 +177,26 @@ export async function getUserTransactionCache(
 
     console.log(`[Cache] Loaded ${allTransactions.length} transactions for user ${userId}`);
 
-    // Update cache
-    cache.set(userId, {
-      transactions: allTransactions,
-      fromDate,
-      toDate,
-      lastFetched: now,
-      isLoading: false
-    });
+    // Update cache only if not fetching all time
+    if (!fetchAllTime) {
+      cache.set(userId, {
+        transactions: allTransactions,
+        fromDate,
+        toDate,
+        lastFetched: now,
+        isLoading: false
+      });
+    }
 
     return allTransactions;
   } catch (error) {
     console.error('[Cache] Error loading transactions:', error);
-    // Mark as not loading on error
-    const errorCache = cache.get(userId);
-    if (errorCache) {
-      errorCache.isLoading = false;
+    // Mark as not loading on error (only if we were using cache)
+    if (!fetchAllTime) {
+      const errorCache = cache.get(userId);
+      if (errorCache) {
+        errorCache.isLoading = false;
+      }
     }
     throw error;
   }
