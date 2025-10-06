@@ -5,6 +5,7 @@ import { Account } from 'appwrite';
 import { createAppwriteClient } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ClientOnly } from '@/components/ClientOnly';
+import { AuthGuard } from '@/components/auth-guard';
 
 function BankCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -234,15 +235,17 @@ function BankCallbackContent() {
 
 export default function BankCallbackPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="glass-card p-8 text-center">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
+    <AuthGuard requireAuth={true}>
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="glass-card p-8 text-center">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading...</p>
+          </div>
         </div>
-      </div>
-    }>
-      <BankCallbackContent />
-    </Suspense>
+      }>
+        <BankCallbackContent />
+      </Suspense>
+    </AuthGuard>
   );
 }

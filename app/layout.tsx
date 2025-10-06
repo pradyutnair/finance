@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CurrencyProvider } from "@/contexts/currency-context";
+import { CookieConsent } from "@/components/gdpr/cookie-consent";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -56,6 +57,7 @@ export default function RootLayout({
               <CurrencyProvider>
                 {children}
                 <Toaster />
+                <CookieConsent />
               </CurrencyProvider>
             </AuthProvider>
           </QueryProvider>
