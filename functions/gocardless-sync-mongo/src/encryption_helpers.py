@@ -42,7 +42,6 @@ def get_customer_master_key_credentials(kms_provider_name):
 
 
 def get_auto_encryption_options(
-        context,
         kms_provider_name,
         key_vault_namespace,
         kms_provider_credentials,
@@ -50,8 +49,8 @@ def get_auto_encryption_options(
     """Create AutoEncryptionOpts for the MongoDB client."""
     # Get shared library path from environment variable, with fallback to absolute path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    shared_lib_path = os.path.join(current_dir, "mongo_crypt_v1.dylib")
-    context.log(f"✅ Using SHARED_LIB_PATH: {shared_lib_path}")
+    shared_lib_path = os.path.join(current_dir, "mongo_cryptv1._tdylib")
+
     # Verify the library exists
     if not os.path.exists(shared_lib_path):
         raise FileNotFoundError(
