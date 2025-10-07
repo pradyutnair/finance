@@ -49,13 +49,28 @@ def main(context):
         )
         context.log("✅ GoCardless client initialized")
 
-        context.log("🔍 Connecting to MongoDB and fetching active bank accounts...")
+        context.log("🔍 Connecting to MongoDB...")
         try:
+            # Test MongoDB connection first
+            from .mongodb import get_db, get_mongo_db_name
+            db = get_db()
+            db_name = get_mongo_db_name()
+            
+            # Test connection with a simple command
+            db.command('ping')
+            context.log(f"✅ MongoDB connection successful (database: {db_name})")
+            
+            # List available collections for debugging
+            collections = db.list_collection_names()
+            context.log(f"📊 Available collections: {', '.join(collections) if collections else 'none'}")
+            
+            context.log("🔍 Fetching active bank accounts...")
             accounts = get_active_accounts()
             context.log(f"🏦 Found {len(accounts)} active accounts")
         except Exception as db_error:
             error_msg = f"Failed to connect to MongoDB: {str(db_error)}"
             context.error(f"💥 {error_msg}")
+            context.error(f"💥 Error type: {type(db_error).__name__}")
             return context.res.json({"success": False, "error": error_msg}, 500)
 
         if not accounts:
