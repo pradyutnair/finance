@@ -5,6 +5,7 @@ from pymongo import MongoClient
 
 try:
     from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
+    from . import encryption_helpers as helpers
     ENCRYPTION_AVAILABLE = True
 except ImportError:
     ENCRYPTION_AVAILABLE = False
@@ -12,6 +13,7 @@ except ImportError:
 
 
 _client = None
+_kms_provider_name = "gcp"
 
 
 def get_mongo_db_name():
@@ -35,35 +37,24 @@ def get_encrypted_mongo_client():
     # Try to enable auto-encryption if available
     if ENCRYPTION_AVAILABLE:
         gcp_email = os.environ.get("GCP_EMAIL")
-        gcp_private_key_raw = os.environ.get("GCP_PRIVATE_KEY")
+        gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
         
-        if gcp_email and gcp_private_key_raw:
+        if gcp_email and gcp_private_key:
             try:
-                # Handle newline escaping
-                gcp_private_key = gcp_private_key_raw.replace("\\n", "\n") if "\\n" in gcp_private_key_raw else gcp_private_key_raw
-
-                kms_providers = {
-                    "gcp": {
-                        "email": gcp_email,
-                        "privateKey": gcp_private_key,
-                    }
-                }
-
                 key_vault_namespace = get_key_vault_namespace()
-                crypt_shared_lib_path = os.environ.get("SHARED_LIB_PATH")
-
-                # Build AutoEncryptionOpts
-                opts_kwargs = {
-                    "kms_providers": kms_providers,
-                    "key_vault_namespace": key_vault_namespace,
-                    "bypass_auto_encryption": False,
-                }
                 
-                if crypt_shared_lib_path:
-                    opts_kwargs["crypt_shared_lib_path"] = crypt_shared_lib_path
-
-                auto_encryption_opts = AutoEncryptionOpts(**opts_kwargs)
-                _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+                # Get KMS provider credentials using helper
+                kms_provider_credentials = helpers.get_kms_provider_credentials(_kms_provider_name)
+                
+                # Get auto-encryption options using helper
+                auto_encryption_options = helpers.get_auto_encryption_options(
+                    _kms_provider_name,
+                    key_vault_namespace,
+                    kms_provider_credentials,
+                )
+                
+                # Create encrypted client
+                _client = MongoClient(uri, auto_encryption_opts=auto_encryption_options)
                 print("✅ MongoDB client initialized with auto-encryption")
                 return _client
             except Exception as e:
@@ -89,9 +80,25 @@ def get_active_accounts():
     db = get_db()
     collection = db["bank_accounts_dev"]
     
+    # First, check if collection exists and has documents
+    total_count = collection.count_documents({})
+    print(f"Total documents in bank_accounts_dev: {total_count}")
+    
+    if total_count == 0:
+        print("⚠️ No documents found in bank_accounts_dev collection")
+        return []
+    
     # Query for active accounts
     accounts = list(collection.find({"status": "active"}).limit(50))
-    print(f"Found {len(accounts)} active accounts")
+    print(f"Found {len(accounts)} active accounts (out of {total_count} total)")
+    
+    if len(accounts) == 0 and total_count > 0:
+        # Try to fetch any accounts to see what's available
+        sample_account = collection.find_one({})
+        if sample_account:
+            print(f"Sample account status: {sample_account.get('status', 'NO STATUS FIELD')}")
+            print(f"Sample account fields: {list(sample_account.keys())}")
+    
     return accounts
 
 
