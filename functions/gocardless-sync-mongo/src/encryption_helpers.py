@@ -48,16 +48,8 @@ def get_auto_encryption_options(
 ):
     """Create AutoEncryptionOpts for the MongoDB client."""
     # Get shared library path from environment variable, with fallback to absolute path
-    shared_lib_path = os.environ.get('SHARED_LIB_PATH')
-    
-    if not shared_lib_path:
-        # Fallback: use absolute path relative to this file's location
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        shared_lib_path = os.path.join(current_dir, "mongo_crypt_v1.dylib")
-        print(f"⚠️  SHARED_LIB_PATH not set, using fallback: {shared_lib_path}")
-    
-    # Log the path for debugging
-    print(f"🔍 Looking for encryption library at: {shared_lib_path}")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    shared_lib_path = os.path.join(current_dir, "mongo_crypt_v1.dylib")
     
     # Verify the library exists
     if not os.path.exists(shared_lib_path):
@@ -65,8 +57,6 @@ def get_auto_encryption_options(
             f"MongoDB encryption library not found at: {shared_lib_path}. "
             f"Set SHARED_LIB_PATH environment variable or ensure mongo_crypt_v1.dylib is in the src/ directory."
         )
-    
-    print(f"✅ Found encryption library at: {shared_lib_path}")
     
     # start-auto-encryption-options
     auto_encryption_options = AutoEncryptionOpts(
