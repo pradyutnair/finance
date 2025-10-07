@@ -5,20 +5,19 @@ import tempfile
 from pathlib import Path
 from appwrite.client import Client
 from appwrite.services.storage import Storage
-from pymongo.encryption import ClientEncryption
-from pymongo.encryption_options import AutoEncryptionOpts
-from bson.codec_options import CodecOptions
-from bson.binary import STANDARD
+
+# Import encryption modules AFTER ensuring library is available
+# These imports will be done inside functions
 
 # Cache for the downloaded encryption library path
 _cached_library_path = None
 
 
 def download_encryption_library():
-    """Download the MongoDB encryption library from Appwrite Storage and cache it."""
+    """Download the MongoDB encryption library from Appwrite Storage and install it."""
     global _cached_library_path
     
-    # Return cached path if already downloaded
+    # Return cached path if already downloaded and configured
     if _cached_library_path and os.path.exists(_cached_library_path):
         return _cached_library_path
     
@@ -34,37 +33,71 @@ def download_encryption_library():
     bucket_id = os.environ.get('MONGO_LIB_BUCKET_ID', 'mongo-lib')
     file_id = os.environ.get('MONGO_LIB_FILE_ID', 'libmongocrypt.so')
     
-    # Create a temporary directory for the library
-    temp_dir = tempfile.gettempdir()
     library_filename = 'libmongocrypt.so'
+    
     try:
-        library_path = os.path.join(temp_dir, library_filename)
+        print(f"📥 Downloading MongoDB encryption library from Appwrite Storage (bucket: {bucket_id}, file: {file_id})...")
         
-        # Download the file if it doesn't exist in temp
-        if not os.path.exists(library_path):
-            print(f"Downloading MongoDB encryption library from Appwrite Storage (bucket: {bucket_id}, file: {file_id})...")
-            try:
-                # Get file download
-                result = storage.get_file_download(bucket_id, file_id)
-                
-                # Write to temporary location
-                with open(library_path, 'wb') as f:
-                    f.write(result)
-                
-                print(f"Successfully downloaded encryption library to: {library_path}")
-            except Exception as e:
-                raise FileNotFoundError(
-                    f"Failed to download MongoDB encryption library from Appwrite Storage: {str(e)}"
-                )
-        else:
-            print(f"Using cached MongoDB encryption library from: {library_path}")
+        # Get file download
+        result = storage.get_file_download(bucket_id, file_id)
         
-        # Cache the path
-        _cached_library_path = library_path
+        # Try to install to pymongocrypt directory first
+        try:
+            import pymongocrypt
+            pymongocrypt_dir = os.path.dirname(pymongocrypt.__file__)
+            target_path = os.path.join(pymongocrypt_dir, library_filename)
+            
+            # Write to pymongocrypt directory
+            with open(target_path, 'wb') as f:
+                f.write(result)
+            
+            # Make it executable
+            os.chmod(target_path, 0o755)
+            
+            print(f"✅ Successfully installed encryption library to pymongocrypt: {target_path}")
+            _cached_library_path = target_path
+            return target_path
+            
+        except (PermissionError, OSError) as e:
+            print(f"⚠️  Cannot write to pymongocrypt directory: {e}")
+            print(f"⚠️  Falling back to /tmp and LD_LIBRARY_PATH")
+            
+            # Fallback: Download to /tmp and set LD_LIBRARY_PATH
+            temp_dir = tempfile.gettempdir()
+            library_path = os.path.join(temp_dir, library_filename)
+            
+            with open(library_path, 'wb') as f:
+                f.write(result)
+            
+            # Make it executable
+            os.chmod(library_path, 0o755)
+            
+            # Add to LD_LIBRARY_PATH
+            ld_library_path = os.environ.get('LD_LIBRARY_PATH', '')
+            if temp_dir not in ld_library_path:
+                if ld_library_path:
+                    os.environ['LD_LIBRARY_PATH'] = f"{temp_dir}:{ld_library_path}"
+                else:
+                    os.environ['LD_LIBRARY_PATH'] = temp_dir
+                print(f"✅ Added {temp_dir} to LD_LIBRARY_PATH")
+            
+            print(f"✅ Successfully downloaded encryption library to: {library_path}")
+            _cached_library_path = library_path
+            return library_path
+        
     except Exception as e:
+        # Fallback to local path if download fails
         library_path = os.path.join(os.path.dirname(__file__), library_filename)
-        print(f"Using local MongoDB encryption library from: {library_path}")
-    return library_path
+        print(f"⚠️  Download failed, checking for local library at: {library_path}")
+        if os.path.exists(library_path):
+            print(f"✅ Using local MongoDB encryption library from: {library_path}")
+            _cached_library_path = library_path
+            return library_path
+        else:
+            print(f"❌ No local library found either. Error: {str(e)}")
+            raise FileNotFoundError(
+                f"Failed to download or find MongoDB encryption library: {str(e)}"
+            )
 
 
 def get_kms_provider_credentials(kms_provider_name):
@@ -106,22 +139,26 @@ def get_auto_encryption_options(
         key_vault_namespace,
         kms_provider_credentials,
 ):
-    """Create AutoEncryptionOpts for the MongoDB client."""
-    # Download encryption library from Appwrite Storage
-    shared_lib_path = download_encryption_library()
+    """Create AutoEncryptionOpts for the MongoDB client.
     
-    # Verify the library exists
-    if not os.path.exists(shared_lib_path):
-        raise FileNotFoundError(
-            f"MongoDB encryption library not found at: {shared_lib_path}. "
-            f"Failed to download from Appwrite Storage."
-        )
+    Note: We ensure libmongocrypt is available before importing pymongo encryption modules.
+    """
+    # Ensure libmongocrypt is available BEFORE importing pymongo
+    try:
+        download_encryption_library()
+        print(f"✅ Encryption library ready")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not download custom encryption library: {e}")
+        print(f"⚠️  Will attempt to use bundled pymongocrypt library")
+    
+    # Import AFTER ensuring library is available
+    from pymongo.encryption_options import AutoEncryptionOpts
     
     # start-auto-encryption-options
+    # Don't specify crypt_shared_lib_path - let pymongo use bundled library
     auto_encryption_options = AutoEncryptionOpts(
         kms_provider_credentials,
-        key_vault_namespace,
-        crypt_shared_lib_path=shared_lib_path  # Path to your Automatic Encryption Shared Library
+        key_vault_namespace
     )
     # end-auto-encryption-options
     return auto_encryption_options
@@ -134,6 +171,11 @@ def get_client_encryption(
         key_vault_namespace
 ):
     """Create a ClientEncryption instance for managing encryption keys."""
+    # Import AFTER ensuring library is available
+    from pymongo.encryption import ClientEncryption
+    from bson.codec_options import CodecOptions
+    from bson.binary import STANDARD
+    
     # start-client-encryption
     client_encryption = ClientEncryption(
         kms_providers=kms_provider_credentials,
