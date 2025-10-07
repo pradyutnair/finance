@@ -5,11 +5,17 @@ from pymongo import MongoClient
 
 try:
     from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
-    from . import encryption_helpers as helpers
+    try:
+        # Try relative import first (for Appwrite function runtime)
+        from . import encryption_helpers as helpers
+    except ImportError:
+        # Fall back to direct import (for local testing)
+        import encryption_helpers as helpers
     ENCRYPTION_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     ENCRYPTION_AVAILABLE = False
-    print("Warning: pymongocrypt not available, encryption disabled")
+    print(f"❌ pymongo.encryption not available: {e}")
+    print("❌ Install with: pip install 'pymongo[encryption]'")
 
 
 _client = None
@@ -39,34 +45,46 @@ def get_encrypted_mongo_client():
         gcp_email = os.environ.get("GCP_EMAIL")
         gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
         
-        if gcp_email and gcp_private_key:
-            try:
-                key_vault_namespace = get_key_vault_namespace()
-                
-                # Get KMS provider credentials using helper
-                kms_provider_credentials = helpers.get_kms_provider_credentials(_kms_provider_name)
-                
-                # Get auto-encryption options using helper
-                auto_encryption_options = helpers.get_auto_encryption_options(
-                    _kms_provider_name,
-                    key_vault_namespace,
-                    kms_provider_credentials,
-                )
-                
-                # Create encrypted client
-                _client = MongoClient(uri, auto_encryption_opts=auto_encryption_options)
-                print("✅ MongoDB client initialized with auto-encryption")
-                return _client
-            except Exception as e:
-                print(f"⚠️ Failed to enable auto-encryption: {e}")
-                print("⚠️ Falling back to connection without auto-encryption")
-                print("⚠️ Server-side encryption will still be applied based on collection schema")
-
-    # Fallback: Connect without auto-encryption
-    # Server-side encryption will still apply based on encrypted collection schema
-    _client = MongoClient(uri)
-    print("✅ MongoDB client initialized (server-side encryption only)")
-    return _client
+        if not gcp_email or not gcp_private_key:
+            print("⚠️ GCP credentials not found in environment variables")
+            print("⚠️ Required: GCP_EMAIL, GCP_PRIVATE_KEY")
+            raise ValueError("GCP KMS credentials required for client-side encryption")
+        
+        try:
+            print("🔐 Setting up client-side encryption...")
+            key_vault_namespace = get_key_vault_namespace()
+            print(f"🔑 Key vault namespace: {key_vault_namespace}")
+            
+            # Get KMS provider credentials using helper (matches reference code)
+            kms_provider_credentials = helpers.get_kms_provider_credentials(_kms_provider_name)
+            print(f"🔑 KMS provider: {_kms_provider_name}")
+            
+            # Get auto-encryption options using helper (matches reference code)
+            auto_encryption_options = helpers.get_auto_encryption_options(
+                _kms_provider_name,
+                key_vault_namespace,
+                kms_provider_credentials,
+            )
+            print("🔑 Auto-encryption options configured")
+            
+            # Create encrypted client (matches reference code: MongoClient(uri, auto_encryption_opts=...))
+            _client = MongoClient(uri, auto_encryption_opts=auto_encryption_options)
+            print("✅ MongoDB client initialized with auto-encryption enabled")
+            return _client
+        except FileNotFoundError as e:
+            print(f"❌ Encryption library not found: {e}")
+            raise
+        except Exception as e:
+            print(f"❌ Failed to enable auto-encryption: {e}")
+            print(f"❌ Error type: {type(e).__name__}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            raise RuntimeError(f"Client-side encryption is required but failed: {e}")
+    
+    # If encryption is not available, fail fast
+    print("❌ pymongo.encryption module not available")
+    print("❌ Client-side encryption is required for this MongoDB schema")
+    raise RuntimeError("Client-side encryption required but pymongo[encryption] not available")
 
 
 def get_db():
