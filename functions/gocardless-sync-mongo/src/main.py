@@ -4,13 +4,14 @@ import os
 import time
 
 from .mongodb import (
-    get_active_accounts,
     get_last_booking_date,
     document_exists,
     find_balance_document,
     create_transaction,
     create_balance,
     update_balance,
+    get_user_requisitions,
+    get_user_bank_accounts,
 )
 from .utils import (
     format_balance_payload,
@@ -19,6 +20,7 @@ from .utils import (
 )
 
 from .gocardless import GoCardlessClient
+from .appwrite_users import list_user_ids
 
 
 def _fetch_transactions(client: GoCardlessClient, account_id: str, last_date: str | None):
@@ -63,103 +65,119 @@ def main(context):
             # List available collections for debugging
             collections = db.list_collection_names()
             context.log(f"📊 Available collections: {', '.join(collections) if collections else 'none'}")
-            
-            context.log("🔍 Fetching active bank accounts...")
-            accounts = get_active_accounts()
-            context.log(f"🏦 Found {len(accounts)} active accounts")
         except Exception as db_error:
             error_msg = f"Failed to connect to MongoDB: {str(db_error)}"
             context.error(f"💥 {error_msg}")
             context.error(f"💥 Error type: {type(db_error).__name__}")
             return context.res.json({"success": False, "error": error_msg}, 500)
 
-        if not accounts:
-            context.log("✅ No accounts to sync")
-            return context.res.json({"success": True, "message": "No accounts to sync"})
+        # Fetch user IDs from Appwrite
+        context.log("🔍 Fetching users from Appwrite...")
+        user_ids = list_user_ids(context)
+        context.log(f"👥 Found {len(user_ids)} users")
+        if not user_ids:
+            return context.res.json({"success": True, "message": "No users to sync"})
 
         total_transactions = 0
         total_balances = 0
+        accounts_processed = 0
         failed_accounts = []
 
-        for index, account in enumerate(accounts):
-            account_id = account["accountId"]
-            user_id = account["userId"]
-            context.log(f"💳 Processing account {index + 1}/{len(accounts)}: {account_id}")
+        for user_index, user_id in enumerate(user_ids):
+            context.log(f"👤 Processing user {user_index + 1}/{len(user_ids)}: {user_id}")
 
-            try:
-                context.log(f"🔍 Getting last booking date for account {account_id}...")
-                last_date = get_last_booking_date(user_id, account_id)
-                context.log(f"📅 Last transaction date: {last_date}" if last_date else "📅 No previous transactions")
+            # Load requisitions to verify mapping exists for this user
+            requisitions = get_user_requisitions(user_id)
+            context.log(f"🧾 Requisitions found: {len(requisitions)}")
 
-                context.log(f"🔍 Fetching transactions for account {account_id}...")
-                transactions = _fetch_transactions(gocardless, account_id, last_date)
-                context.log(f"📊 Found {len(transactions)} transactions")
+            # Load all bank accounts for this user (fields are encrypted, but client auto-decrypts)
+            accounts = get_user_bank_accounts(user_id)
+            context.log(f"🏦 Accounts found: {len(accounts)}")
+            if not accounts:
+                continue
 
-                for tx in transactions[:50]:
-                    context.log(f"🔍 Processing transaction: {tx.get('transactionId', 'unknown')}")
-                    doc_id = generate_doc_id(
-                        tx.get("transactionId") or tx.get("internalTransactionId"),
-                        account_id,
-                        tx.get("bookingDate"),
-                    )
-
-                    context.log(f"🔍 Checking if document exists: {doc_id}")
-                    if document_exists("transactions_dev", doc_id):
-                        context.log(f"⏭️ Document {doc_id} already exists, skipping")
-                        continue
-
-                    context.log(f"🔍 Formatting transaction payload for {doc_id}...")
-                    payload = format_transaction_payload(
-                        tx,
-                        user_id,
-                        account_id,
-                        doc_id,
-                    )
-
-                    context.log(f"🔍 Creating document {doc_id} in MongoDB...")
-                    create_transaction(doc_id, payload)
-                    total_transactions += 1
-                    context.log(f"✅ Stored transaction: {doc_id}")
-
-                context.log(f"🔍 Fetching balances for account {account_id}...")
-                balances = _fetch_balances(gocardless, account_id)
-
-                for balance in balances:
-                    balance_type = balance.get("balanceType", "expected")
-                    context.log(f"🔍 Processing balance: {balance_type}")
+            for index, account in enumerate(accounts):
+                try:
+                    account_id = account.get("accountId")
+                    if not account_id:
+                        raise ValueError("Missing accountId (ensure client-side encryption is enabled)")
                     
-                    # Find the exact document by userId, accountId, and balanceType
-                    existing_doc_id = find_balance_document(user_id, account_id, balance_type)
-                    
-                    # Format the balance payload
-                    _, payload = format_balance_payload(balance, user_id, account_id)
-                    
-                    # Update the balance document if it exists
-                    if existing_doc_id:
-                        update_balance(
-                            existing_doc_id,
-                            {
-                                "balanceAmount": payload["balanceAmount"],
-                                "referenceDate": payload["referenceDate"],
-                                "currency": payload["currency"]
-                            }
+                    accounts_processed += 1
+                    context.log(f"💳 Processing account {accounts_processed}: {account_id}")
+
+                    context.log(f"🔍 Getting last booking date for account {account_id}...")
+                    last_date = get_last_booking_date(user_id, account_id)
+                    context.log(f"📅 Last transaction date: {last_date}" if last_date else "📅 No previous transactions")
+
+                    context.log(f"🔍 Fetching transactions for account {account_id}...")
+                    transactions = _fetch_transactions(gocardless, account_id, last_date)
+                    context.log(f"📊 Found {len(transactions)} transactions")
+
+                    for tx in transactions[:50]:
+                        context.log(f"🔍 Processing transaction: {tx.get('transactionId', 'unknown')}")
+                        doc_id = generate_doc_id(
+                            tx.get("transactionId") or tx.get("internalTransactionId"),
+                            account_id,
+                            tx.get("bookingDate"),
                         )
-                        context.log(f"✅ Updated balance amount: {existing_doc_id}")
-                    else:
-                        # Create a new balance document if it doesn't exist
-                        balance_doc_id, _ = format_balance_payload(balance, user_id, account_id)
-                        create_balance(balance_doc_id, payload)
-                        context.log(f"✅ Created balance: {balance_doc_id}")
 
-                    total_balances += 1
+                        context.log(f"🔍 Checking if document exists: {doc_id}")
+                        if document_exists("transactions_dev", doc_id):
+                            context.log(f"⏭️ Document {doc_id} already exists, skipping")
+                            continue
 
-                if index < len(accounts) - 1:
-                    time.sleep(1)
+                        context.log(f"🔍 Formatting transaction payload for {doc_id}...")
+                        payload = format_transaction_payload(
+                            tx,
+                            user_id,
+                            account_id,
+                            doc_id,
+                        )
 
-            except Exception as error:  # pylint: disable=broad-except
-                error_msg = f"{type(error).__name__}: {str(error)}"
-                context.log(f"❌ Error processing account {account_id}: {error_msg}")
-                failed_accounts.append({"accountId": account_id, "error": error_msg})
+                        context.log(f"🔍 Creating document {doc_id} in MongoDB...")
+                        create_transaction(doc_id, payload)
+                        total_transactions += 1
+                        context.log(f"✅ Stored transaction: {doc_id}")
+
+                    context.log(f"🔍 Fetching balances for account {account_id}...")
+                    balances = _fetch_balances(gocardless, account_id)
+
+                    for balance in balances:
+                        balance_type = balance.get("balanceType", "expected")
+                        context.log(f"🔍 Processing balance: {balance_type}")
+                        
+                        # Find the exact document by userId, accountId, and balanceType
+                        existing_doc_id = find_balance_document(user_id, account_id, balance_type)
+                        
+                        # Format the balance payload
+                        _, payload = format_balance_payload(balance, user_id, account_id)
+                        
+                        # Update the balance document if it exists
+                        if existing_doc_id:
+                            update_balance(
+                                existing_doc_id,
+                                {
+                                    "balanceAmount": payload["balanceAmount"],
+                                    "referenceDate": payload["referenceDate"],
+                                    "currency": payload["currency"]
+                                }
+                            )
+                            context.log(f"✅ Updated balance amount: {existing_doc_id}")
+                        else:
+                            # Create a new balance document if it doesn't exist
+                            balance_doc_id, _ = format_balance_payload(balance, user_id, account_id)
+                            create_balance(balance_doc_id, payload)
+                            context.log(f"✅ Created balance: {balance_doc_id}")
+
+                        total_balances += 1
+
+                    if index < len(accounts) - 1:
+                        time.sleep(1)
+
+                except Exception as error:  # pylint: disable=broad-except
+                    error_msg = f"{type(error).__name__}: {str(error)}"
+                    context.log(f"❌ Error processing account for user {user_id}: {error_msg}")
+                    failed_accounts.append({"userId": user_id, "accountId": account.get('accountId'), "error": error_msg})
 
         # Prepare response
         success = len(failed_accounts) == 0
@@ -173,7 +191,7 @@ def main(context):
             "success": success,
             "transactionsSynced": total_transactions,
             "balancesSynced": total_balances,
-            "accountsProcessed": len(accounts),
+            "accountsProcessed": accounts_processed,
             "accountsFailed": len(failed_accounts),
         }
         
