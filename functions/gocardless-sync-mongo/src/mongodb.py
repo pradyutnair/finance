@@ -88,9 +88,12 @@ def get_active_accounts():
         print("⚠️ No documents found in bank_accounts_dev collection")
         return []
     
-    # Query for active accounts
+    # Query for active accounts; if status is encrypted/unqueryable, fall back to all
     accounts = list(collection.find({"status": "active"}).limit(50))
-    print(f"Found {len(accounts)} active accounts (out of {total_count} total)")
+    if len(accounts) == 0:
+        print("⚠️ No accounts matched status: 'active'. Falling back to all accounts (limit 50)")
+        accounts = list(collection.find({}).limit(50))
+    print(f"Found {len(accounts)} accounts to process (out of {total_count} total)")
     
     if len(accounts) == 0 and total_count > 0:
         # Try to fetch any accounts to see what's available
@@ -100,6 +103,24 @@ def get_active_accounts():
             print(f"Sample account fields: {list(sample_account.keys())}")
     
     return accounts
+
+
+def get_user_requisitions(user_id: str):
+    """Return requisitions for a given userId from requisitions_dev.
+    Note: requisition fields are encrypted; only userId is plaintext.
+    """
+    db = get_db()
+    collection = db["requisitions_dev"]
+    return list(collection.find({"userId": user_id}))
+
+
+def get_user_bank_accounts(user_id: str):
+    """Return bank accounts for a given userId from bank_accounts_dev.
+    Note: most fields are encrypted; only userId is plaintext.
+    """
+    db = get_db()
+    collection = db["bank_accounts_dev"]
+    return list(collection.find({"userId": user_id}))
 
 
 def get_last_booking_date(user_id, account_id):
