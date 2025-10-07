@@ -1,10 +1,66 @@
 """Helper functions for MongoDB Queryable Encryption setup."""
 
 import os
+import tempfile
+from pathlib import Path
+from appwrite.client import Client
+from appwrite.services.storage import Storage
 from pymongo.encryption import ClientEncryption
 from pymongo.encryption_options import AutoEncryptionOpts
 from bson.codec_options import CodecOptions
 from bson.binary import STANDARD
+
+# Cache for the downloaded encryption library path
+_cached_library_path = None
+
+
+def download_encryption_library():
+    """Download the MongoDB encryption library from Appwrite Storage and cache it."""
+    global _cached_library_path
+    
+    # Return cached path if already downloaded
+    if _cached_library_path and os.path.exists(_cached_library_path):
+        return _cached_library_path
+    
+    # Initialize Appwrite client
+    client = Client()
+    client.set_endpoint(os.environ.get('APPWRITE_ENDPOINT', 'https://fra.cloud.appwrite.io/v1'))
+    client.set_project(os.environ.get('APPWRITE_PROJECT_ID', '68d3cfe5001f03d5c030'))
+    client.set_key(os.environ.get('APPWRITE_API_KEY', ''))
+    
+    storage = Storage(client)
+    
+    # Download the encryption library from Appwrite Storage
+    bucket_id = os.environ.get('MONGO_LIB_BUCKET_ID', 'mongo-lib')
+    file_id = os.environ.get('MONGO_LIB_FILE_ID', '68e56efd0023a5cbbfbc')
+    
+    # Create a temporary directory for the library
+    temp_dir = tempfile.gettempdir()
+    library_filename = 'mongo_crypt_v1.dylib'
+    library_path = os.path.join(temp_dir, library_filename)
+    
+    # Download the file if it doesn't exist in temp
+    if not os.path.exists(library_path):
+        print(f"Downloading MongoDB encryption library from Appwrite Storage (bucket: {bucket_id}, file: {file_id})...")
+        try:
+            # Get file download
+            result = storage.get_file_download(bucket_id, file_id)
+            
+            # Write to temporary location
+            with open(library_path, 'wb') as f:
+                f.write(result)
+            
+            print(f"Successfully downloaded encryption library to: {library_path}")
+        except Exception as e:
+            raise FileNotFoundError(
+                f"Failed to download MongoDB encryption library from Appwrite Storage: {str(e)}"
+            )
+    else:
+        print(f"Using cached MongoDB encryption library from: {library_path}")
+    
+    # Cache the path
+    _cached_library_path = library_path
+    return library_path
 
 
 def get_kms_provider_credentials(kms_provider_name):
@@ -47,15 +103,14 @@ def get_auto_encryption_options(
         kms_provider_credentials,
 ):
     """Create AutoEncryptionOpts for the MongoDB client."""
-    # Get shared library path from environment variable, with fallback to absolute path
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    shared_lib_path = os.path.join(current_dir, "mongo_cryptv1._tdylib")
-
+    # Download encryption library from Appwrite Storage
+    shared_lib_path = download_encryption_library()
+    
     # Verify the library exists
     if not os.path.exists(shared_lib_path):
         raise FileNotFoundError(
             f"MongoDB encryption library not found at: {shared_lib_path}. "
-            f"Set SHARED_LIB_PATH environment variable or ensure mongo_crypt_v1.dylib is in the src/ directory."
+            f"Failed to download from Appwrite Storage."
         )
     
     # start-auto-encryption-options
