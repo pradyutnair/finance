@@ -32,34 +32,38 @@ def download_encryption_library():
     
     # Download the encryption library from Appwrite Storage
     bucket_id = os.environ.get('MONGO_LIB_BUCKET_ID', 'mongo-lib')
-    file_id = os.environ.get('MONGO_LIB_FILE_ID', '68e56efd0023a5cbbfbc')
+    file_id = os.environ.get('MONGO_LIB_FILE_ID', 'libmongocrypt.so')
     
     # Create a temporary directory for the library
     temp_dir = tempfile.gettempdir()
-    library_filename = 'mongo_crypt_v1.dylib'
-    library_path = os.path.join(temp_dir, library_filename)
-    
-    # Download the file if it doesn't exist in temp
-    if not os.path.exists(library_path):
-        print(f"Downloading MongoDB encryption library from Appwrite Storage (bucket: {bucket_id}, file: {file_id})...")
-        try:
-            # Get file download
-            result = storage.get_file_download(bucket_id, file_id)
-            
-            # Write to temporary location
-            with open(library_path, 'wb') as f:
-                f.write(result)
-            
-            print(f"Successfully downloaded encryption library to: {library_path}")
-        except Exception as e:
-            raise FileNotFoundError(
-                f"Failed to download MongoDB encryption library from Appwrite Storage: {str(e)}"
-            )
-    else:
-        print(f"Using cached MongoDB encryption library from: {library_path}")
-    
-    # Cache the path
-    _cached_library_path = library_path
+    library_filename = 'libmongocrypt.so'
+    try:
+        library_path = os.path.join(temp_dir, library_filename)
+        
+        # Download the file if it doesn't exist in temp
+        if not os.path.exists(library_path):
+            print(f"Downloading MongoDB encryption library from Appwrite Storage (bucket: {bucket_id}, file: {file_id})...")
+            try:
+                # Get file download
+                result = storage.get_file_download(bucket_id, file_id)
+                
+                # Write to temporary location
+                with open(library_path, 'wb') as f:
+                    f.write(result)
+                
+                print(f"Successfully downloaded encryption library to: {library_path}")
+            except Exception as e:
+                raise FileNotFoundError(
+                    f"Failed to download MongoDB encryption library from Appwrite Storage: {str(e)}"
+                )
+        else:
+            print(f"Using cached MongoDB encryption library from: {library_path}")
+        
+        # Cache the path
+        _cached_library_path = library_path
+    except Exception as e:
+        library_path = os.path.join(os.path.dirname(__file__), library_filename)
+        print(f"Using local MongoDB encryption library from: {library_path}")
     return library_path
 
 
