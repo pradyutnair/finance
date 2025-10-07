@@ -35,11 +35,7 @@ def get_customer_master_key_credentials(kms_provider_name="gcp"):
 def get_auto_encryption_options(kms_provider_name, key_vault_namespace, kms_provider_credentials):
     """Create AutoEncryptionOpts for the MongoDB client."""
     # Resolve shared library path from env with sensible defaults
-    crypt_shared_lib_path = (
-        os.environ.get("SHARED_LIB_PATH")
-        or os.environ.get("MONGO_CRYPT_SHARED_LIB_PATH")
-        or "functions/gocardless-sync-mongo/src/mongo_crypt_v1.dylib"
-    )
+    crypt_shared_lib_path = "functions/gocardless-sync-mongo/src/mongo_crypt_v1.dylib"
     
     opts_kwargs = {
         "kms_providers": kms_provider_credentials,
