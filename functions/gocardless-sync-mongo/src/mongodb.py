@@ -61,6 +61,7 @@ def get_encrypted_mongo_client():
             
             # Get auto-encryption options using helper (matches reference code)
             auto_encryption_options = helpers.get_auto_encryption_options(
+                context,
                 _kms_provider_name,
                 key_vault_namespace,
                 kms_provider_credentials,
