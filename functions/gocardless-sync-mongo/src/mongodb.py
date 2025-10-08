@@ -1,13 +1,14 @@
-"""MongoDB client with Explicit Encryption support for Serverless."""
+"""MongoDB client with Explicit Encryption (bypass auto-encryption mode)."""
 
 import os
 from pymongo import MongoClient
 from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
+from bson.codec_options import CodecOptions
+from bson.binary import STANDARD
 
-# Global client instance
+# Global instances
 _client = None
 _client_encryption = None
-_data_key_id = None
 
 
 def get_mongo_db_name():
@@ -19,12 +20,12 @@ def get_key_vault_namespace():
 
 
 def get_kms_providers():
-    """Get KMS provider credentials from environment variables."""
+    """Get KMS provider credentials (GCP)."""
     gcp_email = os.environ.get("GCP_EMAIL")
     gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
     
     if not gcp_email or not gcp_private_key:
-        raise ValueError("GCP_EMAIL and GCP_PRIVATE_KEY are required for encryption")
+        raise ValueError("GCP_EMAIL and GCP_PRIVATE_KEY required for encryption")
     
     return {
         "gcp": {
@@ -34,8 +35,8 @@ def get_kms_providers():
     }
 
 
-def get_encrypted_mongo_client():
-    """Get singleton MongoDB client with EXPLICIT encryption (serverless compatible)."""
+def get_mongo_client():
+    """Get MongoDB client with bypass_auto_encryption (explicit encryption mode)."""
     global _client
     if _client:
         return _client
@@ -44,84 +45,40 @@ def get_encrypted_mongo_client():
     if not uri:
         raise ValueError("MONGODB_URI is not set")
     
-    try:
-        key_vault_namespace = get_key_vault_namespace()
-        kms_providers = get_kms_providers()
-        
-        # Explicit encryption: manually encrypt writes, auto-decrypt reads
-        auto_encryption_opts = AutoEncryptionOpts(
-            kms_providers=kms_providers,
-            key_vault_namespace=key_vault_namespace,
-            bypass_auto_encryption=True
-        )
-        
-        _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
-        return _client
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize MongoDB client: {e}")
+    # Use bypass_auto_encryption for explicit encryption (like TypeScript)
+    # This means: manually encrypt on write, auto-decrypt on read
+    auto_encryption_opts = AutoEncryptionOpts(
+        kms_providers=get_kms_providers(),
+        key_vault_namespace=get_key_vault_namespace(),
+        bypass_auto_encryption=True  # Explicit encryption mode
+    )
+    
+    _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+    return _client
 
 
 def get_client_encryption():
-    """Get or create ClientEncryption instance."""
+    """Get ClientEncryption instance for manual encryption."""
     global _client_encryption
     
     if _client_encryption:
         return _client_encryption
     
-    client = get_encrypted_mongo_client()
-    kms_providers = get_kms_providers()
-    key_vault_namespace = get_key_vault_namespace()
+    client = get_mongo_client()
     
     _client_encryption = ClientEncryption(
-        kms_providers=kms_providers,
-        key_vault_namespace=key_vault_namespace,
+        kms_providers=get_kms_providers(),
+        key_vault_namespace=get_key_vault_namespace(),
         key_vault_client=client,
-        codec_options=None
+        codec_options=CodecOptions(uuid_representation=STANDARD)
     )
     
     return _client_encryption
 
 
-def get_data_key_id():
-    """Get or create data encryption key."""
-    global _data_key_id
-    
-    if _data_key_id:
-        return _data_key_id
-    
-    client = get_encrypted_mongo_client()
-    client_encryption = get_client_encryption()
-    key_vault_namespace = get_key_vault_namespace()
-    kv_db, kv_coll = key_vault_namespace.split('.')
-    
-    key_alt_name = "nexpass-data-key"
-    key_vault = client[kv_db][kv_coll]
-    keys = list(key_vault.find({"keyAltNames": key_alt_name}))
-    
-    if keys:
-        _data_key_id = keys[0]["_id"]
-        return _data_key_id
-    
-    # Create new key
-    gcp_master_key = {
-        "projectId": os.environ.get("GCP_PROJECT_ID"),
-        "location": os.environ.get("GCP_LOCATION"),
-        "keyRing": os.environ.get("GCP_KEY_RING"),
-        "keyName": os.environ.get("GCP_KEY_NAME"),
-    }
-    
-    _data_key_id = client_encryption.create_data_key(
-        "gcp",
-        master_key=gcp_master_key,
-        key_alt_names=[key_alt_name]
-    )
-    
-    return _data_key_id
-
-
 def get_db():
-    """Get MongoDB database with encryption enabled."""
-    client = get_encrypted_mongo_client()
+    """Get MongoDB database."""
+    client = get_mongo_client()
     return client[get_mongo_db_name()]
 
 
@@ -160,22 +117,29 @@ def get_user_requisitions(user_id: str):
 
 
 def get_user_bank_accounts(user_id: str):
-    """Return bank accounts for a given userId from bank_accounts_dev.
-    Note: most fields are encrypted; only userId is plaintext.
+    """
+    Return bank accounts for a given userId.
+    Fields are auto-decrypted by MongoDB driver (bypass_auto_encryption mode).
     """
     db = get_db()
     collection = db["bank_accounts_dev"]
+    # Auto-decryption happens automatically with bypass_auto_encryption
     return list(collection.find({"userId": user_id}))
 
 
 def get_last_booking_date(user_id, account_id):
     """Get the most recent booking date for a user's account."""
+    from .explicit_encryption import encrypt_queryable
+    
     db = get_db()
     collection = db["transactions_dev"]
     
     try:
+        # Query using encrypted accountId (deterministic hash)
+        encrypted_account_id = encrypt_queryable(account_id)
+        
         result = collection.find_one(
-            {"userId": user_id, "accountId": account_id},
+            {"userId": user_id, "accountId": encrypted_account_id},
             sort=[("bookingDate", -1)]
         )
         if result:
@@ -199,13 +163,18 @@ def document_exists(collection_name, doc_id):
 
 def find_balance_document(user_id, account_id, balance_type):
     """Find a balance document by userId, accountId, and balanceType."""
+    from .explicit_encryption import encrypt_queryable
+    
     db = get_db()
     collection = db["balances_dev"]
     
     try:
+        # Query using encrypted accountId (deterministic hash)
+        encrypted_account_id = encrypt_queryable(account_id)
+        
         result = collection.find_one({
             "userId": user_id,
-            "accountId": account_id,
+            "accountId": encrypted_account_id,
             "balanceType": balance_type
         })
         return result["_id"] if result else None

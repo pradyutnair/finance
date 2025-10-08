@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 import openai
 
-from .mongodb import fetch_previous_categories, get_client_encryption, get_data_key_id
+from .mongodb import fetch_previous_categories
 from .explicit_encryption import encrypt_queryable, encrypt_random
 
 
@@ -87,7 +87,10 @@ def categorize_transaction(
 
 
 def format_transaction_payload(transaction, user_id, account_id, doc_id):
-    """Format and encrypt transaction payload using explicit encryption."""
+    """
+    Format and encrypt transaction payload.
+    Matches TypeScript: encryptTransactionFields()
+    """
     transaction_amount = transaction.get("transactionAmount", {})
     amount = transaction_amount.get("amount", "0") if isinstance(transaction_amount, dict) else "0"
     description = (
@@ -98,38 +101,35 @@ def format_transaction_payload(transaction, user_id, account_id, doc_id):
     counterparty = transaction.get("creditorName") or transaction.get("debtorName") or ""
     provider_tx_id = transaction.get("transactionId") or transaction.get("internalTransactionId") or ""
 
-    # Categorize on plaintext BEFORE encryption
+    # CRITICAL: Categorize on plaintext BEFORE encryption (same as TypeScript)
     category = categorize_transaction(description, counterparty, amount, user_id)
     
-    # Get encryption instances
-    client_encryption = get_client_encryption()
-    data_key_id = get_data_key_id()
-    
-    # Build encrypted payload
+    # Build encrypted payload (matches TypeScript structure)
     currency = transaction_amount.get("currency") if isinstance(transaction_amount, dict) else "EUR"
     
     payload = {
-        # Plaintext fields (queryable)
+        # Plaintext fields (queryable) - same as TypeScript
         "userId": user_id,
         "category": category,
         "exclude": False,
         "bookingDate": transaction.get("bookingDate", "")[:10] if transaction.get("bookingDate") else None,
         
-        # Encrypted queryable fields (deterministic)
-        "accountId": encrypt_queryable(account_id, client_encryption, data_key_id),
-        "transactionId": encrypt_queryable(provider_tx_id, client_encryption, data_key_id),
+        # Encrypted queryable fields (deterministic) - same as TypeScript
+        "accountId": encrypt_queryable(account_id),
+        "transactionId": encrypt_queryable(provider_tx_id),
         
-        # Encrypted sensitive fields (random)
-        "amount": encrypt_random(amount, client_encryption, data_key_id),
-        "currency": encrypt_random(str(currency).upper()[:3], client_encryption, data_key_id),
-        "valueDate": encrypt_random(
-            transaction.get("valueDate", "")[:10] if transaction.get("valueDate") else None,
-            client_encryption,
-            data_key_id
+        # Encrypted sensitive fields (random) - same as TypeScript
+        "amount": encrypt_random(amount),
+        "currency": encrypt_random(str(currency).upper()[:3]),
+        "bookingDateTime": encrypt_random(
+            transaction.get("bookingDateTime", "")[:25] if transaction.get("bookingDateTime") else None
         ),
-        "description": encrypt_random(description[:500] if description else None, client_encryption, data_key_id),
-        "counterparty": encrypt_random(counterparty[:255] if counterparty else None, client_encryption, data_key_id),
-        "raw": encrypt_random(str(transaction)[:10000], client_encryption, data_key_id),
+        "valueDate": encrypt_random(
+            transaction.get("valueDate", "")[:10] if transaction.get("valueDate") else None
+        ),
+        "description": encrypt_random(description[:500] if description else None),
+        "counterparty": encrypt_random(counterparty[:255] if counterparty else None),
+        "raw": encrypt_random(str(transaction)[:10000]),
         
         # Timestamps
         "createdAt": datetime.now().isoformat(),
@@ -141,8 +141,11 @@ def format_transaction_payload(transaction, user_id, account_id, doc_id):
 
 
 def format_balance_payload(balance, user_id, account_id):
-    """Format and encrypt balance payload using explicit encryption."""
-    balance_type = balance.get("balanceType", "expected")
+    """
+    Format and encrypt balance payload.
+    Matches TypeScript: encryptBalanceFields()
+    """
+    balance_type = balance.get("balanceType", "closingBooked")
     reference_date = balance.get("referenceDate", datetime.now().strftime("%Y-%m-%d"))
     balance_amount = balance.get("balanceAmount", {})
     amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
@@ -150,22 +153,18 @@ def format_balance_payload(balance, user_id, account_id):
 
     doc_id = f"{account_id}_{balance_type}"[:36]
     
-    # Get encryption instances
-    client_encryption = get_client_encryption()
-    data_key_id = get_data_key_id()
-    
     payload = {
-        # Plaintext fields (queryable)
+        # Plaintext fields (queryable) - same as TypeScript
         "userId": user_id,
         "balanceType": balance_type,
         "referenceDate": reference_date,
         
-        # Encrypted queryable field (deterministic)
-        "accountId": encrypt_queryable(account_id, client_encryption, data_key_id),
+        # Encrypted queryable field (deterministic) - same as TypeScript
+        "accountId": encrypt_queryable(account_id),
         
-        # Encrypted sensitive fields (random)
-        "balanceAmount": encrypt_random(str(amount), client_encryption, data_key_id),
-        "currency": encrypt_random(str(currency).upper()[:3], client_encryption, data_key_id),
+        # Encrypted sensitive fields (random) - same as TypeScript
+        "balanceAmount": encrypt_random(str(amount)),
+        "currency": encrypt_random(str(currency).upper()[:3]),
         
         # Timestamps
         "createdAt": datetime.now().isoformat(),
