@@ -35,7 +35,7 @@ async function main() {
     console.log('\n✅ Cleanup complete!\n');
     process.exit(0);
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('❌ Cleanup failed:', error.message);
     process.exit(1);
   }

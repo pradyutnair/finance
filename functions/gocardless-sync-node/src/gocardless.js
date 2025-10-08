@@ -6,10 +6,10 @@ const BASE_URL = 'https://bankaccountdata.gocardless.com/api/v2';
 const DEFAULT_TIMEOUT_MS = 20000;
 const MAX_RETRIES = 3;
 
-let accessToken: string | null = null;
+let accessToken = null;
 let tokenExpiresAt = 0;
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken() {
   // Return cached token if still valid (with 30s buffer)
   if (accessToken && Date.now() / 1000 < (tokenExpiresAt - 30)) {
     return accessToken;
