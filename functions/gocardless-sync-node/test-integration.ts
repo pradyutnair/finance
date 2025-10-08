@@ -15,9 +15,9 @@ import { resolve } from 'path';
 // Load environment from root .env file
 config({ path: resolve(process.cwd(), '../../../.env') });
 
-import { getDb, getUserBankAccounts } from './src/mongodb';
-import { encryptQueryable, encryptRandom } from './src/explicit-encryption';
-import * as goCardlessModule from './src/gocardless';
+import { getDb, getUserBankAccounts } from './src/mongodb.js';
+import { encryptQueryable, encryptRandom } from './src/explicit-encryption.js';
+import * as goCardlessModule from './src/gocardless.js';
 
 const TEST_USER_ID = 'test-user-integration-001';
 const TEST_ACCOUNT_ID = 'ACC-INTEGRATION-TEST';
@@ -158,7 +158,7 @@ async function seedTestBankAccount() {
   const db = await getDb();
 
   // Create bank connection
-  const connectionUpdate: any = {
+  const connectionUpdate = {
     userId: TEST_USER_ID,
     institutionId: 'TEST_BANK_GB',
     logoUrl: 'https://example.com/logo.svg',
@@ -183,7 +183,7 @@ async function seedTestBankAccount() {
 
   // Create bank account
   const encryptedAccountId = await encryptQueryable(TEST_ACCOUNT_ID);
-  const accountUpdate: any = {
+  const accountUpdate = {
     userId: TEST_USER_ID,
     institutionId: 'TEST_BANK_GB',
     updatedAt: new Date().toISOString(),

@@ -5,21 +5,21 @@
 
 import { MongoClient, Db, ClientEncryption, Binary } from 'mongodb';
 
-let clientPromise: Promise<MongoClient> | null = null;
-let clientEncryptionInstance: ClientEncryption | null = null;
-let dataKeyId: Binary | null = null;
+let clientPromise = null;
+let clientEncryptionInstance = null;
+let dataKeyId = null;
 
-function getMongoDbName(): string {
+function getMongoDbName() {
   return process.env.MONGODB_DB || 'finance_dev';
 }
 
-function getKeyVaultNamespace(): string {
+function getKeyVaultNamespace() {
   return process.env.MONGODB_KEY_VAULT_NS || 'encryption.__keyVault';
 }
 
 function getKmsProviders() {
-  const gcpEmail = process.env.GCP_EMAIL as string;
-  const gcpPrivateKeyRaw = process.env.GCP_PRIVATE_KEY as string;
+  const gcpEmail = process.env.GCP_EMAIL;
+  const gcpPrivateKeyRaw = process.env.GCP_PRIVATE_KEY;
   
   if (!gcpEmail || !gcpPrivateKeyRaw) {
     throw new Error('GCP_EMAIL and GCP_PRIVATE_KEY are required for encryption');
@@ -34,13 +34,13 @@ function getKmsProviders() {
       email: gcpEmail,
       privateKey: gcpPrivateKey,
     },
-  } as any;
+  };
 }
 
-export async function getEncryptedMongoClient(): Promise<MongoClient> {
+export async function getEncryptedMongoClient() {
   if (clientPromise) return clientPromise;
 
-  const uri = process.env.MONGODB_URI as string;
+  const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGODB_URI is not set');
 
   const kmsProviders = getKmsProviders();
@@ -53,7 +53,7 @@ export async function getEncryptedMongoClient(): Promise<MongoClient> {
         kmsProviders,
         bypassAutoEncryption: true, // Explicit encryption for serverless
       },
-    } as any);
+    });
     await client.connect();
     return client;
   })();
@@ -61,14 +61,14 @@ export async function getEncryptedMongoClient(): Promise<MongoClient> {
   return clientPromise;
 }
 
-export async function getClientEncryption(): Promise<ClientEncryption> {
+export async function getClientEncryption() {
   if (clientEncryptionInstance) return clientEncryptionInstance;
 
   const client = await getEncryptedMongoClient();
   const kmsProviders = getKmsProviders();
   const keyVaultNamespace = getKeyVaultNamespace();
 
-  clientEncryptionInstance = new ClientEncryption(client as any, {
+  clientEncryptionInstance = new ClientEncryption(client, {
     keyVaultNamespace,
     kmsProviders,
   });
@@ -76,7 +76,7 @@ export async function getClientEncryption(): Promise<ClientEncryption> {
   return clientEncryptionInstance;
 }
 
-export async function getDataKeyId(): Promise<Binary> {
+export async function getDataKeyId() {
   if (dataKeyId) return dataKeyId;
 
   const client = await getEncryptedMongoClient();
@@ -89,7 +89,7 @@ export async function getDataKeyId(): Promise<Binary> {
   const keys = await keyVault.find({ keyAltNames: keyAltName }).toArray();
 
   if (keys.length > 0) {
-    dataKeyId = keys[0]._id as Binary;
+    dataKeyId = keys[0]._id;
     return dataKeyId;
   }
 
@@ -104,17 +104,17 @@ export async function getDataKeyId(): Promise<Binary> {
   dataKeyId = await clientEncryption.createDataKey('gcp', {
     masterKey: gcpMasterKey,
     keyAltNames: [keyAltName],
-  } as any);
+  });
 
   return dataKeyId;
 }
 
-export async function getDb(): Promise<Db> {
+export async function getDb() {
   const client = await getEncryptedMongoClient();
   return client.db(getMongoDbName());
 }
 
-export async function getUserBankAccounts(userId: string): Promise<any[]> {
+export async function getUserBankAccounts(userId) {
   const db = await getDb();
   const collection = db.collection('bank_accounts_dev');
   
@@ -123,10 +123,10 @@ export async function getUserBankAccounts(userId: string): Promise<any[]> {
   return accounts;
 }
 
-export async function getLastBookingDate(userId: string, accountId: string): Promise<string | null> {
+export async function getLastBookingDate(userId, accountId) {
   const db = await getDb();
   const collection = db.collection('transactions_dev');
-  const { encryptQueryable } = await import('./explicit-encryption');
+  const { encryptQueryable } = await import('./explicit-encryption.js');
   
   try {
     // Query using encrypted accountId (deterministic)
@@ -143,7 +143,7 @@ export async function getLastBookingDate(userId: string, accountId: string): Pro
   }
 }
 
-export async function documentExists(collectionName: string, docId: string): Promise<boolean> {
+export async function documentExists(collectionName, docId) {
   const db = await getDb();
   const collection = db.collection(collectionName);
   
@@ -155,14 +155,10 @@ export async function documentExists(collectionName: string, docId: string): Pro
   }
 }
 
-export async function findBalanceDocument(
-  userId: string,
-  accountId: string,
-  balanceType: string
-): Promise<string | null> {
+export async function findBalanceDocument(userId, accountId, balanceType) {
   const db = await getDb();
   const collection = db.collection('balances_dev');
-  const { encryptQueryable } = await import('./explicit-encryption');
+  const { encryptQueryable } = await import('./explicit-encryption.js');
   
   try {
     const encryptedAccountId = await encryptQueryable(accountId);
@@ -179,7 +175,7 @@ export async function findBalanceDocument(
   }
 }
 
-export async function createTransaction(docId: string, encryptedPayload: any): Promise<void> {
+export async function createTransaction(docId, encryptedPayload) {
   const db = await getDb();
   const collection = db.collection('transactions_dev');
   
@@ -187,7 +183,7 @@ export async function createTransaction(docId: string, encryptedPayload: any): P
   await collection.insertOne(encryptedPayload);
 }
 
-export async function createBalance(docId: string, encryptedPayload: any): Promise<void> {
+export async function createBalance(docId, encryptedPayload) {
   const db = await getDb();
   const collection = db.collection('balances_dev');
   
@@ -195,7 +191,7 @@ export async function createBalance(docId: string, encryptedPayload: any): Promi
   await collection.insertOne(encryptedPayload);
 }
 
-export async function updateBalance(docId: string, encryptedPayload: any): Promise<void> {
+export async function updateBalance(docId, encryptedPayload) {
   const db = await getDb();
   const collection = db.collection('balances_dev');
   

@@ -36,7 +36,7 @@ async function getAccessToken(): Promise<string> {
   return accessToken;
 }
 
-async function request(path: string, params?: Record<string, string>): Promise<any> {
+async function request(path, params) {
   const token = await getAccessToken();
   const url = new URL(`${BASE_URL}${path}`);
   
@@ -65,17 +65,14 @@ async function request(path: string, params?: Record<string, string>): Promise<a
   }
 }
 
-export async function getTransactions(
-  accountId: string,
-  dateFrom?: string | null
-): Promise<any> {
-  const params: Record<string, string> = {};
+export async function getTransactions(accountId, dateFrom) {
+  const params = {};
   if (dateFrom) params.date_from = dateFrom;
   
   return request(`/accounts/${accountId}/transactions/`, params);
 }
 
-export async function getBalances(accountId: string): Promise<any> {
+export async function getBalances(accountId) {
   return request(`/accounts/${accountId}/balances/`);
 }
 

@@ -8,9 +8,9 @@ import { resolve } from 'path';
 
 config({ path: resolve(process.cwd(), '../../.env') });
 
-import { getDb } from './src/mongodb';
-import { encryptQueryable, encryptRandom } from './src/explicit-encryption';
-import { formatTransactionPayload, formatBalancePayload, generateDocId } from './src/utils';
+import { getDb } from './src/mongodb.js';
+import { encryptQueryable, encryptRandom } from './src/explicit-encryption.js';
+import { formatTransactionPayload, formatBalancePayload, generateDocId } from './src/utils.js';
 
 const TEST_USER_ID = '68d446e7bf3ed043310a'; // Real user ID from your DB
 const TEST_ACCOUNT_ID = 'ACC-PERSISTENT-TEST-001';
@@ -27,7 +27,7 @@ async function main() {
     console.log('1️⃣  Creating bank connection...');
     const encryptedAccountId = await encryptQueryable(TEST_ACCOUNT_ID);
     
-    const connectionDoc: any = {
+    const connectionDoc = {
       userId: TEST_USER_ID,
       institutionId: 'REVOLUT_REVOGB21',
       institutionName: await encryptRandom('Revolut Test Bank'),
@@ -47,7 +47,7 @@ async function main() {
 
     // 2. Create bank account
     console.log('2️⃣  Creating bank account...');
-    const accountDoc: any = {
+    const accountDoc = {
       userId: TEST_USER_ID,
       institutionId: 'REVOLUT_REVOGB21',
       accountId: encryptedAccountId,
@@ -72,7 +72,7 @@ async function main() {
 
     // 3. Create requisition
     console.log('3️⃣  Creating requisition...');
-    const requisitionDoc: any = {
+    const requisitionDoc = {
       userId: TEST_USER_ID,
       institutionId: 'REVOLUT_REVOGB21',
       requisitionId: await encryptQueryable('req-persistent-001'),
@@ -138,7 +138,7 @@ async function main() {
     let txUpdated = 0;
 
     for (const mockTx of mockTransactions) {
-      const txDoc: any = {
+      const txDoc = {
         _id: mockTx.txId,
         userId: TEST_USER_ID,
         category: mockTx.category,
@@ -186,7 +186,7 @@ async function main() {
     let balUpdated = 0;
 
     for (const bal of balances) {
-      const balDoc: any = {
+      const balDoc = {
         _id: `${TEST_ACCOUNT_ID}_${bal.type}`,
         userId: TEST_USER_ID,
         balanceType: bal.type,

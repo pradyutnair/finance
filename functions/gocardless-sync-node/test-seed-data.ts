@@ -19,16 +19,16 @@ import {
   getUserBankAccounts,
   getLastBookingDate,
   documentExists,
-} from './src/mongodb';
-import { encryptQueryable, encryptRandom } from './src/explicit-encryption';
-import { formatTransactionPayload, formatBalancePayload, generateDocId } from './src/utils';
-import { suggestCategory, findExistingCategoryMongo } from './src/categorize';
+} from './src/mongodb.js';
+import { encryptQueryable, encryptRandom } from './src/explicit-encryption.js';
+import { formatTransactionPayload, formatBalancePayload, generateDocId } from './src/utils.js';
+import { suggestCategory, findExistingCategoryMongo } from './src/categorize.js';
 
 const TEST_USER_ID = 'test-user-sync-001';
 const TEST_ACCOUNT_ID = 'ACC-REVOLUT-EUR-TEST';
 
 // Mock GoCardless transactions
-function generateMockTransactions(numTransactions: number = 10) {
+function generateMockTransactions(numTransactions = 10) {
   const merchants = [
     'Starbucks Coffee', 'Amazon.com', 'Uber Eats', 'Netflix',
     'Spotify', 'Whole Foods', 'Shell Gas Station', 'McDonald\'s',
@@ -125,7 +125,7 @@ async function seedBankAccount() {
   const db = await getDb();
 
   // 1. Create test requisition with explicit encryption
-  const requisitionUpdate: any = {
+  const requisitionUpdate = {
     userId: TEST_USER_ID,
     institutionId: 'REVOLUT_REVOGB21',
     updatedAt: new Date().toISOString(),
@@ -151,7 +151,7 @@ async function seedBankAccount() {
   console.log(`✅ Requisition: ${reqResult.upsertedCount ? 'created' : 'updated'} (encrypted)`);
 
   // 2. Create test bank connection with explicit encryption
-  const connectionUpdate: any = {
+  const connectionUpdate = {
     userId: TEST_USER_ID,
     institutionId: 'REVOLUT_REVOGB21',
     logoUrl: 'https://cdn.revolut.com/media/brand/logo.svg',
@@ -181,7 +181,7 @@ async function seedBankAccount() {
   const plaintextAccountId = 'test-acct-rev-eur-001';
   const encryptedAccountId = await encryptQueryable(plaintextAccountId);
 
-  const accountUpdate: any = {
+  const accountUpdate = {
     userId: TEST_USER_ID,
     institutionId: 'REVOLUT_REVOGB21',
     updatedAt: new Date().toISOString(),
@@ -254,7 +254,7 @@ async function processAndStoreTransactions() {
     const category = existingCategory || await suggestCategory(txDescription, counterparty, tx.transactionAmount?.amount);
 
     // Prepare document with explicit encryption
-    const txDoc: any = {
+    const txDoc = {
       userId: TEST_USER_ID,
       category, // Plaintext - needed for queries
       exclude: false, // Plaintext - needed for queries
@@ -309,7 +309,7 @@ async function processAndStoreBalances() {
     const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
 
     // Prepare document with explicit encryption
-    const balanceDoc: any = {
+    const balanceDoc = {
       userId: TEST_USER_ID,
       balanceType, // Plaintext - needed for queries
       referenceDate, // Plaintext - needed for queries and sorting

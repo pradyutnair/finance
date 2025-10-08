@@ -7,7 +7,7 @@ import { resolve } from 'path';
 
 config({ path: resolve(process.cwd(), '../../.env') });
 
-import { getDb } from './src/mongodb';
+import { getDb } from './src/mongodb.js';
 
 const TEST_USER_ID = '68d446e7bf3ed043310a';
 

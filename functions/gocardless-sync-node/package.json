@@ -5,22 +5,18 @@
   "main": "src/main.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/main.ts",
-    "test": "tsx test-seed-data.ts",
-    "seed": "tsx seed-persistent-data.ts",
-    "verify": "tsx verify-data.ts",
-    "cleanup": "tsx cleanup-test-data.ts"
+    "build": "echo 'No build step needed for JavaScript'",
+    "dev": "node src/main.js",
+    "test": "node test-seed-data.js",
+    "seed": "node seed-persistent-data.js",
+    "verify": "node verify-data.js",
+    "cleanup": "node cleanup-test-data.js"
   },
   "dependencies": {
     "node-appwrite": "^13.0.0",
     "mongodb": "^6.0.0",
     "dotenv": "^16.0.0"
   },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "tsx": "^4.0.0"
-  }
+  "devDependencies": {}
 }
 

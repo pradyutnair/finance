@@ -28,8 +28,7 @@ Both test suites have passed successfully:
 # From project root
 cd appwrite/functions/gocardless-sync-node
 
-# Build TypeScript
-npm run build
+# No build step needed for JavaScript
 
 # Deploy using Appwrite CLI
 appwrite deploy function
@@ -39,8 +38,8 @@ appwrite deploy function
 
 1. **Create Function in Appwrite Console**
    - Runtime: Node.js 18.0+
-   - Entrypoint: `src/main.ts`
-   - Build Commands: `npm install && npm run build`
+   - Entrypoint: `src/main.js`
+   - Build Commands: `npm install`
 
 2. **Set Environment Variables** (all required):
 
@@ -90,10 +89,10 @@ APPWRITE_API_KEY
 npm install
 
 # Run basic test suite
-npx tsx test-seed-data.ts
+node test-seed-data.js
 
 # Run integration test
-npx tsx test-integration.ts
+node test-integration.js
 
 # Both should pass with all ✅ checks
 ```
