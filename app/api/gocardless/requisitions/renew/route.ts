@@ -51,8 +51,6 @@ export async function POST(request: Request) {
       
       // Update bank_connections_dev
       const connectionUpdate: any = {
-        userId,
-        institutionId,
         updatedAt: new Date().toISOString(),
       };
       if (encryptedRequisitionId) connectionUpdate.requisitionId = encryptedRequisitionId;
@@ -65,6 +63,7 @@ export async function POST(request: Request) {
           $set: connectionUpdate,
           $setOnInsert: {
             userId,
+            institutionId,
             createdAt: new Date().toISOString(),
           }
         },
@@ -73,7 +72,6 @@ export async function POST(request: Request) {
 
       // Update requisitions_dev
       const requisitionUpdate: any = {
-        institutionId,
         updatedAt: new Date().toISOString(),
       };
       if (encryptedRequisitionId) requisitionUpdate.requisitionId = encryptedRequisitionId;
@@ -86,6 +84,7 @@ export async function POST(request: Request) {
           $set: requisitionUpdate,
           $setOnInsert: {
             userId,
+            institutionId,
             createdAt: new Date().toISOString(),
           }
         },
