@@ -4,36 +4,65 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { invalidateUserCache } from "@/lib/server/cache-service";
 
+type CacheScope = 'all' | 'transactions' | 'accounts' | 'balances' | 'budgets';
+
 export async function POST(request: Request) {
   try {
     // Require authenticated user
     const user = await requireAuthUser(request) as { $id?: string; id?: string };
     const userId = user.$id || user.id;
 
-    const globalAny = globalThis as any;
-    const clearedCaches = [];
+    // Parse request body for scope and reason
+    let scope: CacheScope = 'all';
+    let reason = 'manual';
     
-    // Clear global caches
-    if (globalAny.__tx_cache) {
-      const size = globalAny.__tx_cache.size;
-      globalAny.__tx_cache.clear();
-      clearedCaches.push(`__tx_cache (${size} entries)`);
-    }
-    if (globalAny.__acct_cache) {
-      const size = globalAny.__acct_cache.size;
-      globalAny.__acct_cache.clear();
-      clearedCaches.push(`__acct_cache (${size} entries)`);
-    }
-    if (globalAny.__acct_tx_cache) {
-      const size = globalAny.__acct_tx_cache.size;
-      globalAny.__acct_tx_cache.clear();
-      clearedCaches.push(`__acct_tx_cache (${size} entries)`);
+    try {
+      const body = await request.json();
+      if (body.scope) scope = body.scope;
+      if (body.reason) reason = body.reason;
+    } catch {
+      // Body parsing failed, use defaults
     }
 
-    // Clear centralized user cache
+    console.log(`[API] Clear cache request (userId: ${userId}, scope: ${scope}, reason: ${reason})`);
+
+    const globalAny = globalThis as any;
+    const clearedCaches: string[] = [];
+    
+    // Clear caches based on scope
+    if (scope === 'all' || scope === 'transactions') {
+      if (globalAny.__tx_cache) {
+        const size = globalAny.__tx_cache.size;
+        globalAny.__tx_cache.clear();
+        clearedCaches.push(`__tx_cache (${size} entries)`);
+      }
+      if (globalAny.__acct_tx_cache) {
+        const size = globalAny.__acct_tx_cache.size;
+        globalAny.__acct_tx_cache.clear();
+        clearedCaches.push(`__acct_tx_cache (${size} entries)`);
+      }
+    }
+    
+    if (scope === 'all' || scope === 'accounts') {
+      if (globalAny.__acct_cache) {
+        const size = globalAny.__acct_cache.size;
+        globalAny.__acct_cache.clear();
+        clearedCaches.push(`__acct_cache (${size} entries)`);
+      }
+    }
+
+    // Clear centralized user cache based on scope
     if (userId) {
-      invalidateUserCache(userId, 'all');
-      clearedCaches.push('user_cache (transactions & balances)');
+      if (scope === 'all') {
+        invalidateUserCache(userId, 'all');
+        clearedCaches.push('user_cache (transactions & balances)');
+      } else if (scope === 'transactions') {
+        invalidateUserCache(userId, 'transactions');
+        clearedCaches.push('user_cache (transactions)');
+      } else if (scope === 'balances' || scope === 'accounts') {
+        invalidateUserCache(userId, 'balances');
+        clearedCaches.push('user_cache (balances)');
+      }
     }
     
     // Note: Some in-memory caches (budgetsCache, goalsCache) 
@@ -42,8 +71,12 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       message: "API caches cleared successfully",
+      scope,
+      reason,
       clearedCaches,
-      note: "Some in-memory caches require server restart to clear completely"
+      note: scope === 'budgets' 
+        ? "Budget caches require server restart to clear completely"
+        : undefined
     });
 
   } catch (err: any) {

@@ -6,12 +6,14 @@ import { createAppwriteClient } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ClientOnly } from '@/components/ClientOnly';
 import { AuthGuard } from '@/components/auth-guard';
+import { useCacheInvalidation } from '@/hooks/useCacheInvalidation';
 
 function BankCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing bank connection...');
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { invalidateAfterBankConnection } = useCacheInvalidation();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -136,22 +138,14 @@ function BankCallbackContent() {
             console.warn('Renew call error (non-blocking):', e);
           }
 
-          // Clear API caches before navigating to dashboard to ensure fresh data
-          try {
-            setMessage('Refreshing data...');
-            const clearRes = await fetch('/api/clear-cache', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}),
-              },
-              credentials: 'include',
-            });
-            if (!clearRes.ok) {
-              console.warn('Clear cache endpoint responded with non-OK status');
-            }
-          } catch (e) {
-            console.warn('Clear cache call error (non-blocking):', e);
+          // Automatically invalidate all caches (server + client) to refresh data
+          setMessage('Refreshing data...');
+          const cacheResult = await invalidateAfterBankConnection();
+          if (cacheResult.overall) {
+            console.log('✅ All caches invalidated after bank connection');
+          } else {
+            console.warn('⚠️ Cache invalidation completed with warnings:', cacheResult);
+            // Continue anyway - partial cache invalidation is better than none
           }
 
           // Wait a moment then redirect to dashboard

@@ -24,29 +24,54 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
     const { accountId } = await params;
 
     if (process.env.DATA_BACKEND === 'mongodb') {
-      const db = await getDb();
-      
-      // Encrypt accountId for query (deterministic encryption allows equality queries)
-      const encryptedAccountId = await encryptQueryable(accountId);
-      
-      const docs = await db
-        .collection('balances_dev')
-        .find({ userId, accountId: encryptedAccountId })
-        .sort({ referenceDate: -1 })
-        .limit(100)
-        .toArray();
+      try {
+        const db = await getDb();
+        
+        console.log(`[API] Fetching balances for accountId: ${accountId}, userId: ${userId}`);
+        
+        // Encrypt accountId for querying encrypted field
+        // With bypassAutoEncryption: true, we must manually encrypt query parameters
+        console.log('[API] Encrypting accountId for query...');
+        const encryptedAccountId = await encryptQueryable(accountId);
+        console.log('[API] AccountId encrypted successfully');
+        
+        const docs = await db
+          .collection('balances_dev')
+          .find({ userId, accountId: encryptedAccountId })
+          .sort({ referenceDate: -1 })
+          .limit(100)
+          .toArray();
 
-      const balances = docs.map((b: any) => ({
-        balanceType: String(b.balanceType || "interimAvailable"),
-        balanceAmount: {
-          amount: String(b.balanceAmount ?? "0"),
-          currency: String(b.currency || "EUR"),
-        },
-        referenceDate: String(b.referenceDate || ""),
-      }));
+        console.log(`[API] Found ${docs.length} balances`);
 
-      const payload = { details: { accountId }, balances: { balances } };
-      return NextResponse.json(payload);
+        // Data fields are automatically decrypted by the MongoDB driver on read
+        const balances = docs.map((b: any) => ({
+          balanceType: String(b.balanceType || "interimAvailable"),
+          balanceAmount: {
+            amount: String(b.balanceAmount ?? "0"),
+            currency: String(b.currency || "EUR"),
+          },
+          referenceDate: String(b.referenceDate || ""),
+        }));
+
+        const payload = { details: { accountId }, balances: { balances } };
+        return NextResponse.json(payload);
+      } catch (mongoError: any) {
+        console.error('[API] MongoDB error fetching account balances:', mongoError);
+        console.error('[API] Error details:', {
+          message: mongoError?.message,
+          stack: mongoError?.stack,
+          code: mongoError?.code,
+          name: mongoError?.name,
+          userId,
+          accountId,
+        });
+        return NextResponse.json({ 
+          ok: false, 
+          error: 'Failed to fetch account balances from MongoDB',
+          details: process.env.NODE_ENV === 'development' ? mongoError?.message : 'Internal server error'
+        }, { status: 500 });
+      }
     }
 
     const client = new Client()

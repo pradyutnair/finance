@@ -342,6 +342,8 @@ export async function getUserBalanceCache(
  * Invalidate user cache (call after updates)
  */
 export function invalidateUserCache(userId: string, type: 'transactions' | 'balances' | 'all' = 'all') {
+  console.log(`[Cache] Invalidating user cache for ${userId} (type: ${type})`);
+  
   if (type === 'transactions' || type === 'all') {
     const txCache: Map<string, UserCache> = globalAny.__user_cache;
     txCache.delete(userId);
@@ -351,6 +353,28 @@ export function invalidateUserCache(userId: string, type: 'transactions' | 'bala
     const balCache: Map<string, BalanceDoc[]> = globalAny.__balance_cache;
     balCache.delete(userId);
   }
+}
+
+/**
+ * Invalidate all user caches (for all users)
+ * Use with caution - mainly for admin or testing purposes
+ */
+export function invalidateAllUserCaches() {
+  console.log('[Cache] Invalidating all user caches');
+  
+  const txCache: Map<string, UserCache> = globalAny.__user_cache;
+  const balCache: Map<string, BalanceDoc[]> = globalAny.__balance_cache;
+  
+  const txSize = txCache.size;
+  const balSize = balCache.size;
+  
+  txCache.clear();
+  balCache.clear();
+  
+  return {
+    transactionsCleared: txSize,
+    balancesCleared: balSize,
+  };
 }
 
 /**
