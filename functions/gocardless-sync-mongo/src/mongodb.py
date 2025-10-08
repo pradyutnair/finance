@@ -7,6 +7,7 @@ from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
 # Global client instance
 _client = None
 _client_encryption = None
+_data_key_id = None
 
 
 def get_mongo_db_name():
@@ -42,41 +43,25 @@ def get_encrypted_mongo_client():
     uri = os.environ.get("MONGODB_URI")
     if not uri:
         raise ValueError("MONGODB_URI is not set")
-
-    gcp_email = os.environ.get("GCP_EMAIL")
-    gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
-    
-    if not gcp_email or not gcp_private_key:
-        raise ValueError("GCP KMS credentials required for encryption")
     
     try:
-        print("🔐 Setting up explicit encryption (serverless mode)...")
         key_vault_namespace = get_key_vault_namespace()
         kms_providers = get_kms_providers()
         
-        # Use bypassAutoEncryption for explicit encryption (serverless compatible)
-        # This means:
-        # 1. We manually encrypt data before writes
-        # 2. Decryption is still automatic on reads
-        # 3. No need for mongocryptd or shared libraries
+        # Explicit encryption: manually encrypt writes, auto-decrypt reads
         auto_encryption_opts = AutoEncryptionOpts(
             kms_providers=kms_providers,
             key_vault_namespace=key_vault_namespace,
-            bypass_auto_encryption=True  # 🔑 KEY CHANGE for serverless
+            bypass_auto_encryption=True
         )
         
         _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
-        print("✅ MongoDB client initialized with explicit encryption (serverless mode)")
         return _client
     except Exception as e:
-        print(f"❌ Failed to initialize MongoDB client: {e}")
-        print(f"❌ Error type: {type(e).__name__}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
-        raise
+        raise RuntimeError(f"Failed to initialize MongoDB client: {e}")
 
 
-def get_client_encryption_instance():
+def get_client_encryption():
     """Get or create ClientEncryption instance."""
     global _client_encryption
     
@@ -95,6 +80,43 @@ def get_client_encryption_instance():
     )
     
     return _client_encryption
+
+
+def get_data_key_id():
+    """Get or create data encryption key."""
+    global _data_key_id
+    
+    if _data_key_id:
+        return _data_key_id
+    
+    client = get_encrypted_mongo_client()
+    client_encryption = get_client_encryption()
+    key_vault_namespace = get_key_vault_namespace()
+    kv_db, kv_coll = key_vault_namespace.split('.')
+    
+    key_alt_name = "nexpass-data-key"
+    key_vault = client[kv_db][kv_coll]
+    keys = list(key_vault.find({"keyAltNames": key_alt_name}))
+    
+    if keys:
+        _data_key_id = keys[0]["_id"]
+        return _data_key_id
+    
+    # Create new key
+    gcp_master_key = {
+        "projectId": os.environ.get("GCP_PROJECT_ID"),
+        "location": os.environ.get("GCP_LOCATION"),
+        "keyRing": os.environ.get("GCP_KEY_RING"),
+        "keyName": os.environ.get("GCP_KEY_NAME"),
+    }
+    
+    _data_key_id = client_encryption.create_data_key(
+        "gcp",
+        master_key=gcp_master_key,
+        key_alt_names=[key_alt_name]
+    )
+    
+    return _data_key_id
 
 
 def get_db():

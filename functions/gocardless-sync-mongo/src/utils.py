@@ -4,14 +4,8 @@ import time
 from datetime import datetime
 import openai
 
-from .mongodb import fetch_previous_categories, get_encrypted_mongo_client, get_client_encryption_instance
-from .explicit_encryption import (
-    get_data_key_id,
-    encrypt_queryable,
-    encrypt_random,
-    encrypt_transaction_fields,
-    encrypt_balance_fields
-)
+from .mongodb import fetch_previous_categories, get_client_encryption, get_data_key_id
+from .explicit_encryption import encrypt_queryable, encrypt_random
 
 
 def generate_doc_id(transaction_id, account_id, booking_date):
@@ -92,12 +86,7 @@ def categorize_transaction(
         return "Uncategorized"
 
 
-def format_transaction_payload(
-    transaction,
-    user_id,
-    account_id,
-    doc_id,
-):
+def format_transaction_payload(transaction, user_id, account_id, doc_id):
     """Format and encrypt transaction payload using explicit encryption."""
     transaction_amount = transaction.get("transactionAmount", {})
     amount = transaction_amount.get("amount", "0") if isinstance(transaction_amount, dict) else "0"
@@ -107,59 +96,84 @@ def format_transaction_payload(
         or ""
     )
     counterparty = transaction.get("creditorName") or transaction.get("debtorName") or ""
+    provider_tx_id = transaction.get("transactionId") or transaction.get("internalTransactionId") or ""
 
-    # CRITICAL: Categorize on plaintext BEFORE encryption
+    # Categorize on plaintext BEFORE encryption
     category = categorize_transaction(description, counterparty, amount, user_id)
     
-    # Get encryption clients
-    mongo_client = get_encrypted_mongo_client()
-    client_encryption = get_client_encryption_instance()
-    data_key_id = get_data_key_id(client_encryption, mongo_client)
+    # Get encryption instances
+    client_encryption = get_client_encryption()
+    data_key_id = get_data_key_id()
     
-    # Use explicit encryption helper
-    encrypted_payload = encrypt_transaction_fields(
-        user_id,
-        account_id,
-        transaction,
-        category,
-        client_encryption,
-        data_key_id
-    )
+    # Build encrypted payload
+    currency = transaction_amount.get("currency") if isinstance(transaction_amount, dict) else "EUR"
     
-    # Add timestamps
-    encrypted_payload["createdAt"] = datetime.now().isoformat()
-    encrypted_payload["updatedAt"] = datetime.now().isoformat()
+    payload = {
+        # Plaintext fields (queryable)
+        "userId": user_id,
+        "category": category,
+        "exclude": False,
+        "bookingDate": transaction.get("bookingDate", "")[:10] if transaction.get("bookingDate") else None,
+        
+        # Encrypted queryable fields (deterministic)
+        "accountId": encrypt_queryable(account_id, client_encryption, data_key_id),
+        "transactionId": encrypt_queryable(provider_tx_id, client_encryption, data_key_id),
+        
+        # Encrypted sensitive fields (random)
+        "amount": encrypt_random(amount, client_encryption, data_key_id),
+        "currency": encrypt_random(str(currency).upper()[:3], client_encryption, data_key_id),
+        "valueDate": encrypt_random(
+            transaction.get("valueDate", "")[:10] if transaction.get("valueDate") else None,
+            client_encryption,
+            data_key_id
+        ),
+        "description": encrypt_random(description[:500] if description else None, client_encryption, data_key_id),
+        "counterparty": encrypt_random(counterparty[:255] if counterparty else None, client_encryption, data_key_id),
+        "raw": encrypt_random(str(transaction)[:10000], client_encryption, data_key_id),
+        
+        # Timestamps
+        "createdAt": datetime.now().isoformat(),
+        "updatedAt": datetime.now().isoformat(),
+    }
     
-    return encrypted_payload
+    # Filter out None values
+    return {k: v for k, v in payload.items() if v is not None}
 
 
 def format_balance_payload(balance, user_id, account_id):
     """Format and encrypt balance payload using explicit encryption."""
     balance_type = balance.get("balanceType", "expected")
     reference_date = balance.get("referenceDate", datetime.now().strftime("%Y-%m-%d"))
+    balance_amount = balance.get("balanceAmount", {})
+    amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
+    currency = balance_amount.get("currency", "EUR") if isinstance(balance_amount, dict) else "EUR"
 
-    # Use a simpler doc_id based on account_id and balance_type only
     doc_id = f"{account_id}_{balance_type}"[:36]
     
-    # Get encryption clients
-    mongo_client = get_encrypted_mongo_client()
-    client_encryption = get_client_encryption_instance()
-    data_key_id = get_data_key_id(client_encryption, mongo_client)
+    # Get encryption instances
+    client_encryption = get_client_encryption()
+    data_key_id = get_data_key_id()
     
-    # Use explicit encryption helper
-    encrypted_payload = encrypt_balance_fields(
-        user_id,
-        account_id,
-        balance,
-        client_encryption,
-        data_key_id
-    )
+    payload = {
+        # Plaintext fields (queryable)
+        "userId": user_id,
+        "balanceType": balance_type,
+        "referenceDate": reference_date,
+        
+        # Encrypted queryable field (deterministic)
+        "accountId": encrypt_queryable(account_id, client_encryption, data_key_id),
+        
+        # Encrypted sensitive fields (random)
+        "balanceAmount": encrypt_random(str(amount), client_encryption, data_key_id),
+        "currency": encrypt_random(str(currency).upper()[:3], client_encryption, data_key_id),
+        
+        # Timestamps
+        "createdAt": datetime.now().isoformat(),
+        "updatedAt": datetime.now().isoformat(),
+    }
     
-    # Add timestamps
-    encrypted_payload["createdAt"] = datetime.now().isoformat()
-    encrypted_payload["updatedAt"] = datetime.now().isoformat()
-    
-    return doc_id, encrypted_payload
+    # Filter out None values
+    return doc_id, {k: v for k, v in payload.items() if v is not None}
 
 
 

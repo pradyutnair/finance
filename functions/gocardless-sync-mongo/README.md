@@ -1,31 +1,32 @@
-# GoCardless Sync MongoDB Function (Serverless)
+# GoCardless Sync MongoDB Function
 
-Appwrite Cloud Function to sync GoCardless data to MongoDB with **explicit encryption** for serverless compatibility.
+Appwrite Cloud Function to sync GoCardless data to MongoDB with explicit encryption.
 
 ## 🚀 Features
 
-- ✅ **Serverless Compatible** - Uses explicit encryption (no mongocryptd daemon)
-- ✅ **Automatic Decryption** - Data automatically decrypted on reads
+- ✅ **Serverless Compatible** - Simple explicit encryption, no shared libraries
+- ✅ **Automatic Decryption** - Data auto-decrypted on reads
 - ✅ **Queryable** - Filter by userId, dates, categories
 - ✅ **Secure** - Sensitive data encrypted with GCP KMS
 - ✅ **Auto-Categorization** - Transactions categorized using heuristics + OpenAI
 
-## 📋 What It Syncs
+## 📋 Sync Flow
 
-### For each active bank account:
-1. **Transactions** - Recent booked transactions
-2. **Balances** - Current account balances
+1. Get users from Appwrite
+2. Get user's bank accounts from MongoDB
+3. Fetch transactions from GoCardless API
+4. Encrypt and store in MongoDB
 
 ### Encryption Strategy
 
-**Plaintext** (queryable/sortable):
-- `userId`, `accountId`, `category`, `exclude`, `bookingDate`, `balanceType`, `referenceDate`
+**Plaintext** (queryable):
+- `userId`, `category`, `exclude`, `bookingDate`, `balanceType`, `referenceDate`
 
 **Encrypted (deterministic)** - equality queries:
-- `transactionId` - Look up specific transactions
+- `accountId`, `transactionId`
 
 **Encrypted (random)** - maximum security:
-- `amount`, `description`, `counterparty`, `currency`, `balanceAmount`, `iban`, etc.
+- `amount`, `description`, `counterparty`, `currency`, `balanceAmount`
 
 ## 🔧 Environment Variables
 
@@ -83,75 +84,14 @@ GoCardless API
    Next.js API Routes
 ```
 
-## 🎯 How Explicit Encryption Works
-
-### Write Path
-```python
-# 1. Get plaintext data from GoCardless
-transaction = { "amount": "100.00", "description": "Coffee Shop" }
-
-# 2. Categorize on plaintext
-category = categorize_transaction(description, counterparty, amount)
-
-# 3. Explicitly encrypt sensitive fields
-encrypted_amount = encrypt_random(amount, client_encryption, data_key_id)
-encrypted_desc = encrypt_random(description, client_encryption, data_key_id)
-
-# 4. Store with mixed plaintext + encrypted fields
-collection.insert_one({
-    "userId": user_id,  # Plaintext - needed for queries
-    "category": category,  # Plaintext - needed for filtering
-    "bookingDate": "2024-01-01",  # Plaintext - needed for sorting
-    "amount": encrypted_amount,  # Binary - encrypted
-    "description": encrypted_desc  # Binary - encrypted
-})
-```
-
-### Read Path
-```python
-# Query using plaintext fields
-docs = collection.find({
-    "userId": "user123",
-    "category": "Restaurants",
-    "bookingDate": {"$gte": "2024-01-01"}
-})
-
-# Data automatically decrypted!
-for doc in docs:
-    print(doc["amount"])  # Automatically decrypted to "100.00"
-    print(doc["description"])  # Automatically decrypted to "Coffee Shop"
-```
-
-## 🎓 Why This Works in Serverless
-
-### Problem with Auto Encryption
-- Requires `mongocryptd` daemon running
-- Not available in Appwrite Cloud Functions, Vercel, Lambda
-
-### Solution: Explicit Encryption
-- ✅ Encrypt in application code (before write)
-- ✅ Decrypt automatically (on read)  
-- ✅ Only needs `pymongocrypt` library (available in serverless)
-- ✅ No daemon required
-
-## 🧪 Testing
-
-```bash
-# Local setup
-./setup.sh
-
-# Test function
-python test_quick.py
-```
-
 ## 📚 Files
 
 - `src/main.py` - Function entrypoint
 - `src/mongodb.py` - MongoDB client with explicit encryption
-- `src/explicit_encryption.py` - Encryption helper functions
-- `src/utils.py` - Transaction/balance formatting with encryption
+- `src/explicit_encryption.py` - Encryption functions
+- `src/utils.py` - Transaction/balance formatting
 - `src/gocardless.py` - GoCardless API client
-- `src/appwrite_users.py` - Appwrite user listing
+- `src/appwrite_users.py` - Appwrite user management
 
 ## 🔐 Security Notes
 
@@ -163,10 +103,9 @@ python test_quick.py
 
 ## ✨ Deployment
 
-This function is designed for **Appwrite Cloud Functions** with pure Python runtime (no Docker).
+Deploy to **Appwrite Cloud Functions**:
 
-Simply push to Appwrite and it will:
 1. Install dependencies from `requirements.txt`
 2. Run `src/main.py` on trigger
 3. Sync data with explicit encryption
-4. Store securely in MongoDB Atlas
+4. Store in MongoDB Atlas
