@@ -79,7 +79,7 @@ async function main(context) {
           }
 
           accountsProcessed++;
-          context.log(`💳 Processing account ${accountsProcessed}: ${accountId}`);
+          context.log(`💳 Processing account ${accountsProcessed} from user ${userId}`);
 
           // Get last booking date for incremental sync
           const lastDate = await getLastBookingDate(userId, accountId);
