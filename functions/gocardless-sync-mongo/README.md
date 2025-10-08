@@ -91,11 +91,11 @@ This function writes data to MongoDB collections configured with Queryable Encry
 
 ## 🚀 Deployment
 
-This function requires `libmongocrypt` to be installed system-wide for MongoDB Queryable Encryption support.
+This function uses a bundled `libmongocrypt.so` library for MongoDB Queryable Encryption support.
 
 ### Deploy to Appwrite
 
-The function uses a custom `setup.sh` script that automatically installs `libmongocrypt-dev` during deployment:
+The function uses a custom `setup.sh` script that configures the bundled library:
 
 1. **Deploy the function**:
    ```bash
@@ -113,18 +113,15 @@ The function uses a custom `setup.sh` script that automatically installs `libmon
 ### How It Works
 
 The `setup.sh` script (configured in `appwrite.config.json` as the build command):
-- Installs `libmongocrypt-dev` from [MongoDB's official repository](https://www.mongodb.com/docs/manual/core/csfle/reference/libmongocrypt/#linux-installation)
+- Sets up the bundled `libmongocrypt.so` library
+- Configures `PYMONGOCRYPT_LIB` environment variable
 - Installs all Python dependencies from `requirements.txt`
 
 ```bash
 # The setup.sh script runs:
-apt-get update
-apt-get install -y curl gpg
-curl -s --location https://pgp.mongodb.com/libmongocrypt.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/libmongocrypt.gpg
-echo "deb https://libmongocrypt.s3.amazonaws.com/apt/debian bookworm/libmongocrypt/1.16 main" | tee /etc/apt/sources.list.d/libmongocrypt.list
-apt-get update
-apt-get install -y libmongocrypt-dev
-pip install -r requirements.txt
+# 1. Finds bundled libmongocrypt.so in src/
+# 2. Sets PYMONGOCRYPT_LIB environment variable
+# 3. Installs Python dependencies
 ```
 
 ### Local Development
