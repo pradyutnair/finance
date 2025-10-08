@@ -1,69 +1,48 @@
-# GoCardless Sync MongoDB Function
+# ⚡ Node.js Starter Function
 
-Appwrite Cloud Function to sync GoCardless data to MongoDB with application-level encryption.
+A simple starter function. Edit `src/main.js` to get started and create something awesome! 🚀
 
-## 🚀 Features
+## 🧰 Usage
 
-- ✅ **Serverless Compatible** - Uses Python `cryptography` library (no MongoDB encryption libs)
-- ✅ **Encrypted Storage** - Sensitive data encrypted with Fernet (symmetric encryption)
-- ✅ **Queryable** - Filter by userId, dates, categories (plaintext fields)
-- ✅ **Deterministic Hashing** - accountId/transactionId use SHA256 for equality queries
-- ✅ **Auto-Categorization** - Transactions categorized using heuristics + OpenAI
+### GET /ping
 
-## 📋 Sync Flow
+- Returns a "Pong" message.
 
-1. Get users from Appwrite
-2. Get user's bank accounts from MongoDB
-3. Fetch transactions from GoCardless API
-4. Encrypt sensitive fields and store in MongoDB
+**Response**
 
-## 🔐 Encryption Strategy
+Sample `200` Response:
 
-**Plaintext** (queryable/sortable):
-- `userId`, `category`, `exclude`, `bookingDate`, `balanceType`, `referenceDate`
-
-**Hashed** (equality queries only):
-- `accountId`, `transactionId` - SHA256 deterministic hash
-
-**Encrypted** (Fernet symmetric encryption):
-- `amount`, `description`, `counterparty`, `currency`, `balanceAmount`, `raw`
-
-## 🔧 Environment Variables
-
-```bash
-# MongoDB
-MONGODB_URI=mongodb+srv://...
-MONGODB_DB=finance_dev
-
-# Encryption (required)
-ENCRYPTION_MASTER_KEY=<base64-encoded-32-byte-key>
-ENCRYPTION_SALT=<random-salt-string>
-
-# GoCardless
-GOCARDLESS_SECRET_ID=your-secret-id
-GOCARDLESS_SECRET_KEY=your-secret-key
-
-# Appwrite (auto-injected)
-APPWRITE_FUNCTION_API_ENDPOINT
-APPWRITE_FUNCTION_PROJECT_ID
+```text
+Pong
 ```
 
-## 📦 Dependencies
+### GET, POST, PUT, PATCH, DELETE /
 
-```
-appwrite
-requests
-openai
-pymongo>=4.4.0
-cryptography
+- Returns a "Learn More" JSON response.
+
+**Response**
+
+Sample `200` Response:
+
+```json
+{
+  "motto": "Build like a team of hundreds_",
+  "learn": "https://appwrite.io/docs",
+  "connect": "https://appwrite.io/discord",
+  "getInspired": "https://builtwith.appwrite.io"
+}
 ```
 
 ## ⚙️ Configuration
 
-| Setting           | Value                             |
-| ----------------- | --------------------------------- |
-| Runtime           | Python (3.9)                      |
-| Entrypoint        | `src/main.py`                     |
-| Build Commands    | `pip install -r requirements.txt` |
-| Permissions       | `any`                             |
-| Timeout (Seconds) | 60                                |
+| Setting           | Value         |
+| ----------------- | ------------- |
+| Runtime           | Node (18.0)   |
+| Entrypoint        | `src/main.js` |
+| Build Commands    | `npm install` |
+| Permissions       | `any`         |
+| Timeout (Seconds) | 15            |
+
+## 🔒 Environment Variables
+
+No environment variables required.
