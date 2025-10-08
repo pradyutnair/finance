@@ -3,7 +3,8 @@
  * Uses bypass_auto_encryption mode - manually encrypt writes, auto-decrypt reads
  */
 
-import { MongoClient, Db, ClientEncryption, Binary } from 'mongodb';
+import { MongoClient, Binary } from 'mongodb';
+import { ClientEncryption } from 'mongodb-client-encryption';
 
 let clientPromise = null;
 let clientEncryptionInstance = null;
