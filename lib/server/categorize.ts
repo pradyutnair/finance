@@ -207,4 +207,55 @@ export async function findExistingCategory(
   return null;
 }
 
+// MongoDB variant: search recent exact matches in Mongo first
+export async function findExistingCategoryMongo(
+  db: any,
+  collectionName: string,
+  userId: string,
+  description?: string | null,
+  counterparty?: string | null
+): Promise<string | null> {
+  const desc = (description || '').trim();
+  const cp = (counterparty || '').trim();
+  const coll = db.collection(collectionName);
+
+  if (cp && desc) {
+    const docs = await coll
+      .find({ userId, counterparty: cp, description: desc })
+      .sort({ bookingDate: -1 })
+      .limit(5)
+      .toArray();
+    for (const d of docs) {
+      const cat = (d as any)?.category;
+      if (cat && cat !== 'Uncategorized') return cat as string;
+    }
+  }
+
+  if (cp) {
+    const docs = await coll
+      .find({ userId, counterparty: cp })
+      .sort({ bookingDate: -1 })
+      .limit(5)
+      .toArray();
+    for (const d of docs) {
+      const cat = (d as any)?.category;
+      if (cat && cat !== 'Uncategorized') return cat as string;
+    }
+  }
+
+  if (desc) {
+    const docs = await coll
+      .find({ userId, description: desc })
+      .sort({ bookingDate: -1 })
+      .limit(5)
+      .toArray();
+    for (const d of docs) {
+      const cat = (d as any)?.category;
+      if (cat && cat !== 'Uncategorized') return cat as string;
+    }
+  }
+
+  return null;
+}
+
 

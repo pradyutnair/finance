@@ -3,8 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
-import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
+import { suggestCategory, findExistingCategory, findExistingCategoryMongo } from "@/lib/server/categorize";
 import { invalidateUserCache } from "@/lib/server/cache-service";
+import { getDb } from "@/lib/mongo/client";
 
 export async function POST(request: Request) {
   try {
@@ -14,6 +15,54 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const limit = typeof body?.limit === "number" ? body.limit : 200;
 
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      const coll = db.collection('transactions_dev');
+      
+      const cursor = coll
+        .find({ 
+          userId,
+          $and: [
+            {
+              $or: [
+                { category: { $exists: false } },
+                { category: '' },
+                { category: 'Uncategorized' }
+              ]
+            },
+            {
+              $or: [
+                { exclude: { $exists: false } },
+                { exclude: false }
+              ]
+            }
+          ]
+        })
+        .sort({ createdAt: -1 })
+        .limit(limit);
+
+      let processed = 0;
+      for await (const d of cursor) {
+        if (processed >= limit) break;
+        console.log(`[auto-categorize] Categorizing tx ${d._id} desc='${d.description}' cp='${d.counterparty}'`);
+        const byExisting = await findExistingCategoryMongo(db, 'transactions_dev', userId, d.description, d.counterparty);
+        const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
+        await coll.updateOne({ _id: d._id }, { $set: { category: cat } });
+        console.log(`[auto-categorize] Updated tx ${d._id} => ${cat}`);
+        processed++;
+      }
+
+      invalidateUserCache(userId, 'transactions');
+      return NextResponse.json({ ok: true, processed });
+    }
+
+    // Appwrite writes disabled - MongoDB is the primary backend
+    return NextResponse.json({ 
+      ok: false, 
+      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to auto-categorize.' 
+    }, { status: 400 })
+
+    /* Legacy Appwrite code (disabled)
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
       .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
@@ -67,6 +116,7 @@ export async function POST(request: Request) {
     invalidateUserCache(userId, 'transactions');
 
     return NextResponse.json({ ok: true, processed });
+    */
   } catch (err: any) {
     console.error("Error triggering auto-categorization:", err);
     const status = err?.status || 500;

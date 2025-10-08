@@ -1,0 +1,17 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.dylib
+.env
+.venv
+env/
+venv/
+test_*.py
+*.bak
+*.bak2
+*.bak3
+README.md
+

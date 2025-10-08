@@ -1,9 +1,12 @@
 /**
  * Centralized cache service for transaction data
  * Loads 365 days of transactions once and serves all requests from memory
+ * Now supports encrypted data via transactions_public and transactions_enc tables
  */
 
+import 'server-only';
 import { Client, Databases, Query } from 'appwrite';
+import { getDb } from '@/lib/mongo/client';
 
 type TransactionDoc = {
   $id?: string;
@@ -57,105 +60,143 @@ const ymd = (d: Date) => {
 
 /**
  * Get or load user's transaction cache (365 days)
+ * Supports both encrypted and legacy unencrypted collections
  */
 export async function getUserTransactionCache(
   userId: string,
   databases: Databases,
-  forceRefresh = false
+  forceRefresh = false,
+  fetchAllTime = false
 ): Promise<TransactionDoc[]> {
   const cache: Map<string, UserCache> = globalAny.__user_cache;
   const now = Date.now();
   const cached = cache.get(userId);
 
-  // Return cached data if valid and not forcing refresh
-  if (cached && !forceRefresh && (now - cached.lastFetched < CACHE_TTL_MS)) {
-    // Wait if another request is loading
-    if (cached.isLoading) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return getUserTransactionCache(userId, databases, false);
+  // Skip cache if fetching all time (cache is only for 365 days)
+  if (!fetchAllTime) {
+    // Return cached data if valid and not forcing refresh
+    if (cached && !forceRefresh && (now - cached.lastFetched < CACHE_TTL_MS)) {
+      // Wait if another request is loading
+      if (cached.isLoading) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return getUserTransactionCache(userId, databases, false, false);
+      }
+      return cached.transactions;
     }
-    return cached.transactions;
   }
 
-  // Check if another request is already loading
-  if (cached?.isLoading) {
+  // Check if another request is already loading (skip if fetching all time)
+  if (!fetchAllTime && cached?.isLoading) {
     await new Promise(resolve => setTimeout(resolve, 100));
-    return getUserTransactionCache(userId, databases, false);
+    return getUserTransactionCache(userId, databases, false, false);
   }
 
-  // Mark as loading
-  if (cached) {
-    cached.isLoading = true;
-  } else {
-    cache.set(userId, {
-      transactions: [],
-      fromDate: '',
-      toDate: '',
-      lastFetched: 0,
-      isLoading: true
-    });
+  // Mark as loading (skip if fetching all time, we don't cache that)
+  if (!fetchAllTime) {
+    if (cached) {
+      cached.isLoading = true;
+    } else {
+      cache.set(userId, {
+        transactions: [],
+        fromDate: '',
+        toDate: '',
+        lastFetched: 0,
+        isLoading: true
+      });
+    }
   }
 
   try {
-    // Calculate date range (365 days from today)
+    // Calculate date range (365 days from today, or all time if requested)
     const toDate = ymd(new Date());
-    const fromDate = ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
+    const fromDate = fetchAllTime ? '1900-01-01' : ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
 
-    console.log(`[Cache] Loading ${DEFAULT_DAYS} days of transactions for user ${userId}: ${fromDate} to ${toDate}`);
+    console.log(`[Cache] Loading ${fetchAllTime ? 'ALL TIME' : DEFAULT_DAYS + ' days'} transactions for user ${userId}: ${fromDate} to ${toDate}`);
 
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+    let allTransactions: TransactionDoc[] = [];
 
-    // Fetch all transactions in the date range with pagination
-    const allTransactions: TransactionDoc[] = [];
-    let cursor: string | undefined;
-    const pageSize = 100;
-    
-    while (true) {
-      const queries = [
-        Query.equal('userId', userId),
-        Query.greaterThanEqual('bookingDate', fromDate),
-        Query.lessThanEqual('bookingDate', toDate),
-        Query.orderDesc('bookingDate'),
-        Query.limit(pageSize)
-      ];
-      
-      if (cursor) {
-        queries.push(Query.cursorAfter(cursor));
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      console.log('[Cache] Using MongoDB backend (transactions_dev)');
+      const db = await getDb();
+      const coll = db.collection('transactions_dev');
+      const cursor = coll
+        .find({ userId, bookingDate: { $gte: fromDate, $lte: toDate } })
+        .sort({ bookingDate: -1 })
+        .limit(fetchAllTime ? 100000 : 20000);
+      const docs = await cursor.toArray();
+      allTransactions = docs.map((d: any) => ({
+        $id: d._id?.toString?.() || d._id,
+        userId: d.userId,
+        accountId: d.accountId,
+        amount: d.amount,
+        currency: d.currency,
+        bookingDate: d.bookingDate,
+        valueDate: d.valueDate,
+        description: d.description,
+        counterparty: d.counterparty,
+        category: d.category,
+        exclude: d.exclude,
+        $createdAt: d.createdAt,
+      }));
+    } else {
+      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+      console.log('[Cache] Using legacy Appwrite unencrypted collection');
+      const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+
+      // Fetch all transactions in the date range with pagination
+      let cursor: string | undefined;
+      const pageSize = 100;
+
+      while (true) {
+        const queries = [
+          Query.equal('userId', userId),
+          Query.greaterThanEqual('bookingDate', fromDate),
+          Query.lessThanEqual('bookingDate', toDate),
+          Query.orderDesc('bookingDate'),
+          Query.limit(pageSize)
+        ];
+
+        if (cursor) {
+          queries.push(Query.cursorAfter(cursor));
+        }
+
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          TRANSACTIONS_COLLECTION_ID,
+          queries
+        );
+
+        const docs = response.documents as TransactionDoc[];
+        allTransactions.push(...docs);
+
+        if (docs.length < pageSize) break;
+        cursor = docs[docs.length - 1].$id;
+        if (!cursor) break;
       }
-
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        TRANSACTIONS_COLLECTION_ID,
-        queries
-      );
-
-      const docs = response.documents as TransactionDoc[];
-      allTransactions.push(...docs);
-
-      if (docs.length < pageSize) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
     }
 
     console.log(`[Cache] Loaded ${allTransactions.length} transactions for user ${userId}`);
 
-    // Update cache
-    cache.set(userId, {
-      transactions: allTransactions,
-      fromDate,
-      toDate,
-      lastFetched: now,
-      isLoading: false
-    });
+    // Update cache only if not fetching all time
+    if (!fetchAllTime) {
+      cache.set(userId, {
+        transactions: allTransactions,
+        fromDate,
+        toDate,
+        lastFetched: now,
+        isLoading: false
+      });
+    }
 
     return allTransactions;
   } catch (error) {
     console.error('[Cache] Error loading transactions:', error);
-    // Mark as not loading on error
-    const errorCache = cache.get(userId);
-    if (errorCache) {
-      errorCache.isLoading = false;
+    // Mark as not loading on error (only if we were using cache)
+    if (!fetchAllTime) {
+      const errorCache = cache.get(userId);
+      if (errorCache) {
+        errorCache.isLoading = false;
+      }
     }
     throw error;
   }
@@ -199,7 +240,7 @@ export function filterTransactions(
 
   // Apply exclude filter
   if (options.excludeExcluded) {
-    filtered = filtered.filter(t => !t.exclude || t.exclude === false);
+    filtered = filtered.filter(t => !t.exclude);
   }
 
   // Apply category filter
@@ -235,37 +276,57 @@ export async function getUserBalanceCache(
   }
 
   try {
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
+    let allBalances: BalanceDoc[] = [];
 
-    // Fetch all balances for the user
-    const allBalances: BalanceDoc[] = [];
-    let cursor: string | undefined;
-    const pageSize = 100;
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      const docs = await db
+        .collection('balances_dev')
+        .find({ userId })
+        .sort({ referenceDate: -1 })
+        .toArray();
+      
+      allBalances = docs.map((d: any) => ({
+        $id: d._id?.toString?.() || d._id,
+        userId: d.userId,
+        accountId: d.accountId,
+        balanceAmount: d.balanceAmount,
+        currency: d.currency,
+        balanceType: d.balanceType,
+        referenceDate: d.referenceDate,
+      }));
+    } else {
+      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
+      const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
-    while (true) {
-      const queries = [
-        Query.equal('userId', userId),
-        Query.orderDesc('referenceDate'),
-        Query.limit(pageSize)
-      ];
+      // Fetch all balances for the user
+      let cursor: string | undefined;
+      const pageSize = 100;
 
-      if (cursor) {
-        queries.push(Query.cursorAfter(cursor));
+      while (true) {
+        const queries = [
+          Query.equal('userId', userId),
+          Query.orderDesc('referenceDate'),
+          Query.limit(pageSize)
+        ];
+
+        if (cursor) {
+          queries.push(Query.cursorAfter(cursor));
+        }
+
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          BALANCES_COLLECTION_ID,
+          queries
+        );
+
+        const docs = response.documents as BalanceDoc[];
+        allBalances.push(...docs);
+
+        if (docs.length < pageSize) break;
+        cursor = docs[docs.length - 1].$id;
+        if (!cursor) break;
       }
-
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        BALANCES_COLLECTION_ID,
-        queries
-      );
-
-      const docs = response.documents as BalanceDoc[];
-      allBalances.push(...docs);
-
-      if (docs.length < pageSize) break;
-      cursor = docs[docs.length - 1].$id;
-      if (!cursor) break;
     }
 
     console.log(`[Cache] Loaded ${allBalances.length} balances for user ${userId}`);

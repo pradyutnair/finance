@@ -129,6 +129,14 @@ export function TransactionsTable() {
   const fetchOffset = hasActiveFilters ? 0 : offset
 
   const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
+  
+  // Fetch ALL transactions for similarity matching (no date range, no pagination)
+  // This ensures we find similar transactions across all time periods
+  const { data: allTransactionsData } = useTransactions({ 
+    all: true, 
+    includeExcluded: true 
+    // Note: No dateRange filter - we want ALL transactions for accurate similarity matching
+  })
 
   const accountIdToInstitutionId = useMemo(() => {
     const map = new Map<string, string>()
@@ -153,6 +161,23 @@ export function TransactionsTable() {
     exclude: Boolean(t.exclude),
     counterparty: t.counterparty,
   }))
+  
+  // All transactions for similarity matching (decrypted on client)
+  const allTransactions: TxRow[] = useMemo(() => 
+    (allTransactionsData?.transactions || []).map((t: any) => ({
+      id: t.$id || t.id,
+      description: t.description || t.counterparty || "Unknown",
+      rawDescription: t.description,
+      category: t.category || "Uncategorized",
+      bankName: accountIdToInstitutionId.get(t.accountId) || "Unknown",
+      bookingDate: t.bookingDate || t.date,
+      amount: Number(t.amount) || 0,
+      currency: t.currency || "EUR",
+      accountId: t.accountId,
+      exclude: Boolean(t.exclude),
+      counterparty: t.counterparty,
+    })), [allTransactionsData, accountIdToInstitutionId]
+  )
 
   const totalCount = data?.total || rows.length
 
@@ -163,7 +188,36 @@ export function TransactionsTable() {
   }
 
   function handleCategorize(tx: TxRow, category: string) {
-    updateTx.mutate({ id: tx.id, category, description: tx.rawDescription, counterparty: tx.counterparty })
+    // Find similar transactions on client-side (where data is decrypted)
+    const normalize = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "")
+    const targetDesc = normalize(tx.rawDescription)
+    const targetCp = normalize(tx.counterparty)
+    
+    // Find all transactions with matching description or counterparty across ALL transactions
+    const similarTransactionIds: string[] = []
+    if (targetDesc || targetCp) {
+      allTransactions.forEach((row) => {
+        if (row.id === tx.id) return // Skip the target transaction itself
+        const rowDesc = normalize(row.rawDescription)
+        const rowCp = normalize(row.counterparty)
+        const matches = (targetDesc && rowDesc === targetDesc) || (targetCp && rowCp === targetCp)
+        if (matches) {
+          similarTransactionIds.push(row.id)
+        }
+      })
+    }
+    
+    console.log(`[Category Update] Updating transaction "${tx.description}" to "${category}"`)
+    console.log(`[Category Update] Found ${similarTransactionIds.length} similar transactions across all time`)
+    console.log(`[Category Update] Total transactions to update: ${similarTransactionIds.length + 1}`)
+    
+    updateTx.mutate({ 
+      id: tx.id, 
+      category, 
+      description: tx.rawDescription, 
+      counterparty: tx.counterparty,
+      similarTransactionIds 
+    })
   }
 
   function handleStartEditCounterparty(tx: TxRow) {

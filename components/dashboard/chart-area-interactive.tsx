@@ -47,7 +47,7 @@ type ChartDatum = {
 
 function getAllDates(start: Date, end: Date): Date[] {
   const dateArray = [];
-  let current = new Date(start);
+  const current = new Date(start);
   current.setHours(0, 0, 0, 0);
   const stop = new Date(end);
   stop.setHours(0, 0, 0, 0);

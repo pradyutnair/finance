@@ -219,16 +219,34 @@ export const useTransactions = (params?: {
 export const useUpdateTransaction = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { id: string; category?: string; exclude?: boolean; description?: string; counterparty?: string }) => {
-      return apiRequest<{ ok: boolean; transaction: any }>(`/transactions/${args.id}`, {
+    mutationFn: async (args: { 
+      id: string; 
+      category?: string; 
+      exclude?: boolean; 
+      description?: string; 
+      counterparty?: string;
+      similarTransactionIds?: string[];
+    }) => {
+      const authHeader = await getAuthHeader();
+      const response = await fetch(`/api/transactions/${args.id}`, {
         method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader,
+        },
+        credentials: 'include',
         body: JSON.stringify({
           category: args.category,
           exclude: args.exclude,
           description: args.description,
-          counterparty: args.counterparty
+          counterparty: args.counterparty,
+          similarTransactionIds: args.similarTransactionIds
         }),
       });
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+      return response.json();
     },
     onMutate: async (args) => {
       await queryClient.cancelQueries({ queryKey: ["transactions"] });

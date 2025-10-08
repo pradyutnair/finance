@@ -37,7 +37,19 @@ NEXT_PUBLIC_APPWRITE_TRANSACTIONS_COLLECTION_ID=transactions
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-nano
 
+MONGODB_URI=""
+SHARED_LIB_PATH="/Users/pradyut.nair/Downloads/lib/mongo_crypt_v1.dylib"
 
+
+# GCP Credentials
+GCP_EMAIL=""
+GCP_PRIVATE_KEY=""
+
+GCP_PROJECT_ID="compass-appwrite"
+GCP_LOCATION="europe-west4"
+GCP_KEY_RING="nexpass-service"
+GCP_KEY_NAME="nexpass-service"
+GCP_KEY_VERSION="1"
 
 globs:
 alwaysApply: true

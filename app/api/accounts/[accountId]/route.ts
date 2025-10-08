@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
+import { getDb } from "@/lib/mongo/client";
 
 type BalanceDoc = {
   accountId?: string;
@@ -20,6 +21,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
     const user: any = await requireAuthUser(request);
     const userId = user.$id || user.id;
     const { accountId } = await params;
+
+    if (process.env.DATA_BACKEND === 'mongodb') {
+      const db = await getDb();
+      const docs = await db
+        .collection('balances_dev')
+        .find({ userId, accountId })
+        .sort({ referenceDate: -1 })
+        .limit(100)
+        .toArray();
+
+      const balances = docs.map((b: any) => ({
+        balanceType: String(b.balanceType || "interimAvailable"),
+        balanceAmount: {
+          amount: String(b.balanceAmount ?? "0"),
+          currency: String(b.currency || "EUR"),
+        },
+        referenceDate: String(b.referenceDate || ""),
+      }));
+
+      const payload = { details: { accountId }, balances: { balances } };
+      return NextResponse.json(payload);
+    }
 
     const client = new Client()
       .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)

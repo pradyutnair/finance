@@ -7,6 +7,14 @@ import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
 import { createHash } from "crypto";
+import { invalidateUserCache } from "@/lib/server/cache-service";
+import {
+  storeRequisitionMongo,
+  storeBankConnectionMongo,
+  storeBankAccountMongo,
+  storeBalanceMongo,
+  storeTransactionMongo
+} from "@/lib/server/mongo-ingestion";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -81,7 +89,117 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     // If requisition is linked, process the accounts
     if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {
-      // Resolve DB and collection IDs from env with sensible defaults
+      
+      // MongoDB ingestion path
+      if (process.env.DATA_BACKEND === 'mongodb') {
+        try {
+          // Fetch institution metadata
+          let logoUrl: string | null = null;
+          let transactionTotalDays: number | null = null;
+          let maxAccessValidForDays: number | null = null;
+          try {
+            const institution = await getInstitution(requisition.institution_id);
+            logoUrl = (institution && (institution.logo as string)) || null;
+            transactionTotalDays = institution?.transaction_total_days || null;
+            maxAccessValidForDays = institution?.max_access_valid_for_days || null;
+
+            // Change transactionTotalDays and maxAccessValidForDays to number if they are strings
+            if (typeof transactionTotalDays === 'string') {
+              transactionTotalDays = Number(transactionTotalDays);
+            }
+            if (typeof maxAccessValidForDays === 'string') {
+              maxAccessValidForDays = Number(maxAccessValidForDays);
+            }
+          } catch {
+            // proceed without institution metadata
+          }
+
+          // Store requisition
+          await storeRequisitionMongo(requisition, userId);
+          console.log('✅ Stored requisition in MongoDB');
+
+          // Store bank connection
+          await storeBankConnectionMongo(
+            userId,
+            requisition.institution_id,
+            requisition.institution_name || 'Unknown Bank',
+            requisition.id,
+            logoUrl,
+            transactionTotalDays,
+            maxAccessValidForDays
+          );
+          console.log('✅ Stored bank connection in MongoDB');
+
+          // Process each account
+          for (const accountId of requisition.accounts) {
+            try {
+              const accountDetails = await getAccounts(accountId);
+              
+              // Store bank account
+              await storeBankAccountMongo(
+                accountId,
+                userId,
+                requisition.institution_id,
+                requisition.institution_name || 'Unknown Bank',
+                accountDetails
+              );
+              console.log(`✅ Stored bank account ${accountId} in MongoDB`);
+
+              // Get and store balances
+              try {
+                const balancesResponse = await getBalances(accountId);
+                const balances = balancesResponse?.balances || [];
+                for (const balance of balances) {
+                  await storeBalanceMongo(userId, accountId, balance);
+                }
+                console.log(`✅ Stored ${balances.length} balances for ${accountId}`);
+              } catch (balanceError) {
+                console.error(`Error fetching balances for ${accountId}:`, balanceError);
+              }
+
+              // Get and store transactions (auto-categorized on ingestion)
+              try {
+                const transactionsResponse = await getTransactions(accountId);
+                const transactions = transactionsResponse?.transactions?.booked || [];
+                for (const transaction of transactions.slice(0, 100)) {
+                  await storeTransactionMongo(userId, accountId, transaction);
+                }
+                console.log(`✅ Stored ${transactions.length} transactions for ${accountId}`);
+              } catch (transactionError) {
+                console.error(`Error fetching transactions for ${accountId}:`, transactionError);
+              }
+            } catch (accountError) {
+              console.error(`Error processing account ${accountId}:`, accountError);
+            }
+          }
+
+          // Invalidate cache after ingestion
+          invalidateUserCache(userId, 'all');
+
+          return NextResponse.json({
+            ok: true,
+            status: requisition.status,
+            institutionName: requisition.institution_name,
+            accountCount: requisition.accounts?.length || 0,
+            requisition
+          });
+        } catch (dbError) {
+          console.error("Error storing data in MongoDB:", dbError);
+          return NextResponse.json({ ok: false, error: "Failed to store data in MongoDB" }, { status: 500 });
+        }
+      }
+
+      // Appwrite ingestion path disabled - MongoDB is now the primary backend
+      // Keeping this code for reference but not executing Appwrite writes
+      console.log('⚠️  Appwrite writes disabled. Use DATA_BACKEND=mongodb for ingestion.');
+      return NextResponse.json({
+        ok: false,
+        error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to enable ingestion.',
+        requisition
+      }, { status: 400 });
+
+      // Legacy code below (disabled)
+      /*
       const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
       const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
       const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
@@ -116,26 +234,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
         // Upsert requisition in database (idempotent)
-        try {
-          await databases.createDocument(
-            DATABASE_ID,
-            REQUISITIONS_COLLECTION_ID,
-            requisition.id,
-            {
-              userId: userId,
-              requisitionId: requisition.id,
-              institutionId: requisition.institution_id,
-              institutionName: requisition.institution_name || 'Unknown Bank',
-              status: requisition.status,
-              reference: requisition.reference,
-              redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
-            }
-          );
-        } catch (error: any) {
-          const code = (error && (error.code || (error.responseCode as number | undefined))) as number | undefined;
-          const message = (error && error.message) || '';
-          if (code === 409 || message.includes('already exists')) {
-            await databases.updateDocument(
+        // const useEncryption = isEncryptionEnabled();
+        
+        // if (useEncryption) {
+        //   // Store encrypted requisition
+        //   try {
+        //     await storeEncryptedRequisition({
+        //       requisition,
+        //       userId,
+        //       databases,
+        //       databaseId: DATABASE_ID,
+        //     });
+        //     console.log('✅ Stored encrypted requisition');
+        //   } catch (error) {
+        //     console.error('Error storing encrypted requisition:', error);
+        //   }
+        // } else {
+          // Legacy unencrypted storage
+          try {
+            await databases.createDocument(
               DATABASE_ID,
               REQUISITIONS_COLLECTION_ID,
               requisition.id,
@@ -149,10 +266,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
               }
             );
-          } else {
-            console.error('Error storing requisition:', error);
+          } catch (error: any) {
+            const code = (error && (error.code || (error.responseCode as number | undefined))) as number | undefined;
+            const message = (error && error.message) || '';
+            if (code === 409 || message.includes('already exists')) {
+              await databases.updateDocument(
+                DATABASE_ID,
+                REQUISITIONS_COLLECTION_ID,
+                requisition.id,
+                {
+                  userId: userId,
+                  requisitionId: requisition.id,
+                  institutionId: requisition.institution_id,
+                  institutionName: requisition.institution_name || 'Unknown Bank',
+                  status: requisition.status,
+                  reference: requisition.reference,
+                  redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
+                }
+              );
+            } else {
+              console.error('Error storing requisition:', error);
+            }
           }
-        }
+        // }
 
         // Create bank connection record first to get connectionId
         let connectionDocId = '';
@@ -190,6 +326,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             
             // Store bank account in database (skip if $id exists)
             try {
+              // Appwrite unencrypted storage (MongoDB uses queryable encryption automatically)
               let exists = false;
               try {
                 await databases.getDocument(
@@ -232,10 +369,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (balances && balances.length > 0) {
                   for (const balance of balances) {
                     try {
-                      // Check if balance already exists to avoid duplicates
                       const balanceType = balance.balanceType || 'closingBooked';
                       const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
                       
+                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
                       try {
                         const existingBalances = await databases.listDocuments(
                           DATABASE_ID,
@@ -255,7 +392,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         console.log('Error checking existing balance, proceeding with creation');
                       }
                       
-                      // Use ID.unique() to generate a unique document ID
                       await databases.createDocument(
                         DATABASE_ID,
                         BALANCES_COLLECTION_ID,
@@ -289,70 +425,73 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (transactions && transactions.length > 0) {
                   for (const transaction of transactions.slice(0, 100)) {
                     try {
-                      // Use provider transactionId as the Appwrite $id to prevent duplicates, with safe length and charset
-                      const providerTransactionId: string | undefined = transaction.transactionId || undefined;
-                      const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${(transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')}`;
-
-                      const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
-                      let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-                      if (!docIdCandidate || docIdCandidate.length > 36) {
-                        try {
-                          const hashed = createHash('sha1').update(rawKey).digest('hex');
-                          docIdCandidate = hashed.slice(0, 36);
-                        } catch {
-                          docIdCandidate = (docIdCandidate || 'tx').slice(0, 36);
-                        }
-                      }
-                      const docId = docIdCandidate || ID.unique();
-
-                      // Skip if already exists
-                      let exists = false;
-                      try {
-                        await databases.getDocument(
-                          DATABASE_ID,
-                          TRANSACTIONS_COLLECTION_ID,
-                          docId
-                        );
-                        exists = true;
-                      } catch (_nf) {
-                        // Not found -> proceed
-                      }
-                      if (exists) continue;
-
-                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || ''
+                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || '';
+                      const counterparty = transaction.creditorName || transaction.debtorName || '';
+                      
+                      // Get or suggest category
                       const existingCategory = await findExistingCategory(
                         databases,
                         DATABASE_ID,
                         TRANSACTIONS_COLLECTION_ID,
                         userId,
                         txDescription
-                      )
+                      );
                       const category = existingCategory || await suggestCategory(
                         txDescription,
-                        transaction.creditorName || transaction.debtorName || '',
+                        counterparty,
                         transaction.transactionAmount?.amount,
                         transaction.transactionAmount?.currency
-                      )
-
-                      await databases.createDocument(
-                        DATABASE_ID,
-                        TRANSACTIONS_COLLECTION_ID,
-                        docId,
-                        {
-                          userId: userId,
-                          accountId: accountId,
-                          transactionId: (providerTransactionId || transaction.internalTransactionId || docId).toString().slice(0, 255),
-                          amount: String(transaction.transactionAmount?.amount ?? '0'),
-                          currency: (transaction.transactionAmount?.currency || 'EUR').toString().toUpperCase().slice(0, 3),
-                          bookingDate: transaction.bookingDate ? String(transaction.bookingDate).slice(0, 10) : null,
-                          bookingDateTime: transaction.bookingDateTime ? String(transaction.bookingDateTime).slice(0, 25) : null,
-                          valueDate: transaction.valueDate ? String(transaction.valueDate).slice(0, 10) : null,
-                          description: (transaction.remittanceInformationUnstructured || transaction.additionalInformation || '').toString().slice(0, 500),
-                          counterparty: (transaction.creditorName || transaction.debtorName || '').toString().slice(0, 255),
-                          category,
-                          raw: JSON.stringify(transaction).slice(0, 10000),
-                        }
                       );
+
+                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
+                        const providerTransactionId: string | undefined = transaction.transactionId || undefined;
+                        const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${txDescription}`;
+
+                        const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
+                        let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                        if (!docIdCandidate || docIdCandidate.length > 36) {
+                          try {
+                            const hashed = createHash('sha1').update(rawKey).digest('hex');
+                            docIdCandidate = hashed.slice(0, 36);
+                          } catch {
+                            docIdCandidate = (docIdCandidate || 'tx').slice(0, 36);
+                          }
+                        }
+                        const docId = docIdCandidate || ID.unique();
+
+                        // Skip if already exists
+                        let exists = false;
+                        try {
+                          await databases.getDocument(
+                            DATABASE_ID,
+                            TRANSACTIONS_COLLECTION_ID,
+                            docId
+                          );
+                          exists = true;
+                        } catch (_nf) {
+                          // Not found -> proceed
+                        }
+                        if (exists) continue;
+
+                        await databases.createDocument(
+                          DATABASE_ID,
+                          TRANSACTIONS_COLLECTION_ID,
+                          docId,
+                          {
+                            userId: userId,
+                            accountId: accountId,
+                            transactionId: (providerTransactionId || transaction.internalTransactionId || docId).toString().slice(0, 255),
+                            amount: String(transaction.transactionAmount?.amount ?? '0'),
+                            currency: (transaction.transactionAmount?.currency || 'EUR').toString().toUpperCase().slice(0, 3),
+                            bookingDate: transaction.bookingDate ? String(transaction.bookingDate).slice(0, 10) : null,
+                            bookingDateTime: transaction.bookingDateTime ? String(transaction.bookingDateTime).slice(0, 25) : null,
+                            valueDate: transaction.valueDate ? String(transaction.valueDate).slice(0, 10) : null,
+                            description: txDescription.toString().slice(0, 500),
+                            counterparty: counterparty.toString().slice(0, 255),
+                            category,
+                            raw: JSON.stringify(transaction).slice(0, 10000),
+                          }
+                        );
                     } catch (error: any) {
                       // Ignore duplicates silently; continue processing
                       if (error?.message?.includes('already exists') || error?.code === 409) {
@@ -363,6 +502,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                     }
                   }
                 }
+                
+                // Invalidate cache after storing transactions
+                invalidateUserCache(userId, 'transactions');
               } catch (transactionError) {
                 console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
               }
@@ -383,6 +525,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         console.error("Error storing data in database:", dbError);
         // Still return success if GoCardless connection worked
       }
+      */
     }
 
     return NextResponse.json({
