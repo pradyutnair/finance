@@ -121,6 +121,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         <>
           {children}
           <PreloadUserCache />
+          <CacheInvalidationListener queryClient={queryClient} />
         </>
       ) : null}
     </QueryClientProvider>
@@ -170,5 +171,39 @@ function PreloadUserCache() {
       clearTimeout(timer)
     }
   }, [])
+  return null
+}
+
+function CacheInvalidationListener({ queryClient }: { queryClient: QueryClient }) {
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleCacheInvalidation = async (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        scope: string
+        reason: string
+        timestamp: number
+      }>
+      
+      const { scope, reason } = customEvent.detail
+      console.log(`[QueryProvider] Cache invalidation event received (scope: ${scope}, reason: ${reason})`)
+      
+      // Refetch all active queries to get fresh data
+      await queryClient.refetchQueries({ type: 'active' })
+      
+      // Clear preload throttle so next preload will trigger immediately
+      if (reason === 'bank-connection') {
+        window.sessionStorage.removeItem('nexpass_cache_preload_v1')
+        console.log('[QueryProvider] Cache preload throttle cleared after bank connection')
+      }
+    }
+
+    window.addEventListener('nexpass:cache-invalidate', handleCacheInvalidation)
+    
+    return () => {
+      window.removeEventListener('nexpass:cache-invalidate', handleCacheInvalidation)
+    }
+  }, [queryClient])
+  
   return null
 }
