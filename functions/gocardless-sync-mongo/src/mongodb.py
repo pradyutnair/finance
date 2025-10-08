@@ -11,9 +11,12 @@ try:
     except ImportError:
         # Fall back to direct import (for local testing)
         import encryption_helpers as helpers
-    ENCRYPTION_AVAILABLE = True
+    
+    # Check if libmongocrypt is available system-wide
+    ENCRYPTION_AVAILABLE = helpers.check_encryption_library()
 except ImportError as e:
     ENCRYPTION_AVAILABLE = False
+    helpers = None
     print(f"❌ pymongo.encryption not available: {e}")
     print("❌ Install with: pip install 'pymongo[encryption]'")
 
