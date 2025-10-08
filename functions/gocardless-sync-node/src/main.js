@@ -59,7 +59,7 @@ async function main(context) {
     let totalTransactions = 0;
     let totalBalances = 0;
     let accountsProcessed = 0;
-    const failedAccounts: any[] = [];
+    const failedAccounts = [];
 
     for (const [userIndex, userId] of userIds.entries()) {
       context.log(`👤 Processing user ${userIndex + 1}/${userIds.length}: ${userId}`);
@@ -144,7 +144,7 @@ async function main(context) {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
 
-        } catch (error: any) {
+        } catch (error) {
           const errorMsg = `${error.name}: ${error.message}`;
           context.log(`❌ Error: ${errorMsg}`);
           failedAccounts.push({
@@ -167,7 +167,7 @@ async function main(context) {
       failures: failedAccounts.length > 0 ? failedAccounts : undefined,
     });
 
-  } catch (error: any) {
+  } catch (error) {
     context.error(`💥 Sync failed: ${error}`);
     return context.res.json({ success: false, error: error.message });
   }

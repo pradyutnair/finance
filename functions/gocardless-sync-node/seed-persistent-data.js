@@ -159,7 +159,7 @@ async function main() {
         await db.collection('transactions_dev').insertOne(txDoc);
         txCreated++;
         console.log(`   ✅ Created: ${mockTx.txId} - ${mockTx.category} (${mockTx.amount} EUR)`);
-      } catch (e: any) {
+      } catch (e) {
         if (e.code === 11000) {
           await db.collection('transactions_dev').updateOne(
             { _id: mockTx.txId },
@@ -201,7 +201,7 @@ async function main() {
         await db.collection('balances_dev').insertOne(balDoc);
         balCreated++;
         console.log(`   ✅ Created: ${bal.type} - ${bal.amount} EUR`);
-      } catch (e: any) {
+      } catch (e) {
         if (e.code === 11000) {
           await db.collection('balances_dev').updateOne(
             { _id: balDoc._id },
@@ -239,7 +239,7 @@ async function main() {
 
     process.exit(0);
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('\n❌ Seeding failed:', error.message);
     console.error(error.stack);
     process.exit(1);

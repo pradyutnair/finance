@@ -18,7 +18,7 @@ const CATEGORY_OPTIONS = [
   'Bank Transfer',
 ];
 
-function toNumber(amount?: string | number | null): number {
+function toNumber(amount) {
   if (amount === null || amount === undefined) return 0;
   if (typeof amount === 'number') return amount;
   const n = parseFloat(amount);
