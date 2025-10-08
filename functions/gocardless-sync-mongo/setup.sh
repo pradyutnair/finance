@@ -1,37 +1,32 @@
 #!/bin/bash
-# Setup script to install libmongocrypt before Python dependencies
+# Setup script for Appwrite function with bundled libmongocrypt
 
 set -e
 
-echo "📦 Installing libmongocrypt..."
+echo "📦 Setting up MongoDB encryption..."
 
-# Update package list
-apt-get update
-
-# Install required tools
-apt-get install -y curl gpg
-
-# Add MongoDB's public key
-curl -s --location https://pgp.mongodb.com/libmongocrypt.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/libmongocrypt.gpg
-
-# Add MongoDB repository (using debian bookworm for Python 3.12 runtime)
-echo "deb https://libmongocrypt.s3.amazonaws.com/apt/debian bookworm/libmongocrypt/1.16 main" | tee /etc/apt/sources.list.d/libmongocrypt.list
-
-# Update package list again
-apt-get update
-
-# Install libmongocrypt
-apt-get install -y libmongocrypt-dev
-
-# Clean up
-apt-get clean
-rm -rf /var/lib/apt/lists/*
-
-echo "✅ libmongocrypt installed successfully"
+# Check if bundled libmongocrypt.so exists
+if [ -f "src/libmongocrypt.so" ]; then
+    echo "✅ Found bundled libmongocrypt.so"
+    
+    # Make it executable
+    chmod +x src/libmongocrypt.so
+    
+    # Set environment variable for pymongocrypt to find the library
+    export PYMONGOCRYPT_LIB="$(pwd)/src/libmongocrypt.so"
+    echo "✅ Set PYMONGOCRYPT_LIB=$PYMONGOCRYPT_LIB"
+    
+    # Also set it in the environment for the Python process
+    echo "export PYMONGOCRYPT_LIB=\"$(pwd)/src/libmongocrypt.so\"" >> ~/.bashrc
+    
+else
+    echo "❌ No bundled libmongocrypt.so found"
+    echo "⚠️ Encryption may not work properly"
+fi
 
 # Install Python dependencies
 echo "📦 Installing Python dependencies..."
 pip install --no-cache-dir -r requirements.txt
 
-echo "✅ All dependencies installed successfully"
+echo "✅ Setup completed successfully"
 

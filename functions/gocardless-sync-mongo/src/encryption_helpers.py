@@ -4,20 +4,33 @@ import os
 
 
 def check_encryption_library():
-    """Check if libmongocrypt is available in the system.
+    """Check if libmongocrypt is available.
     
-    Note: libmongocrypt should be installed system-wide via apt-get or similar.
-    See Dockerfile for installation instructions.
+    First checks for bundled library, then falls back to system installation.
     """
+    # Check if PYMONGOCRYPT_LIB is set (from setup.sh)
+    lib_path = os.environ.get('PYMONGOCRYPT_LIB')
+    if lib_path and os.path.exists(lib_path):
+        print(f"✅ Found libmongocrypt at: {lib_path}")
+        return True
+    
+    # Check for bundled library in src directory
+    bundled_path = os.path.join(os.path.dirname(__file__), 'libmongocrypt.so')
+    if os.path.exists(bundled_path):
+        print(f"✅ Found bundled libmongocrypt at: {bundled_path}")
+        # Set environment variable for pymongocrypt
+        os.environ['PYMONGOCRYPT_LIB'] = bundled_path
+        return True
+    
+    # Try to import pymongocrypt to verify system library is available
     try:
-        # Try to import pymongocrypt to verify library is available
         import pymongocrypt
         version = pymongocrypt.libmongocrypt_version()
-        print(f"✅ libmongocrypt is available (version: {version})")
+        print(f"✅ libmongocrypt is available system-wide (version: {version})")
         return True
     except Exception as e:
         print(f"❌ libmongocrypt not available: {e}")
-        print("❌ Make sure libmongocrypt-dev is installed in the Docker image")
+        print("❌ Make sure libmongocrypt is bundled or installed system-wide")
         return False
 
 
