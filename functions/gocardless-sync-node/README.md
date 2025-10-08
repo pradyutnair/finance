@@ -1,6 +1,6 @@
 # GoCardless Sync Node.js Function
 
-Appwrite Cloud Function to sync GoCardless data to MongoDB with explicit encryption (Node.js/TypeScript).
+Appwrite Cloud Function to sync GoCardless data to MongoDB with explicit encryption (Node.js/JavaScript).
 
 ## 🚀 Features
 
@@ -77,20 +77,20 @@ APPWRITE_API_KEY
 | Setting           | Value                             |
 | ----------------- | --------------------------------- |
 | Runtime           | Node.js (18.0)                    |
-| Entrypoint        | `src/main.ts`                     |
-| Build Commands    | `npm install && npm run build`    |
+| Entrypoint        | `src/main.js`                     |
+| Build Commands    | `npm install`                     |
 | Permissions       | `any`                             |
 | Timeout (Seconds) | 300                               |
 
 ## 📚 Files
 
-- `src/main.ts` - Function entrypoint
-- `src/mongodb.ts` - MongoDB client with explicit encryption
-- `src/explicit-encryption.ts` - Encryption helpers
-- `src/utils.ts` - Transaction/balance formatting
-- `src/gocardless.ts` - GoCardless API client
-- `src/categorize.ts` - Transaction categorization
-- `src/appwrite-users.ts` - Appwrite user management
+- `src/main.js` - Function entrypoint
+- `src/mongodb.js` - MongoDB client with explicit encryption
+- `src/explicit-encryption.js` - Encryption helpers
+- `src/utils.js` - Transaction/balance formatting
+- `src/gocardless.js` - GoCardless API client
+- `src/categorize.js` - Transaction categorization
+- `src/appwrite-users.js` - Appwrite user management
 
 ## 🔐 How It Works
 
@@ -123,7 +123,7 @@ appwrite deploy function gocardless-sync-node
 Or manually:
 1. Create function in Appwrite Console
 2. Set runtime to Node.js 18+
-3. Set entrypoint to `src/main.ts`
+3. Set entrypoint to `src/main.js`
 4. Add environment variables
 5. Deploy
 

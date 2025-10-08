@@ -7,8 +7,8 @@ import { resolve } from 'path';
 
 config({ path: resolve(process.cwd(), '../../.env') });
 
-import { getDb } from './src/mongodb';
-import { encryptQueryable } from './src/explicit-encryption';
+import { getDb } from './src/mongodb.js';
+import { encryptQueryable } from './src/explicit-encryption.js';
 
 const TEST_USER_ID = '68d446e7bf3ed043310a';
 

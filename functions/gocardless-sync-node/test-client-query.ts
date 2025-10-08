@@ -9,8 +9,8 @@ import { resolve } from 'path';
 
 config({ path: resolve(process.cwd(), '../../../.env') });
 
-import { getDb } from './src/mongodb';
-import { encryptQueryable } from './src/explicit-encryption';
+import { getDb } from './src/mongodb.js';
+import { encryptQueryable } from './src/explicit-encryption.js';
 
 const TEST_USER_ID = 'test-client-query-001';
 const TEST_ACCOUNT_ID = 'ACC-CLIENT-TEST';
@@ -22,7 +22,7 @@ async function seedSampleData() {
   const encryptedAccountId = await encryptQueryable(TEST_ACCOUNT_ID);
 
   // Import encryption functions
-  const { encryptRandom } = await import('./src/explicit-encryption');
+  const { encryptRandom } = await import('./src/explicit-encryption.js');
 
   // Seed a few transactions
   const txData = [

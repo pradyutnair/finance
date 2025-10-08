@@ -2,25 +2,16 @@
  * Utility functions for transaction/balance formatting and encryption
  */
 
-import { encryptQueryable, encryptRandom } from './explicit-encryption';
-import { suggestCategory } from './categorize';
+import { encryptQueryable, encryptRandom } from './explicit-encryption.js';
+import { suggestCategory } from './categorize.js';
 
-export function generateDocId(
-  transactionId: string | undefined,
-  accountId: string,
-  bookingDate: string | undefined
-): string {
+export function generateDocId(transactionId, accountId, bookingDate) {
   const rawKey = transactionId || `${accountId}_${bookingDate || ''}_${Date.now()}`;
   const cleanId = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 36);
   return cleanId || `tx_${Date.now()}`;
 }
 
-export async function formatTransactionPayload(
-  transaction: any,
-  userId: string,
-  accountId: string,
-  docId: string
-): Promise<any> {
+export async function formatTransactionPayload(transaction, userId, accountId, docId) {
   const transactionAmount = transaction.transactionAmount || {};
   const amount = transactionAmount.amount || '0';
   const description = transaction.remittanceInformationUnstructured || transaction.additionalInformation || '';
@@ -33,7 +24,7 @@ export async function formatTransactionPayload(
   // Build encrypted payload
   const currency = transactionAmount.currency || 'EUR';
 
-  const payload: any = {
+  const payload = {
     // Plaintext fields (queryable)
     userId,
     category,
@@ -65,11 +56,7 @@ export async function formatTransactionPayload(
   );
 }
 
-export async function formatBalancePayload(
-  balance: any,
-  userId: string,
-  accountId: string
-): Promise<[string, any]> {
+export async function formatBalancePayload(balance, userId, accountId) {
   const balanceType = balance.balanceType || 'expected';
   const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
   const balanceAmount = balance.balanceAmount || {};
@@ -78,7 +65,7 @@ export async function formatBalancePayload(
 
   const docId = `${accountId}_${balanceType}`.slice(0, 36);
 
-  const payload: any = {
+  const payload = {
     // Plaintext fields (queryable)
     userId,
     balanceType,

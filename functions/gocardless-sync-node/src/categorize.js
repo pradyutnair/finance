@@ -25,15 +25,11 @@ function toNumber(amount?: string | number | null): number {
   return isNaN(n) ? 0 : n;
 }
 
-export function categorizeHeuristic(
-  description?: string | null,
-  counterparty?: string | null,
-  amount?: string | number | null
-): string {
+export function categorizeHeuristic(description, counterparty, amount) {
   const text = `${counterparty || ''} ${description || ''}`.toLowerCase().trim();
   const value = toNumber(amount);
 
-  const has = (keywords: string[]) => keywords.some(k => text.includes(k));
+  const has = (keywords) => keywords.some(k => text.includes(k));
 
   if (has(['restaurant', 'cafe', 'coffee', 'mcdonald', 'starbucks'])) return 'Restaurants';
   if (has(['uber', 'taxi', 'fuel', 'gas', 'petrol'])) return 'Transport';
@@ -46,12 +42,7 @@ export function categorizeHeuristic(
   return 'Uncategorized';
 }
 
-export async function categorizeViaOpenAI(
-  description?: string | null,
-  counterparty?: string | null,
-  amount?: string | number | null,
-  currency?: string | null
-): Promise<string | null> {
+export async function categorizeViaOpenAI(description, counterparty, amount, currency) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
@@ -88,12 +79,7 @@ export async function categorizeViaOpenAI(
   }
 }
 
-export async function suggestCategory(
-  description?: string | null,
-  counterparty?: string | null,
-  amount?: string | number | null,
-  currency?: string | null
-): Promise<string> {
+export async function suggestCategory(description, counterparty, amount, currency) {
   const heuristic = categorizeHeuristic(description, counterparty, amount);
   if (heuristic !== 'Uncategorized') return heuristic;
 
@@ -101,12 +87,7 @@ export async function suggestCategory(
   return llm || 'Uncategorized';
 }
 
-export async function findExistingCategoryMongo(
-  db: any,
-  userId: string,
-  description?: string | null,
-  counterparty?: string | null
-): Promise<string | null> {
+export async function findExistingCategoryMongo(db, userId, description, counterparty) {
   const collection = db.collection('transactions_dev');
   
   const desc = (description || '').trim();

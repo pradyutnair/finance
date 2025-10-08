@@ -20,19 +20,12 @@ import {
   createTransaction,
   createBalance,
   updateBalance,
-} from './mongodb';
-import { getTransactions, getBalances } from './gocardless';
-import { formatTransactionPayload, formatBalancePayload, generateDocId } from './utils';
-import { listUserIds } from './appwrite-users';
+} from './mongodb.js';
+import { getTransactions, getBalances } from './gocardless.js';
+import { formatTransactionPayload, formatBalancePayload, generateDocId } from './utils.js';
+import { listUserIds } from './appwrite-users.js';
 
-interface Context {
-  req: any;
-  res: any;
-  log: (message: string) => void;
-  error: (message: string) => void;
-}
-
-async function main(context: Context) {
+async function main(context) {
   context.log('🚀 Starting GoCardless sync to MongoDB...');
 
   try {

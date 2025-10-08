@@ -4,7 +4,7 @@
 
 import { Client, Users } from 'node-appwrite';
 
-export async function listUserIds(): Promise<string[]> {
+export async function listUserIds() {
   const client = new Client()
     .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT || 'https://cloud.appwrite.io/v1')
     .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID || '')
