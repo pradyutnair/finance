@@ -220,7 +220,6 @@ export async function storeTransactionMongo(
   
   try {
     await coll.insertOne(doc);
-    console.log(`✅ Stored encrypted transaction ${providerTransactionId} with category ${category}`);
   } catch (e: any) {
     // Handle duplicate key errors silently
     if (e.code === 11000) {

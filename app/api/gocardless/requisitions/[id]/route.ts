@@ -143,7 +143,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 requisition.institution_name || 'Unknown Bank',
                 accountDetails
               );
-              console.log(`✅ Stored bank account ${accountId} in MongoDB`);
+              console.log(`✅ Stored bank account in MongoDB`);
 
               // Get and store balances
               try {
@@ -152,9 +152,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 for (const balance of balances) {
                   await storeBalanceMongo(userId, accountId, balance);
                 }
-                console.log(`✅ Stored ${balances.length} balances for ${accountId}`);
+                console.log(`✅ Stored ${balances.length} balances `);
               } catch (balanceError) {
-                console.error(`Error fetching balances for ${accountId}:`, balanceError);
+                console.error(`Error fetching balances :`, balanceError);
               }
 
               // Get and store transactions (auto-categorized on ingestion)
@@ -164,12 +164,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 for (const transaction of transactions.slice(0, 100)) {
                   await storeTransactionMongo(userId, accountId, transaction);
                 }
-                console.log(`✅ Stored ${transactions.length} transactions for ${accountId}`);
+                console.log(`✅ Stored ${transactions.length} transactions `);
               } catch (transactionError) {
-                console.error(`Error fetching transactions for ${accountId}:`, transactionError);
+                console.error(`Error fetching transactions :`, transactionError);
               }
             } catch (accountError) {
-              console.error(`Error processing account ${accountId}:`, accountError);
+              console.error(`Error processing account :`, accountError);
             }
           }
 
@@ -335,7 +335,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                   accountId
                 );
                 exists = true;
-                console.log(`Bank account ${accountId} already exists, skipping create.`);
+                console.log(`Bank account  already exists, skipping create.`);
               } catch (checkErr: any) {
                 const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
                 if (code && code !== 404) {
@@ -385,7 +385,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         );
                         
                         if (existingBalances.documents.length > 0) {
-                          console.log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
+                          console.log(`Balance  ${balanceType} ${referenceDate} already exists, skipping`);
                           continue;
                         }
                       } catch (queryError) {
@@ -415,7 +415,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                   }
                 }
               } catch (balanceError) {
-                console.error(`Error fetching balances for account ${accountId}:`, balanceError);
+                console.error(`Error fetching balances for account :`, balanceError);
               }
 
               // Get and store recent transactions
@@ -445,7 +445,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
                       // Appwrite unencrypted storage (MongoDB has queryable encryption)
                         const providerTransactionId: string | undefined = transaction.transactionId || undefined;
-                        const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${txDescription}`;
+                        const fallbackIdBase = transaction.internalTransactionId || `_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${txDescription}`;
 
                         const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
                         let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -506,18 +506,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 // Invalidate cache after storing transactions
                 invalidateUserCache(userId, 'transactions');
               } catch (transactionError) {
-                console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
+                console.error(`Error fetching transactions for account :`, transactionError);
               }
             } catch (error) {
               const code = (error && (error as any).code) as number | undefined;
               if (code === 409) {
-                console.log(`Bank account ${accountId} already exists (409), skipping.`);
+                console.log(`Bank account  already exists (409), skipping.`);
               } else {
                 console.error('Error storing bank account:', error);
               }
             }
           } catch (accountError) {
-            console.error(`Error processing account ${accountId}:`, accountError);
+            console.error(`Error processing account :`, accountError);
           }
         }
 
