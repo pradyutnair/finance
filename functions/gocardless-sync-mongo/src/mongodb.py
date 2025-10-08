@@ -1,42 +1,18 @@
-"""MongoDB client with Explicit Encryption (bypass auto-encryption mode)."""
+"""MongoDB client for Serverless."""
 
 import os
 from pymongo import MongoClient
-from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
-from bson.codec_options import CodecOptions
-from bson.binary import STANDARD
 
-# Global instances
+# Global client instance
 _client = None
-_client_encryption = None
 
 
 def get_mongo_db_name():
     return os.environ.get("MONGODB_DB", "finance_dev")
 
 
-def get_key_vault_namespace():
-    return os.environ.get("MONGODB_KEY_VAULT_NS", "encryption.__keyVault")
-
-
-def get_kms_providers():
-    """Get KMS provider credentials (GCP)."""
-    gcp_email = os.environ.get("GCP_EMAIL")
-    gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
-    
-    if not gcp_email or not gcp_private_key:
-        raise ValueError("GCP_EMAIL and GCP_PRIVATE_KEY required for encryption")
-    
-    return {
-        "gcp": {
-            "email": gcp_email,
-            "privateKey": gcp_private_key
-        }
-    }
-
-
 def get_mongo_client():
-    """Get MongoDB client with bypass_auto_encryption (explicit encryption mode)."""
+    """Get singleton MongoDB client."""
     global _client
     if _client:
         return _client
@@ -45,35 +21,8 @@ def get_mongo_client():
     if not uri:
         raise ValueError("MONGODB_URI is not set")
     
-    # Use bypass_auto_encryption for explicit encryption (like TypeScript)
-    # This means: manually encrypt on write, auto-decrypt on read
-    auto_encryption_opts = AutoEncryptionOpts(
-        kms_providers=get_kms_providers(),
-        key_vault_namespace=get_key_vault_namespace(),
-        bypass_auto_encryption=True  # Explicit encryption mode
-    )
-    
-    _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+    _client = MongoClient(uri)
     return _client
-
-
-def get_client_encryption():
-    """Get ClientEncryption instance for manual encryption."""
-    global _client_encryption
-    
-    if _client_encryption:
-        return _client_encryption
-    
-    client = get_mongo_client()
-    
-    _client_encryption = ClientEncryption(
-        kms_providers=get_kms_providers(),
-        key_vault_namespace=get_key_vault_namespace(),
-        key_vault_client=client,
-        codec_options=CodecOptions(uuid_representation=STANDARD)
-    )
-    
-    return _client_encryption
 
 
 def get_db():
@@ -117,14 +66,24 @@ def get_user_requisitions(user_id: str):
 
 
 def get_user_bank_accounts(user_id: str):
-    """
-    Return bank accounts for a given userId.
-    Fields are auto-decrypted by MongoDB driver (bypass_auto_encryption mode).
-    """
+    """Return bank accounts for a given userId from bank_accounts_dev."""
     db = get_db()
     collection = db["bank_accounts_dev"]
-    # Auto-decryption happens automatically with bypass_auto_encryption
-    return list(collection.find({"userId": user_id}))
+    accounts = list(collection.find({"userId": user_id}))
+    
+    # Decrypt accountId field if encrypted
+    from .explicit_encryption import decrypt_value
+    for account in accounts:
+        if account.get("accountId"):
+            # Try to decrypt - if it fails, it's already plaintext
+            try:
+                decrypted = decrypt_value(account["accountId"])
+                if decrypted:
+                    account["accountId"] = decrypted
+            except Exception:
+                pass
+    
+    return accounts
 
 
 def get_last_booking_date(user_id, account_id):

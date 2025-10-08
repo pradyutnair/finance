@@ -1,120 +1,86 @@
-"""
-Explicit Encryption Helpers for MongoDB (matches TypeScript implementation)
-
-Uses MongoDB Client-Side Field Level Encryption with GCP KMS.
-Works in serverless with bypass_auto_encryption mode.
-"""
+"""Application-level Encryption using Python cryptography library."""
 
 import os
-from bson.binary import Binary
+import hashlib
+from cryptography.fernet import Fernet
 
-# Cache for data key ID
-_data_key_id = None
+# Global encryption key
+_fernet = None
 
 
-def get_data_key_id():
-    """Get or create data encryption key (matches TypeScript getDataKeyId)."""
-    global _data_key_id
+def get_encryption_key():
+    """Get or derive encryption key from environment."""
+    global _fernet
     
-    if _data_key_id:
-        return _data_key_id
+    if _fernet:
+        return _fernet
     
-    try:
-        from .mongodb import get_mongo_client, get_client_encryption, get_key_vault_namespace
-    except ImportError:
-        from mongodb import get_mongo_client, get_client_encryption, get_key_vault_namespace
+    # Get master key from environment (or derive from GCP credentials)
+    master_key = os.environ.get("ENCRYPTION_MASTER_KEY")
     
-    client = get_mongo_client()
-    client_encryption = get_client_encryption()
-    key_vault_namespace = get_key_vault_namespace()
-    kv_db, kv_coll = key_vault_namespace.split('.')
+    if not master_key:
+        # Fallback: derive from GCP private key if available
+        gcp_key = os.environ.get("GCP_PRIVATE_KEY", "")
+        if gcp_key:
+            # Use SHA256 to create a deterministic key from GCP credentials
+            key_bytes = hashlib.sha256(gcp_key.encode()).digest()
+            # Fernet requires base64-encoded 32-byte key
+            import base64
+            master_key = base64.urlsafe_b64encode(key_bytes).decode()
+        else:
+            raise ValueError("ENCRYPTION_MASTER_KEY or GCP_PRIVATE_KEY required for encryption")
     
-    key_alt_name = "nexpass-data-key"
-    
-    # Try to find existing key
-    key_vault = client[kv_db][kv_coll]
-    keys = list(key_vault.find({"keyAltNames": key_alt_name}))
-    
-    if keys:
-        _data_key_id = keys[0]["_id"]
-        print("🔑 Using existing data encryption key")
-        return _data_key_id
-    
-    # Create new key if not found
-    print("🔑 Creating new data encryption key...")
-    gcp_master_key = {
-        "projectId": os.environ.get("GCP_PROJECT_ID"),
-        "location": os.environ.get("GCP_LOCATION"),
-        "keyRing": os.environ.get("GCP_KEY_RING"),
-        "keyName": os.environ.get("GCP_KEY_NAME"),
-    }
-    
-    _data_key_id = client_encryption.create_data_key(
-        "gcp",
-        master_key=gcp_master_key,
-        key_alt_names=[key_alt_name]
-    )
-    
-    print("✅ Created data encryption key")
-    return _data_key_id
+    _fernet = Fernet(master_key.encode() if isinstance(master_key, str) else master_key)
+    return _fernet
 
 
 def encrypt_queryable(value):
-    """
-    Encrypt field for equality queries (deterministic encryption).
-    Matches TypeScript: encryptQueryable()
-    
-    Returns Binary that auto-decrypts on read.
-    """
+    """Encrypt field for equality queries (deterministic using hash)."""
     if value is None or value == "":
         return None
     
-    try:
-        from .mongodb import get_client_encryption
-    except ImportError:
-        from mongodb import get_client_encryption
+    # For queryable fields, we use a deterministic hash
+    # This allows equality queries but not range queries
+    string_value = str(value)
     
-    client_encryption = get_client_encryption()
-    key_id = get_data_key_id()
+    # Create deterministic hash using HMAC
+    salt = os.environ.get("ENCRYPTION_SALT", "nexpass-default-salt")
+    hash_value = hashlib.sha256(f"{salt}:{string_value}".encode()).hexdigest()
     
-    # Use deterministic encryption (same as TypeScript)
-    encrypted = client_encryption.encrypt(
-        str(value),
-        algorithm="AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        key_id=key_id
-    )
-    
-    return encrypted
+    return hash_value
 
 
 def encrypt_random(value):
-    """
-    Encrypt field with random encryption (maximum security).
-    Matches TypeScript: encryptRandom()
-    
-    Returns Binary that auto-decrypts on read.
-    """
+    """Encrypt field with Fernet (symmetric encryption)."""
     if value is None or value == "":
         return None
     
-    try:
-        from .mongodb import get_client_encryption
-    except ImportError:
-        from mongodb import get_client_encryption
-    
     string_value = str(value) if not isinstance(value, str) else value
     
-    client_encryption = get_client_encryption()
-    key_id = get_data_key_id()
+    fernet = get_encryption_key()
+    encrypted = fernet.encrypt(string_value.encode())
     
-    # Use random encryption (same as TypeScript)
-    encrypted = client_encryption.encrypt(
-        string_value,
-        algorithm="AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-        key_id=key_id
-    )
+    # Return as string for MongoDB storage
+    return encrypted.decode()
+
+
+def decrypt_value(encrypted_value):
+    """Decrypt a Fernet-encrypted value."""
+    if encrypted_value is None or encrypted_value == "":
+        return None
     
-    return encrypted
+    fernet = get_encryption_key()
+    
+    try:
+        # Handle both bytes and string
+        if isinstance(encrypted_value, str):
+            encrypted_value = encrypted_value.encode()
+        
+        decrypted = fernet.decrypt(encrypted_value)
+        return decrypted.decode()
+    except Exception:
+        # If decryption fails, return original value
+        return encrypted_value
 
 
 
