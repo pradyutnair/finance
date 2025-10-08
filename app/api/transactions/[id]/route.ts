@@ -6,6 +6,7 @@ import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
 import { getDb } from "@/lib/mongo/client"
 import { ObjectId } from "mongodb"
+import { encryptTransactionUpdateFields } from "@/lib/mongo/explicit-encryption"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -31,18 +32,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const db = await getDb()
       const coll = db.collection('transactions_dev')
       
+      // Explicitly encrypt sensitive fields in the update
+      const encryptedUpdatePayload = await encryptTransactionUpdateFields(updatePayload)
+      
       // Handle batch updates for similar transactions
       const similarTransactionIds = body.similarTransactionIds || []
       const allIds = [id, ...similarTransactionIds].filter(Boolean)
       
-      // QE limitation: updateMany is not supported, so we update each transaction individually
+      // Update each transaction individually with encrypted fields
       let matchedCount = 0
       let modifiedCount = 0
       
       for (const txId of allIds) {
         const result = await coll.updateOne(
           { _id: new ObjectId(txId), userId },
-          { $set: updatePayload }
+          { $set: encryptedUpdatePayload }
         )
         matchedCount += result.matchedCount
         modifiedCount += result.modifiedCount

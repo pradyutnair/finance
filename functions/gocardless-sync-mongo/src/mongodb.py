@@ -1,28 +1,12 @@
-"""MongoDB client with Queryable Encryption support."""
+"""MongoDB client with Explicit Encryption support for Serverless."""
 
 import os
 from pymongo import MongoClient
+from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
 
-try:
-    from pymongo.encryption import ClientEncryption, AutoEncryptionOpts
-    try:
-        # Try relative import first (for Appwrite function runtime)
-        from . import encryption_helpers as helpers
-    except ImportError:
-        # Fall back to direct import (for local testing)
-        import encryption_helpers as helpers
-    
-    # Check if libmongocrypt is available system-wide
-    ENCRYPTION_AVAILABLE = helpers.check_encryption_library()
-except ImportError as e:
-    ENCRYPTION_AVAILABLE = False
-    helpers = None
-    print(f"❌ pymongo.encryption not available: {e}")
-    print("❌ Install with: pip install 'pymongo[encryption]'")
-
-
+# Global client instance
 _client = None
-_kms_provider_name = "gcp"
+_client_encryption = None
 
 
 def get_mongo_db_name():
@@ -33,8 +17,24 @@ def get_key_vault_namespace():
     return os.environ.get("MONGODB_KEY_VAULT_NS", "encryption.__keyVault")
 
 
+def get_kms_providers():
+    """Get KMS provider credentials from environment variables."""
+    gcp_email = os.environ.get("GCP_EMAIL")
+    gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
+    
+    if not gcp_email or not gcp_private_key:
+        raise ValueError("GCP_EMAIL and GCP_PRIVATE_KEY are required for encryption")
+    
+    return {
+        "gcp": {
+            "email": gcp_email,
+            "privateKey": gcp_private_key
+        }
+    }
+
+
 def get_encrypted_mongo_client():
-    """Get singleton MongoDB client with automatic encryption."""
+    """Get singleton MongoDB client with EXPLICIT encryption (serverless compatible)."""
     global _client
     if _client:
         return _client
@@ -43,51 +43,58 @@ def get_encrypted_mongo_client():
     if not uri:
         raise ValueError("MONGODB_URI is not set")
 
-    # Try to enable auto-encryption if available
-    if ENCRYPTION_AVAILABLE:
-        gcp_email = os.environ.get("GCP_EMAIL")
-        gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
-        
-        if not gcp_email or not gcp_private_key:
-            print("⚠️ GCP credentials not found in environment variables")
-            print("⚠️ Required: GCP_EMAIL, GCP_PRIVATE_KEY")
-            raise ValueError("GCP KMS credentials required for client-side encryption")
-        
-        try:
-            print("🔐 Setting up client-side encryption...")
-            key_vault_namespace = get_key_vault_namespace()
-            print(f"🔑 Key vault namespace: {key_vault_namespace}")
-            
-            # Get KMS provider credentials using helper (matches reference code)
-            kms_provider_credentials = helpers.get_kms_provider_credentials(_kms_provider_name)
-            print(f"🔑 KMS provider: {_kms_provider_name}")
-            
-            # Get auto-encryption options using helper (matches reference code)
-            auto_encryption_options = helpers.get_auto_encryption_options(
-                _kms_provider_name,
-                key_vault_namespace,
-                kms_provider_credentials,
-            )
-            print("🔑 Auto-encryption options configured")
-            
-            # Create encrypted client (matches reference code: MongoClient(uri, auto_encryption_opts=...))
-            _client = MongoClient(uri, auto_encryption_opts=auto_encryption_options)
-            print("✅ MongoDB client initialized with auto-encryption enabled")
-            return _client
-        except FileNotFoundError as e:
-            print(f"❌ Encryption library not found: {e}")
-            raise
-        except Exception as e:
-            print(f"❌ Failed to enable auto-encryption: {e}")
-            print(f"❌ Error type: {type(e).__name__}")
-            import traceback
-            print(f"❌ Traceback: {traceback.format_exc()}")
-            raise RuntimeError(f"Client-side encryption is required but failed: {e}")
+    gcp_email = os.environ.get("GCP_EMAIL")
+    gcp_private_key = os.environ.get("GCP_PRIVATE_KEY")
     
-    # If encryption is not available, fail fast
-    print("❌ pymongo.encryption module not available")
-    print("❌ Client-side encryption is required for this MongoDB schema")
-    raise RuntimeError("Client-side encryption required but pymongo[encryption] not available")
+    if not gcp_email or not gcp_private_key:
+        raise ValueError("GCP KMS credentials required for encryption")
+    
+    try:
+        print("🔐 Setting up explicit encryption (serverless mode)...")
+        key_vault_namespace = get_key_vault_namespace()
+        kms_providers = get_kms_providers()
+        
+        # Use bypassAutoEncryption for explicit encryption (serverless compatible)
+        # This means:
+        # 1. We manually encrypt data before writes
+        # 2. Decryption is still automatic on reads
+        # 3. No need for mongocryptd or shared libraries
+        auto_encryption_opts = AutoEncryptionOpts(
+            kms_providers=kms_providers,
+            key_vault_namespace=key_vault_namespace,
+            bypass_auto_encryption=True  # 🔑 KEY CHANGE for serverless
+        )
+        
+        _client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+        print("✅ MongoDB client initialized with explicit encryption (serverless mode)")
+        return _client
+    except Exception as e:
+        print(f"❌ Failed to initialize MongoDB client: {e}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise
+
+
+def get_client_encryption_instance():
+    """Get or create ClientEncryption instance."""
+    global _client_encryption
+    
+    if _client_encryption:
+        return _client_encryption
+    
+    client = get_encrypted_mongo_client()
+    kms_providers = get_kms_providers()
+    key_vault_namespace = get_key_vault_namespace()
+    
+    _client_encryption = ClientEncryption(
+        kms_providers=kms_providers,
+        key_vault_namespace=key_vault_namespace,
+        key_vault_client=client,
+        codec_options=None
+    )
+    
+    return _client_encryption
 
 
 def get_db():
@@ -109,21 +116,16 @@ def get_active_accounts():
         print("⚠️ No documents found in bank_accounts_dev collection")
         return []
     
-    # Query for active accounts; if status is encrypted/unqueryable, fall back to all
-    accounts = list(collection.find({"status": "active"}).limit(50))
-    if len(accounts) == 0:
-        print("⚠️ No accounts matched status: 'active'. Falling back to all accounts (limit 50)")
-        accounts = list(collection.find({}).limit(50))
+    # Query by plaintext userId field (status is encrypted, can't query directly)
+    # With explicit encryption, we query on plaintext fields only
+    accounts = list(collection.find({}).limit(50))
     print(f"Found {len(accounts)} accounts to process (out of {total_count} total)")
     
-    if len(accounts) == 0 and total_count > 0:
-        # Try to fetch any accounts to see what's available
-        sample_account = collection.find_one({})
-        if sample_account:
-            print(f"Sample account status: {sample_account.get('status', 'NO STATUS FIELD')}")
-            print(f"Sample account fields: {list(sample_account.keys())}")
+    # Filter for active status after decryption (done in-memory)
+    active_accounts = [acc for acc in accounts if acc.get("status") == "active"]
+    print(f"Active accounts after decryption: {len(active_accounts)}")
     
-    return accounts
+    return active_accounts if active_accounts else accounts
 
 
 def get_user_requisitions(user_id: str):
@@ -203,31 +205,36 @@ def fetch_previous_categories(user_id):
         return []
 
 
-def create_transaction(doc_id, payload):
-    """Insert a new transaction document."""
+def create_transaction(doc_id, encrypted_payload):
+    """Insert a new transaction document (with pre-encrypted fields)."""
     db = get_db()
     collection = db["transactions_dev"]
     
-    payload["_id"] = doc_id
-    collection.insert_one(payload)
+    encrypted_payload["_id"] = doc_id
+    encrypted_payload["createdAt"] = encrypted_payload.get("createdAt") or ""
+    encrypted_payload["updatedAt"] = encrypted_payload.get("updatedAt") or ""
+    collection.insert_one(encrypted_payload)
 
 
-def create_balance(doc_id, payload):
-    """Insert a new balance document."""
+def create_balance(doc_id, encrypted_payload):
+    """Insert a new balance document (with pre-encrypted fields)."""
     db = get_db()
     collection = db["balances_dev"]
     
-    payload["_id"] = doc_id
-    collection.insert_one(payload)
+    encrypted_payload["_id"] = doc_id
+    encrypted_payload["createdAt"] = encrypted_payload.get("createdAt") or ""
+    encrypted_payload["updatedAt"] = encrypted_payload.get("updatedAt") or ""
+    collection.insert_one(encrypted_payload)
 
 
-def update_balance(doc_id, payload):
-    """Update an existing balance document."""
+def update_balance(doc_id, encrypted_payload):
+    """Update an existing balance document (with pre-encrypted fields)."""
     db = get_db()
     collection = db["balances_dev"]
     
+    encrypted_payload["updatedAt"] = encrypted_payload.get("updatedAt") or ""
     collection.update_one(
         {"_id": doc_id},
-        {"$set": payload}
+        {"$set": encrypted_payload}
     )
 

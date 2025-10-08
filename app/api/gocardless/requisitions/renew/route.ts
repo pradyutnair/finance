@@ -5,6 +5,7 @@ import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, ID, Query } from "appwrite";
 import { getRequisition, HttpError } from "@/lib/gocardless";
 import { getDb } from "@/lib/mongo/client";
+import { encryptQueryable, encryptRandom } from "@/lib/mongo/explicit-encryption";
 
 type RenewBody = {
   requisitionId: string;
@@ -38,21 +39,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "'institutionId' is required (could not derive from provider)" }, { status: 400 });
     }
 
-    // MongoDB path
+    // MongoDB path with explicit encryption
     if (process.env.DATA_BACKEND === 'mongodb') {
       const db = await getDb();
       
+      // Encrypt sensitive fields before update
+      const encryptedRequisitionId = await encryptQueryable(requisitionId);
+      const encryptedInstitutionName = institutionName ? await encryptRandom(institutionName) : null;
+      const encryptedStatus = await encryptRandom('active');
+      const encryptedStatusLinked = await encryptRandom('LINKED');
+      
       // Update bank_connections_dev
+      const connectionUpdate: any = {
+        userId,
+        institutionId,
+        updatedAt: new Date().toISOString(),
+      };
+      if (encryptedRequisitionId) connectionUpdate.requisitionId = encryptedRequisitionId;
+      if (encryptedStatus) connectionUpdate.status = encryptedStatus;
+      if (encryptedInstitutionName) connectionUpdate.institutionName = encryptedInstitutionName;
+      
       await db.collection('bank_connections_dev').updateOne(
         { userId, institutionId },
         {
-          $set: {
-            requisitionId,
-            status: 'active',
-            institutionId,
-            ...(institutionName ? { institutionName } : {}),
-            updatedAt: new Date().toISOString(),
-          },
+          $set: connectionUpdate,
           $setOnInsert: {
             userId,
             createdAt: new Date().toISOString(),
@@ -62,16 +72,18 @@ export async function POST(request: Request) {
       );
 
       // Update requisitions_dev
+      const requisitionUpdate: any = {
+        institutionId,
+        updatedAt: new Date().toISOString(),
+      };
+      if (encryptedRequisitionId) requisitionUpdate.requisitionId = encryptedRequisitionId;
+      if (encryptedStatusLinked) requisitionUpdate.status = encryptedStatusLinked;
+      if (encryptedInstitutionName) requisitionUpdate.institutionName = encryptedInstitutionName;
+      
       await db.collection('requisitions_dev').updateOne(
         { userId, institutionId },
         {
-          $set: {
-            requisitionId,
-            institutionId,
-            ...(institutionName ? { institutionName } : {}),
-            status: 'LINKED',
-            updatedAt: new Date().toISOString(),
-          },
+          $set: requisitionUpdate,
           $setOnInsert: {
             userId,
             createdAt: new Date().toISOString(),

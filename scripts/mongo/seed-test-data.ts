@@ -1,116 +1,137 @@
 import 'dotenv/config';
 import { getDb } from '../../lib/mongo/client';
+import { 
+  encryptQueryable, 
+  encryptRandom 
+} from '../../lib/mongo/explicit-encryption';
 
 const TEST_USER_ID = '68d446e7bf3ed043310a';
 
 async function seedTestData() {
   const db = await getDb();
   
-  console.log(`🌱 Seeding test data for user ${TEST_USER_ID}...`);
+  console.log(`🌱 Seeding test data for user ${TEST_USER_ID} with explicit encryption...`);
   
-  // 1. Create test requisition
+  // 1. Create test requisition with explicit encryption
+  const requisitionUpdate: any = {
+    userId: TEST_USER_ID,
+    institutionId: 'REVOLUT_REVOGB21',
+    updatedAt: new Date().toISOString(),
+  };
+  
+  // Encrypt sensitive fields
+  requisitionUpdate.requisitionId = await encryptQueryable('test-req-revolut-001');
+  requisitionUpdate.institutionName = await encryptRandom('Revolut');
+  requisitionUpdate.status = await encryptRandom('LINKED');
+  requisitionUpdate.reference = await encryptRandom(`user_${TEST_USER_ID}_${Date.now()}`);
+  requisitionUpdate.redirectUri = await encryptRandom('http://localhost:3000/link-bank/callback');
+  
   const reqResult = await db.collection('requisitions_dev').updateOne(
     { userId: TEST_USER_ID, institutionId: 'REVOLUT_REVOGB21' },
     {
-      $set: {
-        userId: TEST_USER_ID,
-        requisitionId: 'test-req-revolut-001',
-        institutionId: 'REVOLUT_REVOGB21',
-        institutionName: 'Revolut',
-        status: 'LINKED',
-        reference: `user_${TEST_USER_ID}_${Date.now()}`,
-        redirectUri: 'http://localhost:3000/link-bank/callback',
-        updatedAt: new Date().toISOString(),
-      },
+      $set: requisitionUpdate,
       $setOnInsert: {
         createdAt: new Date().toISOString(),
       }
     },
     { upsert: true }
   );
-  console.log(`✅ Requisition: ${reqResult.upsertedCount ? 'created' : 'updated'}`);
+  console.log(`✅ Requisition: ${reqResult.upsertedCount ? 'created' : 'updated'} (encrypted)`);
   
-  // 2. Create test bank connection
+  // 2. Create test bank connection with explicit encryption
+  const connectionUpdate: any = {
+    userId: TEST_USER_ID,
+    institutionId: 'REVOLUT_REVOGB21',
+    logoUrl: 'https://cdn.revolut.com/media/brand/logo.svg',
+    transactionTotalDays: 90,
+    maxAccessValidforDays: 180,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  // Encrypt sensitive fields
+  connectionUpdate.institutionName = await encryptRandom('Revolut');
+  connectionUpdate.status = await encryptRandom('active');
+  connectionUpdate.requisitionId = await encryptQueryable('test-req-revolut-001');
+  
   const connResult = await db.collection('bank_connections_dev').updateOne(
     { userId: TEST_USER_ID, institutionId: 'REVOLUT_REVOGB21' },
     {
-      $set: {
-        userId: TEST_USER_ID,
-        institutionId: 'REVOLUT_REVOGB21',
-        institutionName: 'Revolut',
-        status: 'active',
-        requisitionId: 'test-req-revolut-001',
-        logoUrl: 'https://cdn.revolut.com/media/brand/logo.svg',
-        transactionTotalDays: 90,
-        maxAccessValidforDays: 180,
-        updatedAt: new Date().toISOString(),
-      },
+      $set: connectionUpdate,
       $setOnInsert: {
         createdAt: new Date().toISOString(),
       }
     },
     { upsert: true }
   );
-  console.log(`✅ Bank connection: ${connResult.upsertedCount ? 'created' : 'updated'}`);
+  console.log(`✅ Bank connection: ${connResult.upsertedCount ? 'created' : 'updated'} (encrypted)`);
   
-  // 3. Create test bank account (sensitive fields auto-encrypted)
+  // 3. Create test bank account with explicit encryption
+  const plaintextAccountId = 'test-acct-rev-eur-001';
+  const encryptedAccountId = await encryptQueryable(plaintextAccountId);
+  
+  const accountUpdate: any = {
+    userId: TEST_USER_ID,
+    institutionId: 'REVOLUT_REVOGB21',
+    updatedAt: new Date().toISOString(),
+  };
+  
+  // Encrypt sensitive fields (including accountId)
+  accountUpdate.accountId = encryptedAccountId;
+  accountUpdate.institutionName = await encryptRandom('Revolut');
+  accountUpdate.iban = await encryptRandom('GB33REVO00996912345678');
+  accountUpdate.accountName = await encryptRandom('EUR Current Account');
+  accountUpdate.currency = await encryptRandom('EUR');
+  accountUpdate.status = await encryptRandom('active');
+  accountUpdate.raw = await encryptRandom(JSON.stringify({ 
+    iban: 'GB33REVO00996912345678', 
+    name: 'EUR Current Account',
+    currency: 'EUR'
+  }));
+  
   const acctResult = await db.collection('bank_accounts_dev').updateOne(
-    { userId: TEST_USER_ID, accountId: 'test-acct-rev-eur-001' },
+    { userId: TEST_USER_ID, accountId: encryptedAccountId },
     {
-      $set: {
-        userId: TEST_USER_ID,
-        accountId: 'test-acct-rev-eur-001',
-        institutionId: 'REVOLUT_REVOGB21',
-        institutionName: 'Revolut',
-        iban: 'GB33REVO00996912345678',
-        accountName: 'EUR Current Account',
-        currency: 'EUR',
-        status: 'active',
-        raw: JSON.stringify({ 
-          iban: 'GB33REVO00996912345678', 
-          name: 'EUR Current Account',
-          currency: 'EUR'
-        }),
-        updatedAt: new Date().toISOString(),
-      },
+      $set: accountUpdate,
       $setOnInsert: {
         createdAt: new Date().toISOString(),
       }
     },
     { upsert: true }
   );
-  console.log(`✅ Bank account: ${acctResult.upsertedCount ? 'created' : 'updated'}`);
+  console.log(`✅ Bank account: ${acctResult.upsertedCount ? 'created' : 'updated'} (encrypted)`);
   
-  // 4. Create test balances
+  // 4. Create test balances with explicit encryption
   const today = new Date().toISOString().split('T')[0];
+  const balanceUpdate: any = {
+    userId: TEST_USER_ID,
+    balanceType: 'interimAvailable',
+    referenceDate: today,
+    updatedAt: new Date().toISOString(),
+  };
+  
+  // Encrypt sensitive fields (including accountId)
+  balanceUpdate.accountId = encryptedAccountId;
+  balanceUpdate.balanceAmount = await encryptRandom('5420.50');
+  balanceUpdate.currency = await encryptRandom('EUR');
+  
   const balResult = await db.collection('balances_dev').updateOne(
     { 
       userId: TEST_USER_ID, 
-      accountId: 'test-acct-rev-eur-001',
+      accountId: encryptedAccountId,
       balanceType: 'interimAvailable',
       referenceDate: today
     },
     {
-      $set: {
-        userId: TEST_USER_ID,
-        accountId: 'test-acct-rev-eur-001',
-        balanceAmount: '5420.50',
-        currency: 'EUR',
-        balanceType: 'interimAvailable',
-        referenceDate: today,
-        updatedAt: new Date().toISOString(),
-      },
+      $set: balanceUpdate,
       $setOnInsert: {
         createdAt: new Date().toISOString(),
       }
     },
     { upsert: true }
   );
-  console.log(`✅ Balance: ${balResult.upsertedCount ? 'created' : 'updated'}`);
+  console.log(`✅ Balance: ${balResult.upsertedCount ? 'created' : 'updated'} (encrypted)`);
   
-  // 5. Create test transactions
-  // NOTE: In production, these come from GoCardless as plaintext,
-  // get categorized via suggestCategory(), then encrypted on insert
+  // 5. Create test transactions with explicit encryption
   const transactions = [
     {
       transactionId: 'tx-costco-001',
@@ -144,55 +165,36 @@ async function seedTestData() {
       counterparty: 'Tom Tom Ltd',
       category: 'Income',
     },
-    // {
-    //   transactionId: 'tx-amazon-001',
-    //   amount: '-67.99',
-    //   bookingDate: '2025-09-30',
-    //   description: 'AMAZON.CO.UK PURCHASE',
-    //   counterparty: 'Amazon EU S.a.r.L',
-    //   category: 'Shopping',
-    // },
-    // {
-    //   transactionId: 'tx-netflix-001',
-    //   amount: '-15.99',
-    //   bookingDate: '2025-09-28',
-    //   description: 'NETFLIX SUBSCRIPTION',
-    //   counterparty: 'Netflix International',
-    //   category: 'Entertainment',
-    // },
-    // {
-    //   transactionId: 'tx-gym-001',
-    //   amount: '-45.00',
-    //   bookingDate: '2025-09-25',
-    //   description: 'PURE GYM MEMBERSHIP',
-    //   counterparty: 'PureGym Ltd',
-    //   category: 'Health',
-    // },
   ];
   
   let txCount = 0;
   for (const tx of transactions) {
     try {
-      await db.collection('transactions_dev').insertOne({
+      // Prepare document with explicit encryption
+      const txDoc: any = {
         userId: TEST_USER_ID,
-        accountId: 'test-acct-rev-eur-001',
-        transactionId: tx.transactionId,
-        amount: tx.amount,
-        currency: 'EUR',
-        bookingDate: tx.bookingDate,
-        bookingDateTime: `${tx.bookingDate}T${10 + txCount}:30:00Z`,
-        valueDate: tx.bookingDate,
-        description: tx.description,
-        counterparty: tx.counterparty,
-        category: tx.category,
-        exclude: false,
-        raw: JSON.stringify({ 
-          amount: parseFloat(tx.amount),
-          description: tx.description
-        }),
+        category: tx.category, // Plaintext - needed for queries
+        exclude: false, // Plaintext - needed for queries
+        bookingDate: tx.bookingDate, // Plaintext - needed for sorting
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      
+      // Encrypt sensitive fields (including accountId)
+      txDoc.accountId = encryptedAccountId;
+      txDoc.transactionId = await encryptQueryable(tx.transactionId);
+      txDoc.amount = await encryptRandom(tx.amount);
+      txDoc.currency = await encryptRandom('EUR');
+      txDoc.bookingDateTime = await encryptRandom(`${tx.bookingDate}T${10 + txCount}:30:00Z`);
+      txDoc.valueDate = await encryptRandom(tx.bookingDate);
+      txDoc.description = await encryptRandom(tx.description);
+      txDoc.counterparty = await encryptRandom(tx.counterparty);
+      txDoc.raw = await encryptRandom(JSON.stringify({ 
+        amount: parseFloat(tx.amount),
+        description: tx.description
+      }));
+      
+      await db.collection('transactions_dev').insertOne(txDoc);
       txCount++;
     } catch (e: any) {
       if (e.code === 11000) {
@@ -202,15 +204,16 @@ async function seedTestData() {
       }
     }
   }
-  console.log(`✅ Transactions: ${txCount} created, ${transactions.length - txCount} skipped`);
+  console.log(`✅ Transactions: ${txCount} created, ${transactions.length - txCount} skipped (encrypted)`);
   
-  console.log('\n✅ Test data seeded successfully!');
+  console.log('\n🎉 Test data seeded successfully with explicit encryption!');
   console.log(`\nUser ID: ${TEST_USER_ID}`);
   console.log(`- 1 bank connection (Revolut)`);
   console.log(`- 1 bank account`);
   console.log(`- 1 balance record`);
   console.log(`- ${transactions.length} transactions`);
-  console.log(`\nNote: Sensitive fields (iban, accountName, amounts, descriptions) are automatically encrypted.`);
+  console.log(`\n🔐 All sensitive fields are explicitly encrypted before storage.`);
+  console.log(`📖 Data will be automatically decrypted when read.`);
   
   process.exit(0);
 }

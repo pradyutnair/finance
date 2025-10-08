@@ -4,7 +4,14 @@ import time
 from datetime import datetime
 import openai
 
-from .mongodb import fetch_previous_categories
+from .mongodb import fetch_previous_categories, get_encrypted_mongo_client, get_client_encryption_instance
+from .explicit_encryption import (
+    get_data_key_id,
+    encrypt_queryable,
+    encrypt_random,
+    encrypt_transaction_fields,
+    encrypt_balance_fields
+)
 
 
 def generate_doc_id(transaction_id, account_id, booking_date):
@@ -91,6 +98,7 @@ def format_transaction_payload(
     account_id,
     doc_id,
 ):
+    """Format and encrypt transaction payload using explicit encryption."""
     transaction_amount = transaction.get("transactionAmount", {})
     amount = transaction_amount.get("amount", "0") if isinstance(transaction_amount, dict) else "0"
     description = (
@@ -100,45 +108,58 @@ def format_transaction_payload(
     )
     counterparty = transaction.get("creditorName") or transaction.get("debtorName") or ""
 
-    return {
-        "userId": user_id,
-        "accountId": account_id,
-        "transactionId": str(transaction.get("transactionId") or transaction.get("internalTransactionId"))[:255]
-        if (transaction.get("transactionId") or transaction.get("internalTransactionId"))
-        else doc_id,
-        "amount": str(amount),
-        "currency": (transaction_amount.get("currency") if isinstance(transaction_amount, dict) else "EUR")[:3],
-        "bookingDate": transaction.get("bookingDate", "")[:10] if transaction.get("bookingDate") else None,
-        "valueDate": transaction.get("valueDate", "")[:10] if transaction.get("valueDate") else None,
-        "description": description[:500],
-        "counterparty": counterparty[:255],
-        "category": categorize_transaction(
-            description,
-            counterparty,
-            amount,
-            user_id,
-        ),
-        "raw": json.dumps(transaction)[:10000],
-    }
+    # CRITICAL: Categorize on plaintext BEFORE encryption
+    category = categorize_transaction(description, counterparty, amount, user_id)
+    
+    # Get encryption clients
+    mongo_client = get_encrypted_mongo_client()
+    client_encryption = get_client_encryption_instance()
+    data_key_id = get_data_key_id(client_encryption, mongo_client)
+    
+    # Use explicit encryption helper
+    encrypted_payload = encrypt_transaction_fields(
+        user_id,
+        account_id,
+        transaction,
+        category,
+        client_encryption,
+        data_key_id
+    )
+    
+    # Add timestamps
+    encrypted_payload["createdAt"] = datetime.now().isoformat()
+    encrypted_payload["updatedAt"] = datetime.now().isoformat()
+    
+    return encrypted_payload
 
 
 def format_balance_payload(balance, user_id, account_id):
+    """Format and encrypt balance payload using explicit encryption."""
     balance_type = balance.get("balanceType", "expected")
     reference_date = balance.get("referenceDate", datetime.now().strftime("%Y-%m-%d"))
-    balance_amount = balance.get("balanceAmount", {})
-    amount = balance_amount.get("amount", "0") if isinstance(balance_amount, dict) else "0"
 
     # Use a simpler doc_id based on account_id and balance_type only
     doc_id = f"{account_id}_{balance_type}"[:36]
-    payload = {
-        "userId": user_id,
-        "accountId": account_id,
-        "balanceAmount": str(amount),
-        "currency": (balance_amount.get("currency") if isinstance(balance_amount, dict) else "EUR")[:3],
-        "balanceType": balance_type,
-        "referenceDate": reference_date,
-    }
-    return doc_id, payload
+    
+    # Get encryption clients
+    mongo_client = get_encrypted_mongo_client()
+    client_encryption = get_client_encryption_instance()
+    data_key_id = get_data_key_id(client_encryption, mongo_client)
+    
+    # Use explicit encryption helper
+    encrypted_payload = encrypt_balance_fields(
+        user_id,
+        account_id,
+        balance,
+        client_encryption,
+        data_key_id
+    )
+    
+    # Add timestamps
+    encrypted_payload["createdAt"] = datetime.now().isoformat()
+    encrypted_payload["updatedAt"] = datetime.now().isoformat()
+    
+    return doc_id, encrypted_payload
 
 
 
