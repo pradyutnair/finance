@@ -6,6 +6,7 @@ import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
 import { getDb } from "@/lib/mongo/client"
 import { ObjectId } from "mongodb"
+import { encryptTransactionUpdateFields } from "@/lib/mongo/explicit-encryption"
 
 export async function PATCH(request: Request) {
   try {
@@ -19,13 +20,16 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: false, error: "transactionIds must be a non-empty array" }, { status: 400 })
     }
     
+    // Explicitly encrypt sensitive fields in the update
+    const encryptedUpdatePayload = await encryptTransactionUpdateFields(updatePayload)
+    
     // Validate and update all transactions
     const db = await getDb()
     const coll = db.collection('transactions_dev')
     
     const result = await coll.updateMany(
       { _id: { $in: transactionIds.map(id => new ObjectId(id)) }, userId },
-      { $set: updatePayload }
+      { $set: encryptedUpdatePayload }
     )
     
     invalidateUserCache(userId, 'transactions')

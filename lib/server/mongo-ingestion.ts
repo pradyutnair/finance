@@ -1,25 +1,27 @@
 import { getDb } from '@/lib/mongo/client';
 import { suggestCategory, findExistingCategoryMongo } from './categorize';
+import { 
+  encryptRequisitionFields, 
+  encryptBankConnectionFields, 
+  encryptBankAccountFields,
+  encryptBalanceFields,
+  encryptTransactionFields 
+} from '@/lib/mongo/explicit-encryption';
 
 export async function storeRequisitionMongo(requisition: any, userId: string) {
   const db = await getDb();
   const coll = db.collection('requisitions_dev');
   
-  // Build update object, omitting null/empty values for encrypted fields
-  const updateFields: any = {
-    userId,
-    institutionId: requisition.institution_id,
-    updatedAt: new Date().toISOString(),
-  };
+  // Explicitly encrypt sensitive fields
+  const encryptedFields = await encryptRequisitionFields(requisition, userId);
   
-  // Add encrypted fields only if they have values
-  if (requisition.id) updateFields.requisitionId = requisition.id;
-  if (requisition.status) updateFields.status = requisition.status;
-  if (requisition.reference) updateFields.reference = requisition.reference;
-  if (requisition.redirect || process.env.GC_REDIRECT_URI) {
-    updateFields.redirectUri = requisition.redirect || process.env.GC_REDIRECT_URI;
+  // Filter out null values (can't encrypt null)
+  const updateFields: any = {};
+  for (const [key, value] of Object.entries(encryptedFields)) {
+    if (value !== null && value !== undefined) {
+      updateFields[key] = value;
+    }
   }
-  if (requisition.institution_name) updateFields.institutionName = requisition.institution_name;
   
   await coll.updateOne(
     { userId, institutionId: requisition.institution_id },
@@ -45,25 +47,23 @@ export async function storeBankConnectionMongo(
   const db = await getDb();
   const coll = db.collection('bank_connections_dev');
   
-  // Build update object, omitting null values for encrypted fields
-  const updateFields: any = {
+  // Explicitly encrypt sensitive fields
+  const encryptedFields = await encryptBankConnectionFields(
     userId,
     institutionId,
-    updatedAt: new Date().toISOString(),
-  };
+    institutionName,
+    requisitionId,
+    logoUrl,
+    transactionTotalDays,
+    maxAccessValidforDays
+  );
   
-  // Add encrypted fields only if they have values
-  if (institutionName) updateFields.institutionName = institutionName;
-  if (requisitionId) updateFields.requisitionId = requisitionId;
-  updateFields.status = 'active';
-  
-  // Plaintext metadata fields (can be null)
-  if (logoUrl) updateFields.logoUrl = logoUrl;
-  if (transactionTotalDays !== null && transactionTotalDays !== undefined) {
-    updateFields.transactionTotalDays = transactionTotalDays;
-  }
-  if (maxAccessValidforDays !== null && maxAccessValidforDays !== undefined) {
-    updateFields.maxAccessValidforDays = maxAccessValidforDays;
+  // Filter out null values (can't encrypt null)
+  const updateFields: any = {};
+  for (const [key, value] of Object.entries(encryptedFields)) {
+    if (value !== null && value !== undefined) {
+      updateFields[key] = value;
+    }
   }
   
   await coll.updateOne(
@@ -88,25 +88,29 @@ export async function storeBankAccountMongo(
   const db = await getDb();
   const coll = db.collection('bank_accounts_dev');
   
-  // Build update object, omitting null values for encrypted fields
-  const updateFields: any = {
-    userId,
+  // Explicitly encrypt sensitive fields
+  const encryptedFields = await encryptBankAccountFields(
     accountId,
+    userId,
     institutionId,
-    updatedAt: new Date().toISOString(),
-  };
+    institutionName,
+    accountDetails
+  );
   
-  // Add encrypted fields only if they have values (can't encrypt null)
-  if (accountDetails.iban) updateFields.iban = accountDetails.iban;
-  if (accountDetails.name) updateFields.accountName = accountDetails.name;
-  if (accountDetails.currency) updateFields.currency = accountDetails.currency;
-  if (institutionName) updateFields.institutionName = institutionName;
+  // Filter out null values (can't encrypt null)
+  const updateFields: any = {};
+  for (const [key, value] of Object.entries(encryptedFields)) {
+    if (value !== null && value !== undefined) {
+      updateFields[key] = value;
+    }
+  }
   
-  updateFields.status = 'active';
-  updateFields.raw = JSON.stringify(accountDetails);
+  // Get encrypted accountId for query
+  const { encryptQueryable } = await import('@/lib/mongo/explicit-encryption');
+  const encryptedAccountId = await encryptQueryable(accountId);
   
   await coll.updateOne(
-    { accountId, userId },
+    { accountId: encryptedAccountId, userId },
     {
       $set: updateFields,
       $setOnInsert: {
@@ -128,18 +132,25 @@ export async function storeBalanceMongo(
   const balanceType = balance.balanceType || 'closingBooked';
   const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
   
+  // Explicitly encrypt sensitive fields
+  const encryptedFields = await encryptBalanceFields(userId, accountId, balance);
+  
+  // Filter out null values
+  const updateFields: any = {};
+  for (const [key, value] of Object.entries(encryptedFields)) {
+    if (value !== null && value !== undefined) {
+      updateFields[key] = value;
+    }
+  }
+  
+  // Get encrypted accountId for query
+  const { encryptQueryable } = await import('@/lib/mongo/explicit-encryption');
+  const encryptedAccountId = await encryptQueryable(accountId);
+  
   await coll.updateOne(
-    { userId, accountId, balanceType, referenceDate },
+    { userId, accountId: encryptedAccountId, balanceType, referenceDate },
     {
-      $set: {
-        userId,
-        accountId,
-        balanceAmount: balance.balanceAmount?.amount || '0',
-        currency: balance.balanceAmount?.currency || 'EUR',
-        balanceType,
-        referenceDate,
-        updatedAt: new Date().toISOString(),
-      },
+      $set: updateFields,
       $setOnInsert: {
         createdAt: new Date().toISOString(),
       }
@@ -173,35 +184,25 @@ export async function storeTransactionMongo(
   
   console.log(`[Categorize] "${txDescription}" → ${category}`);
   
-  // Build document, omitting null values for encrypted fields
-  const doc: any = {
+  // Explicitly encrypt sensitive fields
+  const encryptedFields = await encryptTransactionFields(
     userId,
     accountId,
-    category,
-    exclude: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
+    transaction,
+    category
+  );
   
-  // Add encrypted fields only if they have values (can't encrypt null)
-  if (providerTransactionId) doc.transactionId = providerTransactionId;
-  if (transaction.transactionAmount?.amount !== undefined && transaction.transactionAmount?.amount !== null) {
-    doc.amount = String(transaction.transactionAmount.amount);
+  // Filter out null values (can't encrypt null)
+  const doc: any = {};
+  for (const [key, value] of Object.entries(encryptedFields)) {
+    if (value !== null && value !== undefined) {
+      doc[key] = value;
+    }
   }
-  if (transaction.transactionAmount?.currency) {
-    doc.currency = transaction.transactionAmount.currency.toString().toUpperCase().slice(0, 3);
-  }
-  if (transaction.bookingDate) doc.bookingDate = String(transaction.bookingDate).slice(0, 10);
-  if (transaction.bookingDateTime) doc.bookingDateTime = String(transaction.bookingDateTime).slice(0, 25);
-  if (transaction.valueDate) doc.valueDate = String(transaction.valueDate).slice(0, 10);
-  if (txDescription) doc.description = txDescription.toString().slice(0, 500);
-  if (counterparty) doc.counterparty = counterparty.toString().slice(0, 255);
-  
-  doc.raw = JSON.stringify(transaction).slice(0, 10000);
   
   try {
     await coll.insertOne(doc);
-    console.log(`✅ Stored transaction ${providerTransactionId} with category ${category}`);
+    console.log(`✅ Stored encrypted transaction ${providerTransactionId} with category ${category}`);
   } catch (e: any) {
     // Handle duplicate key errors silently
     if (e.code === 11000) {

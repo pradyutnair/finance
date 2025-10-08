@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { getDb } from "@/lib/mongo/client";
+import { encryptQueryable } from "@/lib/mongo/explicit-encryption";
 
 type BalanceDoc = {
   accountId?: string;
@@ -24,9 +25,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
 
     if (process.env.DATA_BACKEND === 'mongodb') {
       const db = await getDb();
+      
+      // Encrypt accountId for query (deterministic encryption allows equality queries)
+      const encryptedAccountId = await encryptQueryable(accountId);
+      
       const docs = await db
         .collection('balances_dev')
-        .find({ userId, accountId })
+        .find({ userId, accountId: encryptedAccountId })
         .sort({ referenceDate: -1 })
         .limit(100)
         .toArray();
