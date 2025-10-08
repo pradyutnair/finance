@@ -149,3 +149,5 @@ appwrite/
 
 .github
 .vscode
+
+venv/

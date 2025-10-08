@@ -1,0 +1,26 @@
+{
+  "name": "gocardless-sync-node",
+  "version": "1.0.0",
+  "description": "GoCardless sync to MongoDB with explicit encryption (Node.js)",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/main.ts",
+    "test": "tsx test-seed-data.ts",
+    "seed": "tsx seed-persistent-data.ts",
+    "verify": "tsx verify-data.ts",
+    "cleanup": "tsx cleanup-test-data.ts"
+  },
+  "dependencies": {
+    "node-appwrite": "^13.0.0",
+    "mongodb": "^6.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
+}
+
