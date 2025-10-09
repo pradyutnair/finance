@@ -12,7 +12,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useInstitutions, useCreateRequisition } from "@/lib/api";
+import { useInstitutions } from "@/lib/api";
+import { useAccountsStore } from "@/lib/stores/accounts-store";
 
 interface ConnectBankDialogProps {
   children: React.ReactNode;
@@ -30,9 +31,10 @@ export function ConnectBankDialog({ children }: ConnectBankDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState("DE");
   const [searchTerm, setSearchTerm] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   
   const { data: institutions } = useInstitutions(selectedCountry);
-  const createRequisition = useCreateRequisition();
+  const { createRequisition } = useAccountsStore();
 
   const filteredInstitutions = Array.isArray(institutions) 
     ? institutions.filter((institution: any) =>
@@ -41,8 +43,9 @@ export function ConnectBankDialog({ children }: ConnectBankDialogProps) {
     : popularBanks;
 
   const handleConnectBank = async (institutionId: string) => {
+    setIsCreating(true);
     try {
-      const result = await createRequisition.mutateAsync({
+      const result = await createRequisition({
         institutionId,
         redirect: `${window.location.origin}/banks`,
         reference: `nexpass_${Date.now()}`,
@@ -54,6 +57,8 @@ export function ConnectBankDialog({ children }: ConnectBankDialogProps) {
       }
     } catch (error) {
       console.error("Failed to create requisition:", error);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -83,7 +88,7 @@ export function ConnectBankDialog({ children }: ConnectBankDialogProps) {
               <button
                 key={institution.id}
                 onClick={() => handleConnectBank(institution.id)}
-                disabled={createRequisition.isPending}
+                disabled={isCreating}
                 className="w-full glass-card p-4 hover:bg-white/10 transition-colors text-left"
               >
                 <div className="flex items-center space-x-3">

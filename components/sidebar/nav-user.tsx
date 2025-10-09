@@ -29,7 +29,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { useAuth } from "@/contexts/auth-context"
+import { useAuth } from "@/lib/stores"
 import { GradientAvatar } from "../profile-page/gradient-avatar"
 import { useState } from "react"
 import { useCacheInvalidation } from "@/hooks/useCacheInvalidation"

@@ -67,15 +67,19 @@ function endOfMonth(date: Date): Date {
 export function ChartAreaInteractive() {
   const isMobile = useIsMobile()
   const [metric, setMetric] = React.useState<Metric>("expenses")
-  const { useTimeseries } = require("@/lib/api")
-  const { useDateRange } = require("@/contexts/date-range-context")
-  const { useCurrency } = require("@/contexts/currency-context")
+  const { useDateRange, useCurrency, useMetrics } = require("@/lib/stores")
   const { dateRange, formatDateForAPI } = useDateRange()
   const { baseCurrency, convertAmount } = useCurrency()
+  const { timeseries: data, fetchTimeseries } = useMetrics()
+  
   const dateRangeForAPI = dateRange?.from && dateRange?.to
     ? { from: formatDateForAPI(dateRange.from), to: formatDateForAPI(dateRange.to) }
     : undefined
-  const { data } = useTimeseries(dateRangeForAPI)
+  
+  // Fetch timeseries when date range changes
+  React.useEffect(() => {
+    fetchTimeseries(dateRangeForAPI)
+  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchTimeseries])
   const current = React.useMemo<ChartDatum[]>(() => {
     if (!dateRange?.from || !dateRange?.to) return [];
 

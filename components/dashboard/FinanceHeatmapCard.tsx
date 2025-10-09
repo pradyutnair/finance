@@ -5,9 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useDateRange } from "@/contexts/date-range-context"
-import { useCurrency } from "@/contexts/currency-context"
-import { useTransactions } from "@/lib/api"
+import { useDateRange, useCurrency, useTransactions } from "@/lib/stores"
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, Flame } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -176,11 +174,18 @@ export function FinanceHeatmapCard() {
     return undefined
   }, [dateRange, formatDateForAPI])
 
-  const { data, isLoading, error } = useTransactions({ dateRange: apiDateRange, limit: 10000, offset: 0 })
+  const { transactions: txData, loading, fetchTransactions } = useTransactions()
+  
+  // Fetch transactions when date range changes
+  useEffect(() => {
+    fetchTransactions({ dateRange: apiDateRange, limit: 10000, offset: 0 })
+  }, [apiDateRange?.from, apiDateRange?.to, fetchTransactions])
+  
+  const isLoading = loading
   const transactions = useMemo(() => {
-    const arr = (data?.transactions as any[]) || []
+    const arr = (txData as any[]) || []
     return arr.filter((tx) => !isExcludedTx(tx))
-  }, [data])
+  }, [txData])
 
   // Build continuous week rows that cover the selected range
   const { fromDate, toDate, weeks } = useMemo(() => {
@@ -473,23 +478,6 @@ export function FinanceHeatmapCard() {
       </Card>
     )
   }
-
-  if (error) {
-    return (
-      <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
-        <CardHeader className="pb-3 px-4">
-          <CardTitle className="text-base font-semibold">Heatmap</CardTitle>
-        </CardHeader>
-        <CardContent className="flex-1 flex items-center justify-center px-4 pb-4">
-          <div className="text-center text-muted-foreground space-y-2">
-            <AlertTriangle className="mx-auto h-6 w-6 text-amber-500" />
-            <div className="text-sm">Failed to load data</div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
 
   function renderLegend() {
     if (mode === "net") {

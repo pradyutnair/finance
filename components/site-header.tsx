@@ -5,25 +5,19 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "./theme-toggle"
 import { DateRangePicker } from "./date-range-picker"
-import { useDateRange } from "@/contexts/date-range-context"
-import { useCurrency } from "@/contexts/currency-context"
+import { useDateRange, useCurrency } from "@/lib/stores"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { usePathname } from "next/navigation"
-import { useContext } from "react"
-import { DateRangeContext } from "@/contexts/date-range-context"
 
 export function SiteHeader() {
-  // Check if we're on dashboard page and if DateRangeContext is available
+  // Check if we're on dashboard page
   const pathname = usePathname()
   const isDashboard = pathname === "/dashboard"
   const isTransactions = pathname === "/transactions"
   const isBanks = pathname === "/banks"
-  const dateRangeContext = useContext(DateRangeContext)
   
-  // Only use date range if we're on dashboard and context is available
-  const dateRange = dateRangeContext?.dateRange
-  const setDateRange = dateRangeContext?.setDateRange
-  
+  // Use Zustand stores
+  const { dateRange, setDateRange } = useDateRange()
   const { baseCurrency, setBaseCurrency, preferredCurrencies } = useCurrency()
 
   // Get page title based on pathname

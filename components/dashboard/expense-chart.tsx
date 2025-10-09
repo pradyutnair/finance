@@ -14,10 +14,9 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { type ChartConfig, ChartContainer, ChartTooltip } from "@/components/ui/chart"
-import { useCategories } from "@/lib/api"
-import { useDateRange } from "@/contexts/date-range-context"
-import { useCurrency } from "@/contexts/currency-context"
+import { useDateRange, useCurrency, useCategories } from "@/lib/stores"
 import { getCategoryColor } from "@/lib/categories"
+import { useEffect } from "react"
 
 type Item = {
   name: string
@@ -37,8 +36,14 @@ export function ExpenseChart() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { data: categoriesData, isLoading, error } = useCategories(dateRangeForAPI)
+  const { categories: categoriesData, loading, fetchCategories } = useCategories()
+  
+  // Fetch categories when date range changes
+  useEffect(() => {
+    fetchCategories(dateRangeForAPI)
+  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchCategories])
 
+  const isLoading = loading
   const currency = baseCurrency
   const currencySymbol = getCurrencySymbol(currency)
 
@@ -126,7 +131,7 @@ export function ExpenseChart() {
     )
   }
 
-  if (error || !categoriesData) {
+  if (!categoriesData || categoriesData.length === 0) {
     return (
       <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

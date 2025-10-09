@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Plus, X, Save, Loader2 } from 'lucide-react'
-import { useCurrency } from '@/contexts/currency-context'
+import { useCurrency, SUPPORTED_CURRENCIES } from '@/lib/stores'
 import { toast } from 'sonner'
 
 interface CurrencyPreferencesProps {
@@ -19,15 +19,15 @@ export function CurrencyPreferences({
   preferredCurrencies, 
   onCurrencyPreferencesUpdate 
 }: CurrencyPreferencesProps) {
-  const { supportedCurrencies, baseCurrency, setBaseCurrency, getCurrencySymbol, updatePreferredCurrencies } = useCurrency()
+  const { baseCurrency, setBaseCurrency, getCurrencySymbol, updatePreferredCurrencies } = useCurrency()
   const [selectedCurrencies, setSelectedCurrencies] = useState(preferredCurrencies)
   const [selectedBase, setSelectedBase] = useState(baseCurrency)
   const [newCurrency, setNewCurrency] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   // Get available currencies that aren't already selected
-  const availableCurrencies = supportedCurrencies.filter(
-    currency => !selectedCurrencies.includes(currency)
+  const availableCurrencies = SUPPORTED_CURRENCIES.filter(
+    (currency: string) => !selectedCurrencies.includes(currency)
   )
 
   const handleAddCurrency = () => {
