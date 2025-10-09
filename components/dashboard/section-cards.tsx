@@ -55,7 +55,36 @@ export function SectionCards() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { data: metrics, isLoading, error } = useMetrics(dateRangeForAPI)
+  const { metrics, loading, fetchMetrics } = useMetrics()
+  const [latestBalance, setLatestBalance] = useState<number | null>(null)
+  const [balanceLoading, setBalanceLoading] = useState(true)
+  
+  // Fetch metrics when date range changes
+  useEffect(() => {
+    fetchMetrics(dateRangeForAPI)
+  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchMetrics])
+
+  // Fetch latest balance independently (no date filter)
+  useEffect(() => {
+    const fetchLatestBalance = async () => {
+      try {
+        const response = await fetch('/api/metrics', { 
+          headers: await authHeaders() 
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setLatestBalance(data.balance || 0)
+        }
+      } catch (error) {
+        console.error('Failed to fetch latest balance:', error)
+      } finally {
+        setBalanceLoading(false)
+      }
+    }
+    fetchLatestBalance()
+  }, [])
+
+  const isLoading = loading
 
   // Auth headers for API calls
   const authHeaders = async (): Promise<HeadersInit> => {
@@ -197,15 +226,19 @@ export function SectionCards() {
   const testConversion = convertAmount(1000, 'EUR', baseCurrency)
   console.log('Test conversion: 1000 EUR ->', testConversion, baseCurrency)
 
+  // Use latest balance (not filtered by date range) for balance card
+  const displayBalance = latestBalance !== null ? latestBalance : (metrics?.balance || 0)
+  const balanceProgressValue = balanceGoal > 0 ? Math.max(0, Math.min(100, (Math.abs(displayBalance) / balanceGoal) * 100)) : 0
+
   const cards = [
     {
       label: "Balance",
-      value: formatCurrency(convertAmount(metrics.balance || 0, 'EUR', baseCurrency), baseCurrency),
+      value: formatCurrency(convertAmount(displayBalance, 'EUR', baseCurrency), baseCurrency),
       icon: <IconWallet className="size-5" />,
-      delta: metrics.deltas?.balancePct ?? 0,
+      delta: 0, // Balance doesn't show delta since it's not date-filtered
       kind: "balance" as const,
       goal: balanceGoalInDisplayCurrency,
-      progress: balanceProgress,
+      progress: balanceProgressValue,
       accentColor: "from-amber-500/10 to-amber-600/10",
       iconBg: "bg-amber-500/10",
       iconColor: "text-amber-700 dark:text-amber-400",
@@ -280,7 +313,7 @@ export function SectionCards() {
                 {card.value}
               </CardTitle>
 
-              {/* Delta indicator for Income/Expenses */}
+              {/* Delta indicator for Income/Expenses (not for Balance since it's static) */}
               {(card.kind === "income" || card.kind === "expenses") && (() => {
                 const d = Number(card.delta || 0)
                 const ad = Math.abs(d)
