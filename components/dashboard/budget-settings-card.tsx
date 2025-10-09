@@ -12,8 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check } from "lucide-react"
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
-import { useDateRange } from "@/contexts/date-range-context"
-import { useCurrency } from "@/contexts/currency-context"
+import { useDateRange, useCurrency } from "@/lib/stores"
 
 interface BudgetCategory { key: string; label: string; categoryName: string }
 

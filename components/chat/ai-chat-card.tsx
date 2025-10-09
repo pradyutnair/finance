@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { PromptInputTextarea } from "@/components/ui/prompt-input"
 import { Send, Sparkles } from "lucide-react"
 import { useState, useRef, useEffect, useMemo } from "react"
-import { useAuth } from "@/contexts/auth-context"
+import { useAuth } from "@/lib/stores"
 
 const STORAGE_KEY_PREFIX = "nexpass_ai_chat_v1"
 

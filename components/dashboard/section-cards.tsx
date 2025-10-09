@@ -19,11 +19,9 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { useMetrics } from "@/lib/api"
-import { useDateRange } from "@/contexts/date-range-context"
+import { useDateRange, useCurrency, useMetrics } from "@/lib/stores"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
-import { useCurrency } from "@/contexts/currency-context"
 import { account } from "@/lib/appwrite"
 
 function formatCurrency(amount: number, currency = "EUR"): string {
@@ -55,7 +53,14 @@ export function SectionCards() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { data: metrics, isLoading, error } = useMetrics(dateRangeForAPI)
+  const { metrics, loading, fetchMetrics } = useMetrics()
+  
+  // Fetch metrics when date range changes
+  useEffect(() => {
+    fetchMetrics(dateRangeForAPI)
+  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchMetrics])
+
+  const isLoading = loading
 
   // Auth headers for API calls
   const authHeaders = async (): Promise<HeadersInit> => {
@@ -169,7 +174,7 @@ export function SectionCards() {
     )
   }
 
-  if (error || !metrics) {
+  if (!metrics) {
     return (
       <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
         <Card className="col-span-full p-6">

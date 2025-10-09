@@ -27,11 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useTransactions, useAccounts } from "@/lib/api"
-import { useDateRange } from "@/contexts/date-range-context"
-import { useCurrency } from "@/contexts/currency-context"
-import { useUpdateTransaction } from "@/lib/api"
-import { useAutoCategorize } from "@/lib/api"
+import { useDateRange, useCurrency, useTransactions, useAccounts, useAuth } from "@/lib/stores"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
 
 type TxRow = {
@@ -101,11 +97,16 @@ export function TransactionsTable() {
   const [editingCounterparty, setEditingCounterparty] = useState<{ id: string; value: string } | null>(null)
   const offset = pagination.pageIndex * pagination.pageSize
 
+  const { user, loading: authLoading } = useAuth()
   const { dateRange, formatDateForAPI } = useDateRange()
   const { baseCurrency, convertAmount, getCurrencySymbol, formatAmount } = useCurrency()
-  const updateTx = useUpdateTransaction()
-  const autoCategorize = useAutoCategorize()
-  const { data: accounts } = useAccounts()
+  const { transactions, loading, fetchTransactions, updateTransactionApi, autoCategorize: autoCategorizeStore } = useTransactions()
+  const { accounts, fetchAccounts } = useAccounts()
+  
+  // State for tracking mutation status (like TanStack Query's isPending)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isAutoCategorizing, setIsAutoCategorizing] = useState(false)
+  const [allTxForMatching, setAllTxForMatching] = useState<any[]>([])
 
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -128,15 +129,55 @@ export function TransactionsTable() {
   const fetchLimit = hasActiveFilters ? 100 : pageSize
   const fetchOffset = hasActiveFilters ? 0 : offset
 
-  const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
+  // Fetch visible transactions - only when user is authenticated
+  useEffect(() => {
+    if (user && !authLoading) {
+      fetchTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
+    }
+  }, [user, authLoading, fetchLimit, fetchOffset, apiDateRange?.from, apiDateRange?.to, fetchTransactions])
   
   // Fetch ALL transactions for similarity matching (no date range, no pagination)
   // This ensures we find similar transactions across all time periods
-  const { data: allTransactionsData } = useTransactions({ 
-    all: true, 
-    includeExcluded: true 
-    // Note: No dateRange filter - we want ALL transactions for accurate similarity matching
-  })
+  useEffect(() => {
+    if (user && !authLoading) {
+      const fetchAll = async () => {
+        try {
+          // Import getAuthHeader dynamically to get JWT token
+          const { getAuthHeader } = await import('@/lib/api')
+          const authHeader = await getAuthHeader()
+          
+          const response = await fetch('/api/transactions?all=true&includeExcluded=true', {
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeader,
+            },
+            credentials: 'include',
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            setAllTxForMatching(data.transactions || [])
+          } else {
+            console.error('Failed to fetch all transactions:', response.status, response.statusText)
+          }
+        } catch (error) {
+          console.error('Error fetching all transactions:', error)
+        }
+      }
+      fetchAll()
+    }
+  }, [user, authLoading])
+  
+  // Fetch accounts - only when user is authenticated
+  useEffect(() => {
+    if (user && !authLoading) {
+      fetchAccounts()
+    }
+  }, [user, authLoading, fetchAccounts])
+  
+  const data = { transactions, total: transactions.length }
+  const allTransactionsData = { transactions: allTxForMatching }
+  const isLoading = loading || authLoading
 
   const accountIdToInstitutionId = useMemo(() => {
     const map = new Map<string, string>()
@@ -183,11 +224,18 @@ export function TransactionsTable() {
 
   const bankOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.bankName).filter(Boolean))).sort(), [rows])
 
-  function handleToggleExclude(tx: TxRow) {
-    updateTx.mutate({ id: tx.id, exclude: !tx.exclude })
+  async function handleToggleExclude(tx: TxRow) {
+    setIsUpdating(true)
+    try {
+      await updateTransactionApi({ id: tx.id, exclude: !tx.exclude })
+    } catch (error) {
+      console.error('Failed to toggle exclude:', error)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
-  function handleCategorize(tx: TxRow, category: string) {
+  async function handleCategorize(tx: TxRow, category: string) {
     // Find similar transactions on client-side (where data is decrypted)
     const normalize = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "")
     const targetDesc = normalize(tx.rawDescription)
@@ -211,26 +259,40 @@ export function TransactionsTable() {
     console.log(`[Category Update] Found ${similarTransactionIds.length} similar transactions across all time`)
     console.log(`[Category Update] Total transactions to update: ${similarTransactionIds.length + 1}`)
     
-    updateTx.mutate({ 
-      id: tx.id, 
-      category, 
-      description: tx.rawDescription, 
-      counterparty: tx.counterparty,
-      similarTransactionIds 
-    })
+    setIsUpdating(true)
+    try {
+      await updateTransactionApi({ 
+        id: tx.id, 
+        category, 
+        description: tx.rawDescription, 
+        counterparty: tx.counterparty,
+        similarTransactionIds 
+      })
+    } catch (error) {
+      console.error('Failed to update category:', error)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   function handleStartEditCounterparty(tx: TxRow) {
     setEditingCounterparty({ id: tx.id, value: tx.counterparty || "" })
   }
 
-  function handleSaveCounterparty() {
+  async function handleSaveCounterparty() {
     if (editingCounterparty) {
-      updateTx.mutate({
-        id: editingCounterparty.id,
-        counterparty: editingCounterparty.value.trim() || undefined
-      })
-      setEditingCounterparty(null)
+      setIsUpdating(true)
+      try {
+        await updateTransactionApi({
+          id: editingCounterparty.id,
+          counterparty: editingCounterparty.value.trim() || undefined
+        })
+        setEditingCounterparty(null)
+      } catch (error) {
+        console.error('Failed to update counterparty:', error)
+      } finally {
+        setIsUpdating(false)
+      }
     }
   }
 
@@ -254,13 +316,6 @@ export function TransactionsTable() {
   useEffect(() => {
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }, [columnFilters])
-
-  // Cancel editing when mutation succeeds
-  useEffect(() => {
-    if (updateTx.isSuccess && editingCounterparty) {
-      setEditingCounterparty(null)
-    }
-  }, [updateTx.isSuccess, editingCounterparty])
 
   const columns: ColumnDef<TxRow>[] = useMemo(
     () => [
@@ -525,19 +580,6 @@ export function TransactionsTable() {
     )
   }
 
-  if (error) {
-    return (
-      <div className="border rounded-xl overflow-hidden">
-        <div className="h-64 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-destructive mb-2">⚠️ Failed to load transactions</div>
-            <div className="text-sm text-muted-foreground">Please try refreshing the page</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div
       className="border rounded-xl overflow-hidden shadow-sm bg-card h-full flex flex-col"
@@ -589,11 +631,20 @@ export function TransactionsTable() {
             variant="outline"
             size="sm"
             className="h-9 gap-2"
-            onClick={() => autoCategorize.mutate(undefined)}
-            disabled={autoCategorize.isPending}
+            onClick={async () => {
+              setIsAutoCategorizing(true)
+              try {
+                await autoCategorizeStore()
+              } catch (error) {
+                console.error('Failed to auto-categorize:', error)
+              } finally {
+                setIsAutoCategorizing(false)
+              }
+            }}
+            disabled={isAutoCategorizing}
           >
             <Sparkles className="h-4 w-4" />
-            {autoCategorize.isPending ? "Categorizing..." : "Auto-categorize"}
+            {isAutoCategorizing ? "Categorizing..." : "Auto-categorize"}
           </Button>
 
           <DropdownMenu>

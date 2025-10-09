@@ -4,9 +4,8 @@ import React from "react"
 import { AuthGuard } from "@/components/auth-guard"
 import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
-import { useAccounts, getAuthHeader } from "@/lib/api"
-import { useCurrency } from "@/contexts/currency-context"
-import { DateRangeProvider } from "@/contexts/date-range-context"
+import { getAuthHeader } from "@/lib/api"
+import { useCurrency, useAccounts } from "@/lib/stores"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +18,6 @@ import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
 import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
 import { ChartContainer } from "@/components/ui/chart"
 import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
-import { useQueries } from "@tanstack/react-query"
 import { formatBankName } from "@/components/transactions/transactions-table"
 
 type BankAccountDoc = {
@@ -109,12 +107,20 @@ function AccessGauge({ remainingDays, maxDays }: { remainingDays: number; maxDay
 function AccountCard({ account, forceExpired, groupAccountIds }: { account: BankAccountDoc; forceExpired?: boolean; groupAccountIds?: string[] }) {
   const id = account.accountId || account.$id
   const idsToFetch = (Array.isArray(groupAccountIds) && groupAccountIds.length > 0) ? groupAccountIds : [id]
-
-  const detailQueries = useQueries({
-    queries: idsToFetch.map((accountId) => ({
-      queryKey: ["account-details", accountId],
-      queryFn: async () => {
-        const headers = await getAuthHeader()
+  
+  // Replace useQueries with custom state management
+  const [accountDetails, setAccountDetails] = React.useState<any[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [isFetching, setIsFetching] = React.useState(false)
+  const [isError, setIsError] = React.useState(false)
+  
+  const fetchAccountDetails = React.useCallback(async () => {
+    setIsFetching(true)
+    setIsError(false)
+    
+    try {
+      const headers = await getAuthHeader()
+      const promises = idsToFetch.map(async (accountId) => {
         const res = await fetch(`/api/accounts/${accountId}`, {
           headers: {
             "Content-Type": "application/json",
@@ -126,15 +132,29 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
           throw new Error(`API Error: ${res.status}`)
         }
         return res.json()
-      },
-      staleTime: 60 * 1000,
-    }))
-  })
-  const isLoading = detailQueries.some((q) => q.isLoading)
-  const isFetching = detailQueries.some((q) => q.isFetching)
-  const hasData = detailQueries.some((q) => !!q.data)
-  const isError = !isLoading && !hasData
-  const refetchAll = () => detailQueries.forEach((q) => q.refetch())
+      })
+      
+      const results = await Promise.all(promises)
+      setAccountDetails(results)
+      setIsLoading(false)
+    } catch (error) {
+      console.error('Failed to fetch account details:', error)
+      setIsError(true)
+      setIsLoading(false)
+    } finally {
+      setIsFetching(false)
+    }
+  }, [idsToFetch.join(',')])
+  
+  React.useEffect(() => {
+    fetchAccountDetails()
+  }, [fetchAccountDetails])
+  
+  const refetchAll = () => {
+    fetchAccountDetails()
+  }
+  
+  const hasData = accountDetails.length > 0
   const { formatAmount, convertAmount, baseCurrency } = useCurrency()
 
   // Compute access validity
@@ -201,7 +221,7 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
     )
   }
 
-  const details = detailQueries.map((q) => q.data).filter(Boolean) as any[]
+  const details = accountDetails.filter(Boolean) as any[]
   const perAccountAmounts = details.map((d) => {
     const arr: any[] = Array.isArray((d as any)?.balances?.balances) ? (d as any).balances.balances : []
     const closing = arr.find((b) => (b.balanceType || "").toLowerCase() === "closingbooked")
@@ -323,14 +343,21 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
 }
 
 export default function BanksPage() {
-  const { data: accounts, isLoading } = useAccounts()
+  const { accounts, loading, fetchAccounts } = useAccounts()
   const searchParams = useSearchParams()
   const simulateExpired = (process.env.NEXT_PUBLIC_SIMULATE_EXPIRED === '1') || (searchParams?.get('simulateExpired') === '1')
+  
+  // Fetch accounts on mount
+  React.useEffect(() => {
+    fetchAccounts()
+  }, [fetchAccounts])
+  
+  const isLoading = loading
 
   const grouped = React.useMemo(() => {
     if (!Array.isArray(accounts)) return [] as { representative: BankAccountDoc; ids: string[] }[]
     const map = new Map<string, { representative: BankAccountDoc; ids: string[] }>()
-    for (const acc of (accounts as BankAccountDoc[])) {
+    for (const acc of (accounts as unknown as BankAccountDoc[])) {
       const key = acc.institutionId || `acc:${acc.$id}`
       const id = acc.accountId || acc.$id
       const existing = map.get(key)
@@ -345,18 +372,17 @@ export default function BanksPage() {
 
   return (
     <AuthGuard requireAuth={true}>
-      <DateRangeProvider>
-        <SidebarProvider
-          style={
-            {
-              "--sidebar-width": "calc(var(--spacing) * 72)",
-              "--header-height": "calc(var(--spacing) * 12)",
-            } as React.CSSProperties
-          }
-        >
-          <AppSidebar variant="inset" />
-          <SidebarInset>
-            <SiteHeader />
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "calc(var(--spacing) * 72)",
+            "--header-height": "calc(var(--spacing) * 12)",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar variant="inset" />
+        <SidebarInset>
+          <SiteHeader />
             <div className="flex flex-1 flex-col">
               <div className="@container/main flex flex-1 flex-col gap-2">
                 <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
@@ -440,7 +466,6 @@ export default function BanksPage() {
           </div>
         </SidebarInset>
       </SidebarProvider>
-      </DateRangeProvider>
     </AuthGuard>
   )
 }

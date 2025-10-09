@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth } from '@/contexts/auth-context';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -10,7 +10,7 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
-  const { user, loading } = useAuth();
+  const { user, loading } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {

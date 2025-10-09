@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from "@/contexts/auth-context";
-import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { CurrencyProvider } from "@/contexts/currency-context";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
+import { StoreInitializer } from "@/components/store-initializer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,15 +50,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <QueryProvider>
-            <AuthProvider>
-              <CurrencyProvider>
-                {children}
-                <Toaster />
-                <CookieConsent />
-              </CurrencyProvider>
-            </AuthProvider>
-          </QueryProvider>
+          <StoreInitializer />
+          {children}
+          <Toaster />
+          <CookieConsent />
         </ThemeProvider>
       </body>
     </html>

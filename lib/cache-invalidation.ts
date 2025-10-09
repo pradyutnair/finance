@@ -1,14 +1,12 @@
 /**
  * Centralized cache invalidation utilities
- * Coordinates both server-side (API) and client-side (React Query) cache clearing
+ * Coordinates both server-side (API) and client-side (Zustand store) cache clearing
  */
-
-import { QueryClient } from '@tanstack/react-query';
 
 // Custom event for cache invalidation
 export const CACHE_INVALIDATION_EVENT = 'nexpass:cache-invalidate';
 
-export type CacheInvalidationScope = 'all' | 'transactions' | 'accounts' | 'balances' | 'budgets';
+export type CacheInvalidationScope = 'all' | 'transactions' | 'accounts' | 'balances' | 'budgets' | 'categories' | 'metrics';
 
 export interface CacheInvalidationOptions {
   scope?: CacheInvalidationScope;
@@ -55,10 +53,9 @@ export async function invalidateServerCache(options: CacheInvalidationOptions = 
 }
 
 /**
- * Invalidate React Query caches on the client
+ * Invalidate Zustand store caches on the client
  */
 export async function invalidateClientCache(
-  queryClient: QueryClient,
   options: CacheInvalidationOptions = {}
 ): Promise<boolean> {
   const { scope = 'all', reason = 'manual', silent = false } = options;
@@ -68,38 +65,66 @@ export async function invalidateClientCache(
       console.log(`[Cache] Invalidating client cache (scope: ${scope}, reason: ${reason})`);
     }
 
+    // Import Zustand stores dynamically to avoid circular dependencies
+    const { useTransactionsStore } = await import('@/lib/stores/transactions-store');
+    const { useCategoriesStore } = await import('@/lib/stores/categories-store');
+    const { useAccountsStore } = await import('@/lib/stores/accounts-store');
+    const { useMetricsStore } = await import('@/lib/stores/metrics-store');
+
     // Invalidate based on scope
     switch (scope) {
       case 'all':
-        await queryClient.invalidateQueries();
-        queryClient.clear();
-        // Clear localStorage cache
+        // Invalidate all Zustand stores
+        useTransactionsStore.getState().invalidate();
+        useCategoriesStore.getState().invalidate();
+        useAccountsStore.getState().invalidate();
+        useMetricsStore.getState().invalidate();
+        
+        // Clear Zustand localStorage items
         if (typeof window !== 'undefined') {
-          window.localStorage.removeItem('nexpass_rq_cache_v1');
+          const keysToRemove = [
+            'nexpass-transactions-storage',
+            'nexpass-categories-storage',
+            'nexpass-accounts-storage',
+            'nexpass-metrics-storage',
+          ];
+          keysToRemove.forEach(key => {
+            try {
+              window.localStorage.removeItem(key);
+            } catch (e) {
+              console.warn(`Failed to remove ${key}`, e);
+            }
+          });
         }
         break;
         
       case 'transactions':
-        await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-        await queryClient.invalidateQueries({ queryKey: ['account-transactions'] });
-        await queryClient.invalidateQueries({ queryKey: ['timeseries'] });
-        await queryClient.invalidateQueries({ queryKey: ['metrics'] });
+        useTransactionsStore.getState().invalidate();
+        useMetricsStore.getState().invalidate();
+        useCategoriesStore.getState().invalidate();
         break;
         
       case 'accounts':
-        await queryClient.invalidateQueries({ queryKey: ['accounts'] });
-        await queryClient.invalidateQueries({ queryKey: ['account-details'] });
-        await queryClient.invalidateQueries({ queryKey: ['requisition'] });
+        useAccountsStore.getState().invalidate();
+        useTransactionsStore.getState().invalidate();
         break;
         
       case 'balances':
-        await queryClient.invalidateQueries({ queryKey: ['accounts'] });
-        await queryClient.invalidateQueries({ queryKey: ['metrics'] });
+        useAccountsStore.getState().invalidate();
+        useMetricsStore.getState().invalidate();
         break;
         
       case 'budgets':
-        await queryClient.invalidateQueries({ queryKey: ['budgets'] });
-        await queryClient.invalidateQueries({ queryKey: ['goals'] });
+        // Budgets don't have a dedicated store yet
+        useMetricsStore.getState().invalidate();
+        break;
+        
+      case 'categories':
+        useCategoriesStore.getState().invalidate();
+        break;
+        
+      case 'metrics':
+        useMetricsStore.getState().invalidate();
         break;
     }
     
@@ -119,7 +144,6 @@ export async function invalidateClientCache(
  * Returns an object indicating success/failure for each cache type
  */
 export async function invalidateAllCaches(
-  queryClient: QueryClient,
   options: CacheInvalidationOptions = {}
 ): Promise<{ server: boolean; client: boolean; overall: boolean }> {
   const { scope = 'all', reason = 'manual', silent = false } = options;
@@ -131,7 +155,7 @@ export async function invalidateAllCaches(
   // Invalidate in parallel, but don't let one failure block the other
   const [serverSuccess, clientSuccess] = await Promise.all([
     invalidateServerCache({ scope, reason, silent }),
-    invalidateClientCache(queryClient, { scope, reason, silent }),
+    invalidateClientCache({ scope, reason, silent }),
   ]);
 
   const overall = serverSuccess && clientSuccess;

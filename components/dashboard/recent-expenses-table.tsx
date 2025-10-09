@@ -2,11 +2,10 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useTransactions } from "@/lib/api"
-import { useDateRange } from "@/contexts/date-range-context"
+import { useDateRange, useCurrency, useTransactions } from "@/lib/stores"
 import { TrendingDown, Receipt } from "lucide-react"
-import { useCurrency } from "@/contexts/currency-context"
 import { getCategoryColor } from "@/lib/categories"
+import { useEffect } from "react"
 
 // Currency symbol mapping
 function getCurrencySymbol(currency: string): string {
@@ -46,14 +45,21 @@ export function RecentExpensesTable() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { data: transactionsData, isLoading, error } = useTransactions({ 
-    limit: 10,
-    dateRange: dateRangeForAPI
-  })
+  const { transactions, loading, fetchTransactions } = useTransactions()
+  
+  // Fetch transactions when date range changes
+  useEffect(() => {
+    fetchTransactions({ 
+      limit: 10,
+      dateRange: dateRangeForAPI
+    })
+  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchTransactions])
 
-  const recentExpenses = transactionsData?.transactions
+  const recentExpenses = transactions
     //?.filter((transaction: any) => parseFloat(String(transaction.amount)) < 0)
     ?.slice(0, 7) || []
+  
+  const isLoading = loading
 
   if (isLoading) {
     return (
@@ -79,7 +85,7 @@ export function RecentExpensesTable() {
     )
   }
 
-  if (error || !transactionsData) {
+  if (!transactions || transactions.length === 0) {
     return (
       <Card className="h-full min-h-[400px] max-h-[600px] flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">

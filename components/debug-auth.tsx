@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth } from '@/contexts/auth-context';
+import { useAuth } from '@/lib/stores';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function DebugAuth() {

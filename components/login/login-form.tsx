@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useAuth } from "@/contexts/auth-context";
+import { useAuth } from "@/lib/stores";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export function LoginForm({
   className,
@@ -18,6 +19,7 @@ export function LoginForm({
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, register, loginWithGoogle } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,9 +29,11 @@ export function LoginForm({
       if (isSignUp) {
         await register(email, password, name);
         toast.success('Account created successfully!');
+        router.push('/dashboard');
       } else {
         await login(email, password);
         toast.success('Logged in successfully!');
+        router.push('/dashboard');
       }
     } catch (error: any) {
       toast.error(error.message || 'Authentication failed');

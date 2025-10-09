@@ -1,11 +1,11 @@
 /**
  * React hook for cache invalidation
  * Provides an easy way to invalidate caches from any component
+ * Updated to work with Zustand stores instead of React Query
  */
 
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import {
   invalidateAllCaches,
@@ -30,7 +30,7 @@ export interface UseCacheInvalidationResult {
   invalidateServer: (options?: CacheInvalidationOptions) => Promise<boolean>;
   
   /**
-   * Invalidate only client-side React Query caches
+   * Invalidate only client-side Zustand store caches
    * Returns true if successful, false otherwise
    */
   invalidateClient: (options?: CacheInvalidationOptions) => Promise<boolean>;
@@ -43,13 +43,11 @@ export interface UseCacheInvalidationResult {
 }
 
 export function useCacheInvalidation(): UseCacheInvalidationResult {
-  const queryClient = useQueryClient();
-
   const invalidateAll = useCallback(
     async (options?: CacheInvalidationOptions) => {
-      return await invalidateAllCaches(queryClient, options);
+      return await invalidateAllCaches(options);
     },
-    [queryClient]
+    []
   );
 
   const invalidateServer = useCallback(
@@ -61,20 +59,20 @@ export function useCacheInvalidation(): UseCacheInvalidationResult {
 
   const invalidateClient = useCallback(
     async (options?: CacheInvalidationOptions) => {
-      return await invalidateClientCache(queryClient, options);
+      return await invalidateClientCache(options);
     },
-    [queryClient]
+    []
   );
 
   const invalidateAfterBankConnection = useCallback(
     async () => {
-      return await invalidateAllCaches(queryClient, {
+      return await invalidateAllCaches({
         scope: 'all',
         reason: 'bank-connection',
         silent: false,
       });
     },
-    [queryClient]
+    []
   );
 
   return {
