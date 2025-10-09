@@ -92,14 +92,18 @@ export function ChartAreaInteractive() {
 
     const dataMap = new Map<number, { expenses: number; income: number }>();
     data?.forEach((d: TimeseriesPoint) => {
-      const dt = new Date(d.date);
-      dt.setHours(0, 0, 0, 0);
+      // Parse date correctly - API returns YYYY-MM-DD strings
+      // Create date at midnight local time to match our from/to/today
+      const [year, month, day] = d.date.split('-').map(Number);
+      const dt = new Date(year, month - 1, day, 0, 0, 0, 0);
       const key = dt.getTime();
       dataMap.set(key, {
         expenses: convertAmount(d.expenses || 0, 'EUR', baseCurrency),
         income: convertAmount(d.income || 0, 'EUR', baseCurrency),
       });
     });
+
+    console.log("Data Map:", dataMap);
 
     const getValueForDate = (dt: Date, metric: Metric): number => {
       const key = dt.getTime();
@@ -115,28 +119,35 @@ export function ChartAreaInteractive() {
     const chartData: ChartDatum[] = chartDates.map((dt) => {
       const isProjected = dt > today;
       const value = isProjected ? 0 : getValueForDate(dt, metric);
+      // Format date as YYYY-MM-DD for consistent display (avoid timezone issues)
+      const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
       return {
-        date: dt.toISOString(),
+        date: dateStr,
         value,
         isProjected,
         cumulative: 0,
       };
     });
 
+    // Calculate run rate once for projected dates (if needed)
+    let runRate = 0;
+    if ((metric === 'expenses' || metric === 'savings') && chartData.some(d => d.isProjected)) {
+      const elapsedEnd = new Date(Math.min(today.getTime(), to.getTime()));
+      const elapsedDates = getAllDates(from, elapsedEnd);
+      const D_elapsed = elapsedDates.length;
+      let S_actual = 0;
+      elapsedDates.forEach((dt) => {
+        S_actual += getValueForDate(dt, metric);
+      });
+      runRate = D_elapsed >= 3 ? S_actual / D_elapsed : 0;
+    }
 
+    // Calculate cumulative values
     let cum = 0;
     chartData.forEach((d) => {
-      // For future dates, optionally show a projected cumulative using
-      // the last observed daily average. Keep bars at zero.
+      // For future dates, use the run rate to project cumulative
+      // Keep bar values at zero for future dates
       if (d.isProjected && (metric === 'expenses' || metric === 'savings')) {
-        const elapsedEnd = new Date(Math.min(today.getTime(), to.getTime()));
-        const elapsedDates = getAllDates(from, elapsedEnd);
-        const D_elapsed = elapsedDates.length;
-        let S_actual = 0;
-        elapsedDates.forEach((dt) => {
-          S_actual += getValueForDate(dt, metric);
-        });
-        const runRate = D_elapsed >= 3 ? S_actual / D_elapsed : 0;
         cum += runRate;
       } else {
         cum += d.value;
@@ -144,12 +155,29 @@ export function ChartAreaInteractive() {
       d.cumulative = cum;
     });
 
+    // For expenses and savings, split cumulative into actual and projected lines
     if (metric === 'expenses' || metric === 'savings') {
+      const hasProjected = chartData.some(d => d.isProjected);
       const lastActualIndex = chartData.findLastIndex((d) => !d.isProjected);
+      
       if (lastActualIndex >= 0) {
         chartData.forEach((d, i) => {
-          d.actualCum = i <= lastActualIndex ? d.cumulative : null;
-          d.projectedCum = i >= lastActualIndex ? d.cumulative : null;
+          if (hasProjected) {
+            // When there are projected dates, split the lines
+            d.actualCum = i <= lastActualIndex ? d.cumulative : null;
+            // Projected line starts from the last actual point to ensure continuity
+            d.projectedCum = i >= lastActualIndex ? d.cumulative : null;
+          } else {
+            // When all dates are actual (no future dates), only show actualCum
+            d.actualCum = d.cumulative;
+            d.projectedCum = null;
+          }
+        });
+      } else {
+        // No actual data, all projected
+        chartData.forEach((d) => {
+          d.actualCum = null;
+          d.projectedCum = d.cumulative;
         });
       }
     }
@@ -187,8 +215,9 @@ export function ChartAreaInteractive() {
 
     const dataMap = new Map<number, { expenses: number; income: number }>()
     data?.forEach((d: TimeseriesPoint) => {
-      const dt = new Date(d.date)
-      dt.setHours(0, 0, 0, 0)
+      // Parse date correctly - API returns YYYY-MM-DD strings
+      const [year, month, day] = d.date.split('-').map(Number);
+      const dt = new Date(year, month - 1, day, 0, 0, 0, 0);
       const key = dt.getTime()
       dataMap.set(key, {
         expenses: convertAmount(d.expenses || 0, 'EUR', baseCurrency),
@@ -225,24 +254,72 @@ export function ChartAreaInteractive() {
 
   const renderChart = () => {
     if (metric === "savings") {
-      const doProject = current.some((d: ChartDatum) => d.isProjected)
-      const lastPoint = current[current.length - 1]
-      
-      // Calculate proper Y-axis domain for better scaling
-      const allValues = current.map(d => d.cumulative).filter(v => !isNaN(v))
-      const minValue = Math.min(...allValues)
-      const maxValue = Math.max(...allValues)
-      const padding = Math.max(100, (maxValue - minValue) * 0.1) // 10% padding or minimum 100 units
-      const domain = [Math.max(0, minValue - padding), maxValue + padding]
-      
       return (
-        <ComposedChart accessibilityLayer data={current} margin={{ left: 12, right: 12 }}>
+        <AreaChart accessibilityLayer data={current} margin={{ left: 12, right: 12 }}>
           <defs>
             <linearGradient id="fillSavings" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.8} />
               <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.1} />
             </linearGradient>
           </defs>
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            minTickGap={32}
+            tickFormatter={(value) => {
+              const date = new Date(value)
+              return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+            }}
+          />
+          <ChartTooltip
+            cursor={false}
+            content={({ label, payload }) => {
+              if (!payload?.length) return null
+
+              const v = payload[0].value as number
+              const formattedValue = nf.format(v)
+
+              const formattedDate = new Date(label).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+
+              return (
+              <div className="rounded-lg bg-popover p-2 shadow-md">
+                <div className="font-bold text-xl text-foreground">
+                  {formattedValue}
+                </div>
+                <div className="text-xs text-muted-foreground">{formattedDate}</div>
+              </div>
+              )
+            }}
+          />
+          <Area
+            dataKey="cumulative"
+            type="natural"
+            fill="url(#fillSavings)"
+            stroke="var(--chart-1)"
+            strokeWidth={2}
+          />
+        </AreaChart>
+      )
+    }
+
+    if (metric === "expenses") {
+      // Use simple bar chart like income - test if ComposedChart is the issue
+      const allValues = current.map(d => d.value).filter(v => !isNaN(v) && v !== null)
+      const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
+      const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
+      const range = maxValue - minValue
+      const padding = Math.max(50, range * 0.1)
+      const domain = [Math.max(0, minValue - padding), maxValue + padding]
+      
+      return (
+        <BarChart accessibilityLayer data={current} margin={{ left: 12, right: 12 }}>
           <CartesianGrid vertical={false} />
           <XAxis
             dataKey="date"
@@ -268,151 +345,14 @@ export function ChartAreaInteractive() {
               if (!payload?.length) return null
 
               const data = payload[0].payload
-              const v = data.cumulative as number
-              const isProjected = data.isProjected
-
-              const formattedValue = nf.format(v)
-              const labelPrefix = isProjected ? "Projected: " : ""
-
-              const formattedDate = new Date(label).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-
-              return (
-                <div className="rounded-lg bg-popover p-2 shadow-md">
-                  <div className="font-bold text-2xl text-foreground">
-                    {labelPrefix}{formattedValue}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{formattedDate}</div>
-                </div>
-              )
-            }}
-          />
-          <Area
-            type="natural"
-            dataKey="actualCum"
-            fill="url(#fillSavings)"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-          />
-          <Line
-            type="natural"
-            dataKey="projectedCum"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={false}
-          />
-          {doProject && (
-            <Scatter
-              data={[lastPoint]}
-              dataKey="cumulative"
-              shape={(props: any) => {
-                const {
-                  cx,
-                  cy,
-                  onMouseEnter,
-                  onMouseLeave,
-                  onClick,
-                  className,
-                  style,
-                  transform,
-                  clipPath,
-                  opacity,
-                } = props;
-                return (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={4}
-                    fill="var(--chart-1)"
-                    stroke="#fff"
-                    strokeWidth={1}
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
-                    onClick={onClick}
-                    className={className}
-                    style={style}
-                    transform={transform}
-                    clipPath={clipPath}
-                    opacity={opacity}
-                  />
-                );
-              }}
-              legendType="none"
-            />
-          )}
-        </ComposedChart>
-      )
-    }
-
-    if (metric === "expenses") {
-      const barKey = (d: ChartDatum): number | null => d.isProjected ? 0 : d.value
-      const doProject = current.some((d: ChartDatum) => d.isProjected)
-      const lastPoint = current[current.length - 1]
-      
-      // Calculate proper Y-axis domains for better scaling
-      const allValues = current.map(d => d.value).filter(v => !isNaN(v) && v !== null)
-      const allCumulative = current.map(d => d.cumulative).filter(v => !isNaN(v))
-      const minValue = Math.min(...allValues)
-      const maxValue = Math.max(...allValues)
-      const minCumulative = Math.min(...allCumulative)
-      const maxCumulative = Math.max(...allCumulative)
-      
-      const valuePadding = Math.max(50, (maxValue - minValue) * 0.1)
-      const cumPadding = Math.max(100, (maxCumulative - minCumulative) * 0.1)
-      
-      const valueDomain = [Math.max(0, minValue - valuePadding), maxValue + valuePadding]
-      const cumDomain = [Math.max(0, minCumulative - cumPadding), maxCumulative + cumPadding]
-      
-      return (
-        <ComposedChart accessibilityLayer data={current} margin={{ left: 12, right: 12 }}>
-          <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="date"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            minTickGap={32}
-            tickFormatter={(value) => {
-              const date = new Date(value)
-              return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-            }}
-          />
-          <YAxis
-            yAxisId="left"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            domain={valueDomain}
-            tickFormatter={(value) => nf.format(value)}
-          />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            domain={cumDomain}
-            tickFormatter={(value) => nf.format(value)}
-          />
-          <ChartTooltip
-            cursor={false}
-            content={({ label, payload }) => {
-              if (!payload?.length) return null
-
-              const data = payload[0].payload
               const dailyV = data.value as number
               const cumV = data.cumulative as number
               const isProjected = data.isProjected
 
               const formattedDaily = nf.format(dailyV)
               const formattedCum = nf.format(cumV)
-              const labelPrefix = isProjected ? "Projected " : ""
               const tooltipContent = isProjected 
-                ? `${labelPrefix}Total: ${formattedCum}`
+                ? `Projected Total: ${formattedCum}`
                 : `Daily: ${formattedDaily}\nCumulative: ${formattedCum}`
 
               const formattedDate = new Date(label).toLocaleDateString("en-US", {
@@ -432,77 +372,20 @@ export function ChartAreaInteractive() {
             }}
           />
           <Bar
-            dataKey={barKey}
+            dataKey="value"
             fill="var(--chart-1)"
             radius={0}
-            yAxisId="left"
           />
-          <Line
-            type="monotone"
-            dataKey="actualCum"
-            stroke="var(--chart-2)"
-            strokeWidth={2}
-            dot={false}
-            yAxisId="right"
-          />
-          <Line
-            type="monotone"
-            dataKey="projectedCum"
-            stroke="var(--chart-2)"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={false}
-            yAxisId="right"
-          />
-          {doProject && (
-            <Scatter
-              data={[lastPoint]}
-              dataKey="cumulative"
-              yAxisId="right"
-              shape={(props: any) => {
-                const {
-                  cx,
-                  cy,
-                  onMouseEnter,
-                  onMouseLeave,
-                  onClick,
-                  className,
-                  style,
-                  transform,
-                  clipPath,
-                  opacity,
-                } = props;
-                return (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={4}
-                    fill="var(--chart-2)"
-                    stroke="#fff"
-                    strokeWidth={1}
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
-                    onClick={onClick}
-                    className={className}
-                    style={style}
-                    transform={transform}
-                    clipPath={clipPath}
-                    opacity={opacity}
-                  />
-                );
-              }}
-              legendType="none"
-            />
-          )}
-        </ComposedChart>
+        </BarChart>
       )
     }
 
     // Income - standard bar chart
-    const allValues = current.map(d => d.value).filter(v => !isNaN(v))
-    const minValue = Math.min(...allValues)
-    const maxValue = Math.max(...allValues)
-    const padding = Math.max(50, (maxValue - minValue) * 0.1)
+    const allValues = current.map(d => d.value).filter(v => !isNaN(v) && v !== null)
+    const minValue = allValues.length > 0 ? Math.min(...allValues) : 0
+    const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
+    const range = maxValue - minValue
+    const padding = Math.max(50, range * 0.1)
     const domain = [Math.max(0, minValue - padding), maxValue + padding]
     
     return (
