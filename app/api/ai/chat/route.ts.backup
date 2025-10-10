@@ -1,0 +1,337 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import { requireAuthUser } from "@/lib/auth";
+import OpenAI from "openai";
+import { getUserTransactionCache } from "@/lib/server/cache-service";
+import { databases } from "@/lib/appwrite";
+
+type AuthUser = { $id?: string; id?: string };
+
+// Get transactions from MongoDB via cache service (handles encryption)
+async function getTransactions(userId: string, days: number = 90) {
+  const msDay = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const from = new Date(now.getTime() - (days - 1) * msDay);
+  
+  const allTransactions = await getUserTransactionCache(userId, databases);
+  
+  // Filter by date range
+  const transactions = allTransactions.filter((tx: any) => {
+    if (!tx.bookingDate) return false;
+    const txDate = new Date(tx.bookingDate);
+    return txDate >= from && txDate <= now;
+  });
+
+  return transactions;
+}
+
+// Analyze spending patterns and trends
+function analyzeSpendingPatterns(transactions: any[]) {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+  // Split into current and previous 30-day periods
+  const current30Days = transactions.filter(tx => {
+    const date = new Date(tx.bookingDate);
+    return date >= thirtyDaysAgo && date <= now;
+  });
+
+  const previous30Days = transactions.filter(tx => {
+    const date = new Date(tx.bookingDate);
+    return date >= sixtyDaysAgo && date < thirtyDaysAgo;
+  });
+
+  // Calculate category spending
+  const currentByCategory: Record<string, number> = {};
+  const previousByCategory: Record<string, number> = {};
+
+  current30Days.forEach(tx => {
+    const amount = Math.abs(Number(tx.amount || 0));
+    if (amount > 0 && Number(tx.amount) < 0) {
+      const cat = tx.category || 'Uncategorized';
+      currentByCategory[cat] = (currentByCategory[cat] || 0) + amount;
+    }
+  });
+
+  previous30Days.forEach(tx => {
+    const amount = Math.abs(Number(tx.amount || 0));
+    if (amount > 0 && Number(tx.amount) < 0) {
+      const cat = tx.category || 'Uncategorized';
+      previousByCategory[cat] = (previousByCategory[cat] || 0) + amount;
+    }
+  });
+
+  // Calculate trends
+  const trends: Record<string, { current: number; previous: number; change: number; changePercent: number }> = {};
+  
+  const allCategories = new Set([...Object.keys(currentByCategory), ...Object.keys(previousByCategory)]);
+  
+  allCategories.forEach(cat => {
+    const curr = currentByCategory[cat] || 0;
+    const prev = previousByCategory[cat] || 0;
+    const change = curr - prev;
+    const changePercent = prev > 0 ? (change / prev) * 100 : (curr > 0 ? 100 : 0);
+    
+    trends[cat] = { current: curr, previous: prev, change, changePercent };
+  });
+
+  return { trends, currentByCategory, previousByCategory };
+}
+
+// Predict end-of-month spending
+function predictEndOfMonth(transactions: any[]) {
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  const monthTransactions = transactions.filter(tx => {
+    const date = new Date(tx.bookingDate);
+    return date >= firstOfMonth && date <= now;
+  });
+
+  let totalSpent = 0;
+  const byCategory: Record<string, number> = {};
+
+  monthTransactions.forEach(tx => {
+    const amount = Number(tx.amount || 0);
+    if (amount < 0) {
+      const abs = Math.abs(amount);
+      totalSpent += abs;
+      const cat = tx.category || 'Uncategorized';
+      byCategory[cat] = (byCategory[cat] || 0) + abs;
+    }
+  });
+
+  const daysElapsed = Math.max(1, Math.floor((now.getTime() - firstOfMonth.getTime()) / (24 * 60 * 60 * 1000)));
+  const daysInMonth = lastOfMonth.getDate();
+  const daysRemaining = daysInMonth - daysElapsed;
+
+  const dailyAverage = totalSpent / daysElapsed;
+  const projectedTotal = totalSpent + (dailyAverage * daysRemaining);
+
+  // Project by category
+  const projectedByCategory: Record<string, number> = {};
+  Object.entries(byCategory).forEach(([cat, spent]) => {
+    const dailyCatAvg = spent / daysElapsed;
+    projectedByCategory[cat] = spent + (dailyCatAvg * daysRemaining);
+  });
+
+  return {
+    currentSpent: totalSpent,
+    projectedTotal,
+    dailyAverage,
+    daysElapsed,
+    daysRemaining,
+    byCategory,
+    projectedByCategory
+  };
+}
+
+// Find unusual spending
+function findAnomalies(transactions: any[]) {
+  const byCategory: Record<string, number[]> = {};
+  
+  transactions.forEach(tx => {
+    const amount = Math.abs(Number(tx.amount || 0));
+    if (amount > 0 && Number(tx.amount) < 0) {
+      const cat = tx.category || 'Uncategorized';
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(amount);
+    }
+  });
+
+  const anomalies: any[] = [];
+
+  Object.entries(byCategory).forEach(([cat, amounts]) => {
+    if (amounts.length < 5) return; // Need enough data
+    
+    const mean = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const variance = amounts.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / amounts.length;
+    const stdDev = Math.sqrt(variance);
+    
+    transactions.forEach(tx => {
+      if (tx.category === cat && Number(tx.amount) < 0) {
+        const amount = Math.abs(Number(tx.amount));
+        if (amount > mean + (2 * stdDev)) {
+          anomalies.push({
+            date: tx.bookingDate,
+            category: cat,
+            amount,
+            description: tx.description,
+            counterparty: tx.counterparty,
+            zScore: (amount - mean) / stdDev
+          });
+        }
+      }
+    });
+  });
+
+  return anomalies.sort((a, b) => b.zScore - a.zScore).slice(0, 5);
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const userMessage: string = body?.message || "";
+    if (!userMessage || typeof userMessage !== "string") {
+      return NextResponse.json({ ok: false, error: "Missing message" }, { status: 400 });
+    }
+
+    const user = (await requireAuthUser(request)) as AuthUser;
+    const userId = (user.$id ?? user.id) as string;
+
+    // Get transactions from MongoDB (encrypted, via cache service)
+    const transactions = await getTransactions(userId, 90);
+    
+    // Run analytics
+    const patterns = analyzeSpendingPatterns(transactions);
+    const prediction = predictEndOfMonth(transactions);
+    const anomalies = findAnomalies(transactions);
+
+    // Calculate key metrics
+    const last30Days = transactions.filter(tx => {
+      if (!tx.bookingDate) return false;
+      const date = new Date(tx.bookingDate);
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      return date >= thirtyDaysAgo;
+    });
+
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    
+    last30Days.forEach(tx => {
+      const amount = Number(tx.amount || 0);
+      if (amount > 0) totalIncome += amount;
+      else totalExpenses += Math.abs(amount);
+    });
+
+    const currency = transactions[0]?.currency || 'EUR';
+    const fmt = new Intl.NumberFormat('en', { style: 'currency', currency }).format;
+
+    // Prepare context for AI
+    const financialContext = {
+      last30Days: {
+        income: totalIncome,
+        expenses: totalExpenses,
+        net: totalIncome - totalExpenses,
+        transactionCount: last30Days.length
+      },
+      topCategories: Object.entries(patterns.currentByCategory)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .map(([cat, amount]) => ({ category: cat, amount })),
+      trends: Object.entries(patterns.trends)
+        .filter(([, data]) => Math.abs(data.changePercent) > 10)
+        .sort(([, a], [, b]) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+        .slice(0, 5)
+        .map(([cat, data]) => ({
+          category: cat,
+          current: data.current,
+          previous: data.previous,
+          changePercent: data.changePercent
+        })),
+      prediction: {
+        currentMonthSpent: prediction.currentSpent,
+        projectedEndOfMonth: prediction.projectedTotal,
+        dailyAverage: prediction.dailyAverage,
+        daysRemaining: prediction.daysRemaining,
+        topProjectedCategories: Object.entries(prediction.projectedByCategory)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 3)
+          .map(([cat, amount]) => ({ category: cat, projectedAmount: amount }))
+      },
+      unusualSpending: anomalies.slice(0, 3).map(a => ({
+        date: a.date,
+        category: a.category,
+        amount: a.amount,
+        description: a.description
+      })),
+      currency
+    };
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const systemPrompt = `You are a personal finance assistant with access to the user's real transaction data and analytics.
+
+Financial Context (last 30 days):
+- Income: ${fmt(financialContext.last30Days.income)}
+- Expenses: ${fmt(financialContext.last30Days.expenses)}
+- Net: ${fmt(financialContext.last30Days.net)}
+- Transactions: ${financialContext.last30Days.transactionCount}
+
+Top Spending Categories:
+${financialContext.topCategories.map(c => `- ${c.category}: ${fmt(c.amount)}`).join('\n')}
+
+Spending Trends (vs previous 30 days):
+${financialContext.trends.map(t => `- ${t.category}: ${t.changePercent > 0 ? '+' : ''}${t.changePercent.toFixed(1)}% (${fmt(t.current)} vs ${fmt(t.previous)})`).join('\n')}
+
+End-of-Month Projection:
+- Current month spent: ${fmt(financialContext.prediction.currentMonthSpent)}
+- Projected total: ${fmt(financialContext.prediction.projectedEndOfMonth)}
+- Daily average: ${fmt(financialContext.prediction.dailyAverage)}
+- Days remaining: ${financialContext.prediction.daysRemaining}
+- Top projected: ${financialContext.prediction.topProjectedCategories.map(c => `${c.category} (${fmt(c.projectedAmount)})`).join(', ')}
+
+${financialContext.unusualSpending.length > 0 ? `Unusual Transactions:
+${financialContext.unusualSpending.map(a => `- ${a.date}: ${fmt(a.amount)} at ${a.description || a.category}`).join('\n')}` : ''}
+
+Guidelines:
+- Be EXTREMELY concise and direct
+- For simple questions (e.g., "how much did I spend?"), give ONE sentence or even just a number
+- For data requests, cite the actual number immediately
+- Only elaborate if explicitly asked or the situation is concerning
+- Use currency symbols (${currency})
+- Default to brevity: 1 sentence for simple queries, 2-3 for complex analysis`;
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userMessage }
+    ];
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const send = (s: string) => controller.enqueue(encoder.encode(`data: ${s}\n\n`));
+        
+        try {
+          const completion = await openai.chat.completions.create({
+            model,
+            messages,
+            stream: true,
+          });
+
+          for await (const part of completion) {
+            const delta = part.choices?.[0]?.delta?.content;
+            if (delta) send(delta);
+          }
+          
+          send("[DONE]");
+          controller.close();
+        } catch (err: any) {
+          console.error('AI streaming error:', err);
+          send(`I'm having trouble right now. Your spending is ${fmt(totalExpenses)} over the last 30 days. Top category: ${financialContext.topCategories[0]?.category} at ${fmt(financialContext.topCategories[0]?.amount)}.`);
+          send("[DONE]");
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      }
+    });
+
+  } catch (error: any) {
+    console.error("AI chat route error:", error);
+    const status = error?.status || 500;
+    return NextResponse.json({ ok: false, error: error?.message || "Internal Server Error" }, { status });
+  }
+}
