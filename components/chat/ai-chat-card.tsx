@@ -29,7 +29,7 @@ const createGreeting = () => ({
   timestamp: Date.now(),
   suggestions: [
     "How much did I spend last month?",
-    "What's my biggest expense category?",
+    "Can I afford a new phone worth 2000 euros?",
     "Will I exceed my budget this month?",
     "Show me unusual spending",
   ]
