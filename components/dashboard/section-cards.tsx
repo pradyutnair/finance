@@ -55,36 +55,16 @@ export function SectionCards() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { metrics, loading, fetchMetrics } = useMetrics()
-  const [latestBalance, setLatestBalance] = useState<number | null>(null)
-  const [balanceLoading, setBalanceLoading] = useState(true)
+
+  // Fetch metrics with date range using TanStack Query
+  const { data: metrics, isLoading: metricsLoading, error: metricsError } = useMetrics(dateRangeForAPI)
   
-  // Fetch metrics when date range changes
-  useEffect(() => {
-    fetchMetrics(dateRangeForAPI)
-  }, [dateRangeForAPI?.from, dateRangeForAPI?.to, fetchMetrics])
+  // Fetch latest balance independently (no date filter) using TanStack Query
+  const { data: balanceData, isLoading: balanceLoading } = useMetrics(undefined)
+  const latestBalance = balanceData?.balance ?? null
 
-  // Fetch latest balance independently (no date filter)
-  useEffect(() => {
-    const fetchLatestBalance = async () => {
-      try {
-        const response = await fetch('/api/metrics', { 
-          headers: await authHeaders() 
-        })
-        if (response.ok) {
-          const data = await response.json()
-          setLatestBalance(data.balance || 0)
-        }
-      } catch (error) {
-        console.error('Failed to fetch latest balance:', error)
-      } finally {
-        setBalanceLoading(false)
-      }
-    }
-    fetchLatestBalance()
-  }, [])
-
-  const isLoading = loading
+  const isLoading = metricsLoading
+  const error = metricsError
 
   // Auth headers for API calls
   const authHeaders = async (): Promise<HeadersInit> => {
