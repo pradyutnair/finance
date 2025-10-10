@@ -4,6 +4,7 @@ import * as React from "react"
 import { Bar, BarChart, Line, LineChart, ComposedChart, CartesianGrid, XAxis, YAxis, Scatter, Area, AreaChart } from "recharts"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useTimeseries } from "@/lib/api"
 import {
   Card,
   CardAction,
@@ -67,7 +68,6 @@ function endOfMonth(date: Date): Date {
 export function ChartAreaInteractive() {
   const isMobile = useIsMobile()
   const [metric, setMetric] = React.useState<Metric>("expenses")
-  const { useTimeseries } = require("@/lib/api")
   const { useDateRange } = require("@/contexts/date-range-context")
   const { useCurrency } = require("@/contexts/currency-context")
   const { dateRange, formatDateForAPI } = useDateRange()
@@ -298,140 +298,6 @@ export function ChartAreaInteractive() {
             stroke="var(--chart-1)"
             strokeWidth={2}
           />
-        </AreaChart>
-      )
-    }
-
-    if (metric === "expenses") {
-      // ComposedChart with bars (daily) and line (cumulative actual only, no projection)
-      const allBarValues = current.map(d => d.value).filter(v => !isNaN(v) && v !== null)
-      const allCumValues = current.map(d => d.actualCum).filter(v => v != null && !isNaN(v)) as number[]
-      
-      const minBarValue = allBarValues.length > 0 ? Math.min(...allBarValues) : 0
-      const maxBarValue = allBarValues.length > 0 ? Math.max(...allBarValues) : 0
-      const barRange = maxBarValue - minBarValue
-      const barPadding = Math.max(50, barRange * 0.1)
-      const barDomain = [Math.max(0, minBarValue - barPadding), maxBarValue + barPadding]
-      
-      const minCumValue = allCumValues.length > 0 ? Math.min(...allCumValues) : 0
-      const maxCumValue = allCumValues.length > 0 ? Math.max(...allCumValues) : 0
-      const cumRange = maxCumValue - minCumValue
-      const cumPadding = Math.max(100, cumRange * 0.1)
-      const cumDomain = [Math.max(0, minCumValue - cumPadding), maxCumValue + cumPadding]
-      
-      return (
-        <ComposedChart accessibilityLayer data={current} margin={{ left: 12, right: 12 }}>
-          <CartesianGrid vertical={false} />
-          <XAxis
-            dataKey="date"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            minTickGap={32}
-            tickFormatter={(value) => {
-              const date = new Date(value)
-              return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-            }}
-          />
-          <YAxis
-            yAxisId="left"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            domain={barDomain}
-            tickFormatter={(value) => nf.format(value)}
-          />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            domain={cumDomain}
-            tickFormatter={(value) => nf.format(value)}
-          />
-          <ChartTooltip
-            cursor={false}
-            content={({ label, payload }) => {
-              if (!payload?.length) return null
-
-              const data = payload[0].payload
-              const v = data.cumulative as number
-              const isProjected = data.isProjected
-
-              const formattedValue = nf.format(v)
-              const labelPrefix = isProjected ? "Projected: " : ""
-
-              const formattedDate = new Date(label).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-
-              return (
-                <div className="rounded-lg bg-popover p-2 shadow-md">
-                  <div className="font-bold text-2xl text-foreground">
-                    {labelPrefix}{formattedValue}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{formattedDate}</div>
-                </div>
-              )
-            }}
-          />
-          <Area
-            type="natural"
-            dataKey="actualCum"
-            fill="url(#fillSavings)"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-          />
-          <Line
-            type="natural"
-            dataKey="projectedCum"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={false}
-          />
-          {doProject && (
-            <Scatter
-              data={[lastPoint]}
-              dataKey="cumulative"
-              shape={(props: any) => {
-                const {
-                  cx,
-                  cy,
-                  onMouseEnter,
-                  onMouseLeave,
-                  onClick,
-                  className,
-                  style,
-                  transform,
-                  clipPath,
-                  opacity,
-                } = props;
-                return (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={4}
-                    fill="var(--chart-1)"
-                    stroke="#fff"
-                    strokeWidth={1}
-                    onMouseEnter={onMouseEnter}
-                    onMouseLeave={onMouseLeave}
-                    onClick={onClick}
-                    className={className}
-                    style={style}
-                    transform={transform}
-                    clipPath={clipPath}
-                    opacity={opacity}
-                  />
-                );
-              }}
-              legendType="none"
-            />
-          )}
         </ComposedChart>
       )
     }
@@ -523,7 +389,6 @@ export function ChartAreaInteractive() {
             dataKey="value"
             fill="var(--chart-1)"
             radius={0}
-            yAxisId="left"
           />
           <Line
             yAxisId="right"
