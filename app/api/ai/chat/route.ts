@@ -426,6 +426,8 @@ IMPORTANT: After answering, you MUST also suggest 2 smart follow-up questions th
 - If you gave data/analysis → suggest deeper dives (e.g., ["Top merchants", "Compare to last month"])
 - Keep each under 6 words, actionable, and natural
 - Avoid repeating what was just discussed
+- Never include the options list or suggestions in the main answer. Only return them in the suggestions.
+- Include question marks and ask politely. Don't ask multiple questions, only one per reply.
 
 Your response must be in this JSON format:
 {

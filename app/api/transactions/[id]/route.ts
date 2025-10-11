@@ -5,7 +5,6 @@ import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
 import { getDb } from "@/lib/mongo/client"
-import { ObjectId } from "mongodb"
 import { encryptTransactionUpdateFields } from "@/lib/mongo/explicit-encryption"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -44,8 +43,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       let modifiedCount = 0
       
       for (const txId of allIds) {
+        // MongoDB uses string IDs (not ObjectId) for transactions
+        // IDs are generated from transaction_id in the sync function
         const result = await coll.updateOne(
-          { _id: new ObjectId(txId), userId },
+          { _id: txId, userId },
           { $set: encryptedUpdatePayload }
         )
         matchedCount += result.matchedCount

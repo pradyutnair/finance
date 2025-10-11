@@ -5,7 +5,6 @@ import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
 import { getDb } from "@/lib/mongo/client"
-import { ObjectId } from "mongodb"
 import { encryptTransactionUpdateFields } from "@/lib/mongo/explicit-encryption"
 
 export async function PATCH(request: Request) {
@@ -27,8 +26,9 @@ export async function PATCH(request: Request) {
     const db = await getDb()
     const coll = db.collection('transactions_dev')
     
+    // MongoDB uses string IDs (not ObjectId) for transactions
     const result = await coll.updateMany(
-      { _id: { $in: transactionIds.map(id => new ObjectId(id)) }, userId },
+      { _id: { $in: transactionIds }, userId },
       { $set: encryptedUpdatePayload }
     )
     
