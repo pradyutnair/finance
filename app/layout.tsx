@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
@@ -7,6 +7,12 @@ import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CurrencyProvider } from "@/contexts/currency-context";
 import { CookieConsent } from "@/components/gdpr/cookie-consent";
+
+const inter = Inter({
+  variable: "--font-host-grotesk",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +50,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} antialiased font-sans`}
+        style={{ fontFamily: "var(--font-host-grotesk), system-ui, sans-serif" }}
       >
         <ThemeProvider
           attribute="class"
