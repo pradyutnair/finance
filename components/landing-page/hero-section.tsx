@@ -3,6 +3,7 @@
 import { ContainerScroll } from '@/components/ui/container-scroll-animation';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 
 export function HeroSection() {
@@ -135,7 +136,7 @@ export function HeroSection() {
   return (
     <div className="flex flex-col overflow-hidden bg-transparent relative min-h-screen" data-hero-section>
       {/* Content overlay */}
-      <div className="relative z-10 flex flex-col pt-2">
+      <div className="relative z-10 flex flex-col pt-2" style={{ minHeight: "78vh" }}>
         <ContainerScroll
           titleComponent={
             <div className="flex flex-col items-center justify-center pt-2 pb-4">
@@ -150,16 +151,24 @@ export function HeroSection() {
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
                   color: 'transparent',
-                  WebkitTextStroke: '1px white', // adds white border
+                  WebkitTextStroke: '1px white',
                 }}
               >
                 Simplified
               </div>
-
             </div>
           }
         >
-          <DashboardMockup />
+          <div className="flex justify-center items-center h-[560px] md:h-[620px] lg:h-[720px] rounded-xl">
+            <Image
+              src="/product-demo.png"
+              alt="Dashboard Mockup"
+              className="w-full h-full rounded-xl"
+              width={1000}
+              height={1000}
+              style={{ objectFit: "cover", height: "100%" }}
+            />
+          </div>
         </ContainerScroll>
 
         {/* CTA Section - now with background overlay */}

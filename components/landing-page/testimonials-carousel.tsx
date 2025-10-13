@@ -36,8 +36,17 @@ export function TestimonialsCarousel() {
   }, []);
 
   return (
-    <section className="py-16 sm:py-24 lg:py-32 px-4 bg-gray-50 dark:bg-black">
-      <div className="max-w-7xl mx-auto">
+    <section className="py-16 sm:py-24 lg:py-32 px-4 bg-gray-50 dark:bg-black relative overflow-hidden">
+      {/* Chocolate blur background for dark mode */}
+      <div className="absolute inset-0 dark:block hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#40221a] rounded-full filter blur-3xl opacity-20 animate-pulse"></div>
+        <div className="absolute top-1/4 right-0 w-80 h-80 bg-[#5a3028] rounded-full filter blur-3xl opacity-15 animate-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-[#40221a] rounded-full filter blur-3xl opacity-10 animate-pulse" style={{ animationDelay: '4s' }}></div>
+        <div className="absolute top-1/2 left-1/4 w-72 h-72 bg-[#6B4423] rounded-full filter blur-3xl opacity-12 animate-pulse" style={{ animationDelay: '6s' }}></div>
+        <div className="absolute bottom-1/4 right-1/3 w-88 h-88 bg-[#5C4033] rounded-full filter blur-3xl opacity-18 animate-pulse" style={{ animationDelay: '8s' }}></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto relative z-10">
         <div className="text-center mb-12 sm:mb-16 lg:mb-20">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white mb-4">
             Trusted by users across Europe
