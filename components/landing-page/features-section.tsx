@@ -190,7 +190,7 @@ function AIChatPreview() {
       // Percentage
       if (part.match(/\d+(?:\.\d+)?%/)) {
         const isNegative = text.substring(Math.max(0, text.indexOf(part) - 5), text.indexOf(part)).includes('-');
-        return <span key={i} className={`font-semibold ${isNegative ? 'text-green-600 dark:text-green-400' : 'text-[#40221a] dark:text-white'}`}>{part}</span>;
+        return <span key={i} className={`font-semibold ${isNegative ? 'text-green-600 dark:text-green-400' : 'text-[#40221a] dark:text-[#40221a]'}`}>{part}</span>;
       }
       return part;
     });
