@@ -173,6 +173,10 @@ function BudgetChart() {
 
 function AIChatPreview() {
   const { ref, isVisible } = useScrollAnimation();
+  const [typingStep, setTypingStep] = useState(0);
+  const [isTyping, setIsTyping] = useState(false);
+  const [currentMessage, setCurrentMessage] = useState('');
+  const [messages, setMessages] = useState<Array<{type: 'user' | 'ai', content: string, isComplete: boolean}>>([]);
 
   // Rich text formatter like in ai-chat-card.tsx
   const formatRichText = (text: string): React.ReactNode => {
@@ -186,133 +190,197 @@ function AIChatPreview() {
       // Percentage
       if (part.match(/\d+(?:\.\d+)?%/)) {
         const isNegative = text.substring(Math.max(0, text.indexOf(part) - 5), text.indexOf(part)).includes('-');
-        return <span key={i} className={`font-semibold ${isNegative ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{part}</span>;
+        return <span key={i} className={`font-semibold ${isNegative ? 'text-green-600 dark:text-green-400' : 'text-[#40221a] dark:text-white'}`}>{part}</span>;
       }
       return part;
     });
   };
 
-  const messages = [
-    {
-      type: 'user',
-      content: 'Analyze my spending patterns and tell me if I can afford a new phone worth €899',
-      delay: 0
-    },
-    {
-      type: 'ai',
-      content: 'Based on your spending analysis, here\'s what I found:\n\n**Monthly Overview:**\n• Total Income: €3,500\n• Total Expenses: €2,100\n• Current Savings: €1,400 (40% rate)\n\n**Phone Affordability Analysis:**\n• Phone cost: €899\n• This represents 25.7% of your monthly savings\n• At your current savings rate, you\'d need ~2 months to save for it\n• ✅ **Recommendation: Yes, you can afford it**\n\n**Budget Impact:**\n• If you buy now: savings rate drops to 14% for the month\n• If you save 2 months: no impact on savings rate\n• Best approach: Save €450/month for 2 months',
-      delay: 100,
-      suggestions: [
-        "Show me ways to save €450/month faster",
-        "What other big purchases can I afford this year?",
-        "Update my budget to include phone savings"
-      ]
-    },
-  ];
+  // Typing animation effect
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const fullUserMessage = "Analyze my spending this month";
+    const fullAiResponse = "Looking at your expenses, you've spent €1,234 so far. Groceries are up 15% but dining out is down 8%. Great job on subscription savings!";
+
+    const runAnimation = () => {
+      // Reset state
+      setTypingStep(0);
+      setCurrentMessage('');
+      setIsTyping(false);
+      setMessages([]);
+
+      // User starts typing
+      setTimeout(() => { setTypingStep(1); setCurrentMessage('Analyze'); setIsTyping(true); }, 100);
+      setTimeout(() => { setCurrentMessage('Analyze my'); }, 300);
+      setTimeout(() => { setCurrentMessage('Analyze my spending'); }, 500);
+      setTimeout(() => { setCurrentMessage('Analyze my spending this'); }, 700);
+      setTimeout(() => { setCurrentMessage('Analyze my spending this month'); setIsTyping(false); setMessages([{ type: 'user', content: fullUserMessage, isComplete: true }]); setTypingStep(2); }, 900);
+
+      // AI shows thinking dots
+      setTimeout(() => { setTypingStep(3); setIsTyping(true); }, 1200);
+
+      // AI starts typing response
+      setTimeout(() => { setTypingStep(4); setCurrentMessage('Looking'); setMessages(prev => [...prev, { type: 'ai', content: 'Looking', isComplete: false }]); }, 1700);
+      setTimeout(() => { setCurrentMessage('Looking at your'); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: 'Looking at your', isComplete: false }]); }, 1900);
+      setTimeout(() => { setCurrentMessage('Looking at your expenses,'); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: 'Looking at your expenses,', isComplete: false }]); }, 2100);
+      setTimeout(() => { setCurrentMessage('Looking at your expenses, you\'ve'); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: 'Looking at your expenses, you\'ve', isComplete: false }]); }, 2300);
+      setTimeout(() => { setCurrentMessage('Looking at your expenses, you\'ve spent'); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: 'Looking at your expenses, you\'ve spent', isComplete: false }]); }, 2500);
+      setTimeout(() => { setCurrentMessage('Looking at your expenses, you\'ve spent €1,234'); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: 'Looking at your expenses, you\'ve spent €1,234', isComplete: false }]); }, 2700);
+      setTimeout(() => { setCurrentMessage(fullAiResponse); setIsTyping(false); setMessages(prev => [...prev.slice(0, -1), { type: 'ai', content: fullAiResponse, isComplete: true }]); setTypingStep(5); }, 2900);
+
+      // Show suggestions
+      setTimeout(() => { setTypingStep(6); }, 3200);
+    };
+
+    // Start animation immediately
+    runAnimation();
+
+    // Repeat every 5 seconds
+    const interval = setInterval(runAnimation, 10000);
+
+    return () => clearInterval(interval);
+  }, [isVisible]);
 
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
+      className={`w-full h-60 sm:h-64 rounded-lg  bg-white dark:bg-black p-3 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
       }`}
     >
-      <div className="space-y-3">
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'} transition-all duration-500 ${
-              isVisible
-                ? 'opacity-100 translate-x-0'
-                : msg.type === 'user'
-                ? 'opacity-0 translate-x-4'
-                : 'opacity-0 -translate-x-4'
-            }`}
-            style={{
-              transitionDelay: isVisible ? `${index * 200}ms` : '0ms'
-            }}
-          >
+      <div className="flex flex-col h-full">
+        {/* Chat messages area */}
+        <div className="flex-1 space-y-1 overflow-hidden overflow-y-auto">
+          {/* Render completed user messages and completed AI messages */}
+          {messages.filter((msg, index) => msg.type === 'user' || (msg.type === 'ai' && msg.isComplete)).map((msg, index) => (
             <div
-              className={`max-w-[80%] px-3 py-2 rounded-lg text-xs ${
-                msg.type === 'user'
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                  : 'bg-[#40221a]/10 text-gray-900 dark:text-white'
+              key={index}
+              className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'} transition-all duration-300 ${
+                isVisible
+                  ? 'opacity-100 translate-x-0'
+                  : msg.type === 'user'
+                  ? 'opacity-0 translate-x-4'
+                  : 'opacity-0 -translate-x-4'
               }`}
             >
-              <div className="leading-relaxed whitespace-pre-wrap">
-                {msg.type === 'ai' ? formatRichText(msg.content) : msg.content}
+              <div
+                className={`max-w-[85%] px-3 py-2 rounded-lg text-xs ${
+                  msg.type === 'user'
+                    ? 'bg-[#40221a] text-white ml-auto'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                }`}
+              >
+                <div className="leading-relaxed">
+                  {msg.type === 'ai' ? formatRichText(msg.content) : msg.content}
+                </div>
+                {msg.type === 'ai' && msg.isComplete && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">AI</span>
+                    <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {/* Typing indicator */}
-        <div
-          className={`flex justify-start transition-all duration-500 ${
-            isVisible
-              ? 'opacity-100 translate-x-0'
-              : 'opacity-0 -translate-x-4'
-          }`}
-          style={{
-            transitionDelay: isVisible ? '400ms' : '0ms'
-          }}
-        >
-          <div className="bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg">
-            <div className="flex items-center gap-1">
-              <div className={`w-1.5 h-1.5 bg-gray-400 rounded-full ${isVisible ? 'animate-bounce' : ''}`} style={{ animationDelay: isVisible ? '0ms' : '0ms' }}></div>
-              <div className={`w-1.5 h-1.5 bg-gray-400 rounded-full ${isVisible ? 'animate-bounce' : ''}`} style={{ animationDelay: isVisible ? '150ms' : '0ms' }}></div>
-              <div className={`w-1.5 h-1.5 bg-gray-400 rounded-full ${isVisible ? 'animate-bounce' : ''}`} style={{ animationDelay: isVisible ? '300ms' : '0ms' }}></div>
+          {/* Current typing message (only for incomplete AI messages) */}
+          {isTyping && typingStep >= 4 && typingStep <= 5 && currentMessage && (
+            <div
+              className={`flex justify-start transition-all duration-300 opacity-100 translate-x-0`}
+            >
+              <div
+                className={`max-w-[85%] px-3 py-2 rounded-lg text-xs bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white`}
+              >
+                <div className="leading-relaxed">
+                  {formatRichText(currentMessage)}
+                  <span className="inline-block w-2 h-3 bg-gray-400 dark:bg-gray-600 ml-1 animate-pulse"></span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* User typing message */}
+          {isTyping && typingStep >= 1 && typingStep <= 2 && (
+            <div
+              className={`flex justify-end transition-all duration-300 opacity-100 translate-x-0`}
+            >
+              <div
+                className={`max-w-[85%] px-3 py-2 rounded-lg text-xs bg-[#40221a] text-white ml-auto`}
+              >
+                <div className="leading-relaxed">
+                  {currentMessage}
+                  <span className="inline-block w-2 h-3 bg-white/60 ml-1 animate-pulse"></span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Typing indicator (AI thinking) */}
+          {typingStep === 3 && (
+            <div className="flex justify-start transition-all duration-300 opacity-100 translate-x-0">
+              <div className="bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg">
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* AI suggestions */}
-        {isVisible && (
-          <div className={`mt-3 transition-all duration-500 ${
-            isVisible
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-4'
-          }`}
-            style={{
-              transitionDelay: isVisible ? '600ms' : '0ms'
-            }}
-          >
-            <div className="flex flex-wrap gap-1.5">
-              {messages[1]?.suggestions?.map((suggestion, idx) => (
+        {typingStep === 6 && (
+          <div className="transition-all duration-500 opacity-100 translate-y-0 mb-1">
+            <div className="flex flex-wrap gap-1">
+              {["Show spending trends", "Compare to last month", "Find savings opportunities"].map((suggestion, idx) => (
                 <button
                   key={idx}
-                  className={`text-[10px] px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-all border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 flex items-center gap-1`}
+                  className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-[#40221a]/10 text-gray-600 dark:text-gray-400 hover:text-[#40221a] dark:hover:text-[#40221a] transition-all border border-gray-200 dark:border-gray-700 hover:border-[#40221a]/30 flex items-center gap-0.5"
                 >
-                  <span className="text-[8px]">⚡</span>
+                  <span className="text-[7px]">⚡</span>
                   {suggestion}
                 </button>
               ))}
             </div>
           </div>
         )}
-      </div>
 
-      {/* Input preview */}
-      <div
-        className={`mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 transition-all duration-500 ${
+        {/* Input area */}
+        <div className={`mt-auto pt-1 border-t border-gray-200 dark:border-gray-700 transition-all duration-500 ${
           isVisible
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-4'
         }`}
-        style={{
-          transitionDelay: isVisible ? '600ms' : '0ms'
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-full px-3 flex items-center">
-            <span className="text-xs text-gray-400">Ask about your finances...</span>
-          </div>
-          <div className="w-6 h-6 bg-[#40221a] dark:bg-gray-300 rounded-full flex items-center justify-center">
-            <svg className="w-3 h-3 text-white dark:text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
+          style={{
+            transitionDelay: isVisible ? '200ms' : '0ms'
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-800 rounded-full px-3 flex items-center">
+              <span className="text-[10px] text-gray-400">
+                {typingStep === 0 ? "Type your question..." :
+                 typingStep <= 2 ? "Analyzing..." :
+                 typingStep <= 4 ? "Responding..." :
+                 "Ask anything about your finances"}
+              </span>
+            </div>
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all duration-300 ${
+              typingStep >= 1 && typingStep <= 4
+                ? 'bg-[#40221a] scale-110'
+                : 'bg-gray-300 dark:bg-gray-600'
+            }`}>
+              <svg className={`w-2.5 h-2.5 transition-all duration-300 ${
+                typingStep >= 1 && typingStep <= 4
+                  ? 'text-white animate-pulse'
+                  : 'text-gray-500'
+              }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -495,14 +563,14 @@ function AdvancedAnalyticsChart() {
       }`}
     >
       <div className="flex h-full items-center justify-center">
-        <div className={`relative w-[180px] h-[180px] transition-all duration-1000 ${
+        <div className={`relative w-[280px] h-[280px] transition-all duration-1000 ${
           isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
         }`}
           style={{
             transitionDelay: isVisible ? '200ms' : '0ms'
           }}
         >
-          <ResponsiveContainer width="100%" height="100%" className="max-w-[180px] max-h-[180px]">
+          <ResponsiveContainer width="100%" height="100%" className="max-w-[280px] max-h-[280px]">
             <PieChart key={cycle}>
               <Tooltip content={<CustomTooltip />} />
               <defs>
@@ -518,8 +586,8 @@ function AdvancedAnalyticsChart() {
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                innerRadius={40}
-                outerRadius={65}
+                innerRadius={50}
+                outerRadius={90}
                 strokeWidth={0}
                 animationBegin={0}
                 animationDuration={800}
