@@ -119,7 +119,7 @@ function BudgetChart() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-transparent dark:bg-transparent p-4 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
@@ -245,7 +245,7 @@ function AIChatPreview() {
   return (
     <div
       ref={ref}
-      className={`w-full h-60 sm:h-64 rounded-lg  bg-white dark:bg-black p-3 transition-all duration-700 ${
+      className={`w-full h-60 sm:h-64 rounded-lg  bg-transparent dark:bg-transparent p-3 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
@@ -401,7 +401,7 @@ function BankIntegrationChart() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-transparent dark:bg-transparent p-4 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
@@ -437,7 +437,7 @@ function BankIntegrationChart() {
           {banks.map((bank, index) => (
             <div
               key={index}
-              className={`flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-gray-900 transition-all duration-500 ${
+              className={`flex items-center justify-between p-2 rounded-lg bg-transparent dark:bg-transparent transition-all duration-500 ${
                 isVisible
                   ? 'opacity-100 translate-x-0'
                   : 'opacity-0 translate-x-4'
@@ -531,7 +531,7 @@ function AdvancedAnalyticsChart() {
     if (active && payload?.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-white/95 dark:bg-black/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg">
+        <div className="bg-transparent/95 dark:bg-transparent/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg">
           <div className="flex items-center gap-2 mb-2">
             <div
               className="w-3 h-3 rounded-full"
@@ -556,7 +556,7 @@ function AdvancedAnalyticsChart() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-transparent dark:bg-transparent p-4 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 scale-100'
           : 'opacity-0 scale-95'
@@ -689,7 +689,7 @@ function PrivacyVisualization() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-transparent dark:bg-transparent p-4 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
@@ -764,7 +764,7 @@ function InsightsChart() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg relative overflow-hidden bg-white dark:bg-black transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg relative overflow-hidden bg-transparent dark:bg-transparent transition-all duration-700 ${
         isVisible
           ? 'opacity-100 scale-100'
           : 'opacity-0 scale-95'

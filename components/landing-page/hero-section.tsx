@@ -165,8 +165,8 @@ export function HeroSection() {
               alt="Dashboard Mockup"
               className="w-full h-full rounded-xl"
               width={1000}
-              height={1000}
-              style={{ objectFit: "cover", height: "100%" }}
+              height={2000}
+              style={{ objectFit: "fill", height: "103%" }}
             />
           </div>
         </ContainerScroll>
