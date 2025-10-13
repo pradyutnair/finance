@@ -12,6 +12,9 @@ import {
   CartesianGrid,
   Bar,
   Line,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts';
 
 const features = [
@@ -86,6 +89,20 @@ function useScrollAnimation() {
   }, []);
 
   return { ref, isVisible };
+}
+
+// Repeat animation hook - increments a counter every interval while visible
+function useRepeatAnimation(isVisible: boolean, intervalMs: number = 5000) {
+  const [cycle, setCycle] = useState(0);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    setCycle((c) => c + 1);
+    const id = setInterval(() => setCycle((c) => c + 1), intervalMs);
+    return () => clearInterval(id);
+  }, [isVisible, intervalMs]);
+
+  return cycle;
 }
 
 // Sample budget data for demo
@@ -403,45 +420,70 @@ function BankIntegrationChart() {
 
 function AdvancedAnalyticsChart() {
   const { ref, isVisible } = useScrollAnimation();
+  const cycle = useRepeatAnimation(isVisible, 5000);
 
-  // Sample expense data
+  // Sample expense data with brown and gray gradients only
   const expenseData = [
-    { category: 'Groceries', amount: 450, percentage: 25, color: 'bg-green-500' },
-    { category: 'Restaurants', amount: 380, percentage: 21, color: 'bg-yellow-500' },
-    { category: 'Transport', amount: 220, percentage: 12, color: 'bg-blue-500' },
-    { category: 'Shopping', amount: 340, percentage: 19, color: 'bg-purple-500' },
-    { category: 'Entertainment', amount: 180, percentage: 10, color: 'bg-red-500' },
-    { category: 'Bills', amount: 230, percentage: 13, color: 'bg-cyan-500' },
+    { name: 'Groceries', amount: 450, percent: 18 },
+    { name: 'Restaurants', amount: 380, percent: 15 },
+    { name: 'Transport', amount: 220, percent: 9 },
+    { name: 'Shopping', amount: 340, percent: 14 },
+    { name: 'Entertainment', amount: 180, percent: 7 },
+    { name: 'Bills', amount: 230, percent: 9 },
+    { name: 'Healthcare', amount: 160, percent: 6 },
+    { name: 'Insurance', amount: 200, percent: 8 },
+    { name: 'Subscriptions', amount: 120, percent: 5 },
+    { name: 'Personal Care', amount: 90, percent: 4 },
+    { name: 'Pet Supplies', amount: 80, percent: 3 },
+    { name: 'Home Maintenance', amount: 140, percent: 6 },
   ];
 
   const total = expenseData.reduce((sum, item) => sum + item.amount, 0);
 
-  // Create simple pie chart representation
-  const chartRadius = 60;
-  const centerX = 80;
-  const centerY = 80;
-
-  const createPiePath = (startAngle: number, endAngle: number) => {
-    const start = polarToCartesian(centerX, centerY, chartRadius, endAngle);
-    const end = polarToCartesian(centerX, centerY, chartRadius, startAngle);
-    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-    return [
-      "M", centerX, centerY,
-      "L", start.x, start.y,
-      "A", chartRadius, chartRadius, 0, largeArcFlag, 0, end.x, end.y,
-      "Z"
-    ].join(" ");
+  // Brown and gray gradient colors only
+  const getFill = (index: number) => {
+    const brownGrayColors = [
+      '#40221a', // Dark brand brown
+      '#8B4513', // Saddle brown
+      '#654321', // Dark brown
+      '#5C4033', // Brown soil
+      '#6B4423', // Dark oak
+      '#2c2c2c', // Dark gray
+      '#808080', // Gray
+      '#696969', // Dim gray
+      '#71797E', // Cool gray
+      '#A9A9A9', // Dark gray
+      '#d4d4d8', // Light gray
+      '#8B7355', // Burlywood4
+    ];
+    return brownGrayColors[index % brownGrayColors.length];
   };
 
-  const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-    return {
-      x: centerX + (radius * Math.cos(angleInRadians)),
-      y: centerY + (radius * Math.sin(angleInRadians))
-    };
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
+    if (active && payload?.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white/95 dark:bg-black/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: getFill(expenseData.findIndex(item => item.name === data.name)) }}
+            />
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{data.name}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-[#40221a] dark:text-white">
+              €{data.amount.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              {data.percent.toFixed(1)}% of total
+            </p>
+          </div>
+        </div>
+      )
+    }
+    return null
   };
-
-  let currentAngle = 0;
 
   return (
     <div
@@ -452,115 +494,66 @@ function AdvancedAnalyticsChart() {
           : 'opacity-0 scale-95'
       }`}
     >
-      <div className="flex h-full items-center justify-center gap-6">
-        {/* Simple SVG Pie Chart */}
-        <div className={`relative transition-all duration-1000 ${
+      <div className="flex h-full items-center justify-center">
+        <div className={`relative w-[180px] h-[180px] transition-all duration-1000 ${
           isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
         }`}
           style={{
             transitionDelay: isVisible ? '200ms' : '0ms'
           }}
         >
-          <svg width="160" height="160" viewBox="0 0 160 160" className="overflow-visible">
-            {/* Pie slices */}
-            {expenseData.map((item, index) => {
-              const startAngle = currentAngle;
-              const endAngle = currentAngle + (item.percentage * 3.6);
-              currentAngle = endAngle;
+          <ResponsiveContainer width="100%" height="100%" className="max-w-[180px] max-h-[180px]">
+            <PieChart key={cycle}>
+              <Tooltip content={<CustomTooltip />} />
+              <defs>
+                {expenseData.map((entry, idx) => (
+                  <filter key={`shadow-${idx}`} id={`shadow-${idx}`}>
+                    <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.1"/>
+                  </filter>
+                ))}
+              </defs>
+              <Pie
+                data={expenseData}
+                dataKey="amount"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={40}
+                outerRadius={65}
+                strokeWidth={0}
+                animationBegin={0}
+                animationDuration={800}
+              >
+                {expenseData.map((entry, idx) => {
+                  const fill = getFill(idx);
+                  return (
+                    <Cell
+                      key={entry.name}
+                      fill={fill}
+                      className="transition-all duration-200 cursor-pointer hover:opacity-80"
+                      style={{
+                        filter: 'none',
+                        transform: 'scale(1)',
+                        transformOrigin: 'center'
+                      }}
+                    />
+                  );
+                })}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
 
-              const colors = ['rgb(34 197 94)', 'rgb(234 179 8)', 'rgb(59 130 246)', 'rgb(168 85 247)', 'rgb(239 68 68)', 'rgb(6 182 212)'];
-              const color = colors[index % colors.length];
-
-              return (
-                <path
-                  key={item.category}
-                  d={createPiePath(startAngle, endAngle)}
-                  fill={color}
-                  stroke="white"
-                  strokeWidth="2"
-                  className={`transition-all duration-300 ${
-                    isVisible ? 'opacity-100' : 'opacity-0'
-                  }`}
-                  style={{
-                    transitionDelay: isVisible ? `${300 + index * 100}ms` : '0ms'
-                  }}
-                />
-              );
-            })}
-
-            {/* Center circle for donut effect */}
-            <circle
-              cx={centerX}
-              cy={centerY}
-              r="35"
-              fill="white"
-              className={`transition-all duration-500 ${
-                isVisible ? 'opacity-100' : 'opacity-0'
-              }`}
-              style={{
-                transitionDelay: isVisible ? '800ms' : '0ms'
-              }}
-            />
-
-            {/* Center text */}
-            <text
-              x={centerX}
-              y={centerY - 5}
-              textAnchor="middle"
-              className="text-lg font-bold fill-[#40221a] dark:fill-white"
-            >
-              €{total}
-            </text>
-            <text
-              x={centerX}
-              y={centerY + 10}
-              textAnchor="middle"
-              className="text-xs fill-gray-500 dark:fill-gray-400"
-            >
-              Total
-            </text>
-          </svg>
-        </div>
-
-        {/* Category breakdown */}
-        <div className="flex-1 space-y-2">
-          <div className={`text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 transition-all duration-500 ${
-            isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
-          }`}
-            style={{
-              transitionDelay: isVisible ? '100ms' : '0ms'
-            }}
-          >
-            Categories
-          </div>
-          {expenseData.map((item, index) => (
-            <div
-              key={item.category}
-              className={`flex items-center justify-between transition-all duration-500 ${
-                isVisible
-                  ? 'opacity-100 translate-x-0'
-                  : 'opacity-0 translate-x-4'
-              }`}
-              style={{
-                transitionDelay: isVisible ? `${200 + index * 80}ms` : '0ms'
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {item.category}
-                </span>
+          {/* Center text */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center">
+              <div className="text-xl font-bold text-[#40221a] dark:text-white">
+                €{total.toLocaleString()}
               </div>
-              <div className="text-right">
-                <div className="text-xs font-mono font-semibold text-[#40221a] dark:text-white">
-                  €{item.amount}
-                </div>
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                  {item.percentage}%
-                </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Total
               </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>
@@ -570,12 +563,14 @@ function AdvancedAnalyticsChart() {
 function PrivacyVisualization() {
   const { ref, isVisible } = useScrollAnimation();
 
-  // Sample data for the table
+  // Standard sample data to match other cards
   const tableData = [
     { bookingDate: '2024-01-15', userId: 'user-123', transactionId: '****-****-****', amount: '€***.**', counterparty: '**************', category: 'Restaurants' },
     { bookingDate: '2024-01-14', userId: 'user-123', transactionId: '****-****-****', amount: '€**.**', counterparty: '****', category: 'Transport' },
     { bookingDate: '2024-01-13', userId: 'user-123', transactionId: '****-****-****', amount: '€***.**', counterparty: '******', category: 'Shopping' },
     { bookingDate: '2024-01-12', userId: 'user-123', transactionId: '****-****-****', amount: '€**.**', counterparty: '*******', category: 'Entertainment' },
+    { bookingDate: '2024-01-11', userId: 'user-123', transactionId: '****-****-****', amount: '€*.**', counterparty: '********', category: 'Bills' },
+    { bookingDate: '2024-01-10', userId: 'user-123', transactionId: '****-****-****', amount: '€**.**', counterparty: '***', category: 'Groceries' },
   ];
 
   // Encryption animation for encrypted columns
@@ -611,7 +606,7 @@ function PrivacyVisualization() {
     }, [isVisible, delay, text]);
 
     return (
-      <span className={`font-mono text-[10px] text-gray-600 dark:text-gray-400 inline-block transition-all duration-300 ${
+      <span className={`font-mono text-xs text-gray-600 dark:text-gray-400 inline-block transition-all duration-300 ${
         isVisible ? 'opacity-100' : 'opacity-0'
       }`}
         style={{
@@ -626,7 +621,7 @@ function PrivacyVisualization() {
   return (
     <div
       ref={ref}
-      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-3 transition-all duration-700 ${
+      className={`w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-white dark:bg-black p-4 transition-all duration-700 ${
         isVisible
           ? 'opacity-100 translate-y-0'
           : 'opacity-0 translate-y-4'
@@ -640,16 +635,16 @@ function PrivacyVisualization() {
           transitionDelay: '100ms'
         }}
       >
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">Date</div>
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">User ID</div>
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">Transaction</div>
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">Amount</div>
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">Counterparty</div>
-        <div className="text-[9px] font-semibold text-gray-700 dark:text-gray-300 truncate">Category</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">Date</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">User ID</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">Transaction</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">Amount</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">Counterparty</div>
+        <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">Category</div>
       </div>
 
       {/* Table Body */}
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {tableData.map((row, rowIndex) => (
           <div
             key={rowIndex}
@@ -663,10 +658,10 @@ function PrivacyVisualization() {
             }}
           >
             {/* Visible columns */}
-            <div className="font-mono text-[10px] text-gray-600 dark:text-gray-400 truncate">
+            <div className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
               {row.bookingDate}
             </div>
-            <div className="font-mono text-[10px] text-gray-600 dark:text-gray-400 truncate">
+            <div className="font-mono text-xs text-gray-600 dark:text-gray-400 truncate">
               {row.userId}
             </div>
 
@@ -683,26 +678,12 @@ function PrivacyVisualization() {
 
             {/* Visible category */}
             <div className="truncate">
-              <span className="font-mono text-[10px] text-gray-600 dark:text-gray-400">
+              <span className="font-mono text-xs text-gray-600 dark:text-gray-400">
                 {row.category}
               </span>
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Encryption indicator */}
-      <div className={`mt-3 flex items-center justify-center gap-1 transition-all duration-500 ${
-        isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-      }`}
-        style={{
-          transitionDelay: '700ms'
-        }}
-      >
-        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-        <div className="text-[9px] text-gray-500 dark:text-gray-400">
-          Encrypted at rest
-        </div>
       </div>
     </div>
   );
@@ -710,6 +691,7 @@ function PrivacyVisualization() {
 
 function InsightsChart() {
   const { ref, isVisible } = useScrollAnimation();
+  const cycle = useRepeatAnimation(isVisible, 5000);
 
   return (
     <div
@@ -737,7 +719,7 @@ function InsightsChart() {
 
       <div className="absolute inset-0 pt-8">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 2, right: 1, left: 1, bottom: 1 }}>
+          <ComposedChart key={cycle} data={chartData} margin={{ top: 2, right: 1, left: 1, bottom: 1 }}>
             <CartesianGrid strokeOpacity={0.08} vertical={false} />
             <XAxis
               dataKey="day"

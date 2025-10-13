@@ -117,12 +117,6 @@ export function PricingSection() {
             </div>
           </div>
 
-          {/* Additional info */}
-          <div className="text-center mt-8 sm:mt-10">
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
-              7-day free trial • No credit card required
-            </p>
-          </div>
         </div>
       </div>
     </section>
