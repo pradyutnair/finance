@@ -125,7 +125,7 @@ export function LandingHeader() {
               </Link>
             </Button>
 
-            <ThemeToggle />
+            {/* <ThemeToggle /> */}
           </div>
         </div>
       </div>
