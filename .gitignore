@@ -153,3 +153,5 @@ appwrite/
 venv/
 
 *env*
+
+example/
