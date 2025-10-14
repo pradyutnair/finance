@@ -159,16 +159,16 @@ export function HeroSection() {
             </div>
           }
         >
-          <div className="flex justify-center items-center h-[560px] md:h-[620px] lg:h-[720px] rounded-xl">
+          {/* <div className="flex justify-center items-center h-[560px] md:h-[620px] lg:h-[720px] rounded-xl"> */}
             <Image
               src="/product-demo.png"
               alt="Dashboard Mockup"
               className="w-full h-full rounded-xl"
               width={1000}
               height={2000}
-              style={{ objectFit: "fill", height: "103%" }}
+              style={{ objectFit: "fill", height: "120%" }}
             />
-          </div>
+          {/* </div> */}
         </ContainerScroll>
 
         {/* CTA Section - now with background overlay */}
