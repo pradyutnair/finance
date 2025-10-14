@@ -1,11 +1,13 @@
 import { GalleryVerticalEnd } from "lucide-react"
 import { AuthGuard } from "@/components/auth-guard"
 import { LoginForm } from "@/components/login/login-form"
+import { DashboardThemeProvider } from "@/components/dashboard/theme-provider-wrapper"
 import Image from "next/image"
 export default function LoginPage() {
   return (
     <AuthGuard requireAuth={false}>
-      <div className="grid min-h-svh lg:grid-cols-2">
+      <DashboardThemeProvider>
+        <div className="grid min-h-svh lg:grid-cols-2">
         <div className="flex flex-col gap-4 p-6 md:p-10">
           <div className="flex justify-center gap-2 md:justify-start">
             <a href="#" className="flex items-center gap-2 font-medium">
@@ -29,6 +31,7 @@ export default function LoginPage() {
           />
         </div>
       </div>
+      </DashboardThemeProvider>
     </AuthGuard>
   )
 }

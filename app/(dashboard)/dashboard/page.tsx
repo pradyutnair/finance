@@ -6,6 +6,7 @@ import FinanceHeatmapCard from "@/components/dashboard/FinanceHeatmapCard"
 import { ExpenseChart } from "@/components/dashboard/expense-chart"
 import { SectionCards } from "@/components/dashboard/section-cards"
 import { SiteHeader } from "@/components/site-header"
+import { DashboardThemeProvider } from "@/components/dashboard/theme-provider-wrapper"
 import { DateRangeProvider } from "@/contexts/date-range-context"
 import {
   SidebarInset,
@@ -15,7 +16,8 @@ import {
 export default function Page() {
   return (
     <AuthGuard requireAuth={true}>
-      <DateRangeProvider>
+      <DashboardThemeProvider>
+        <DateRangeProvider>
         <SidebarProvider
           style={
             {
@@ -53,6 +55,7 @@ export default function Page() {
           </SidebarInset>
         </SidebarProvider>
       </DateRangeProvider>
+    </DashboardThemeProvider>
     </AuthGuard>
   )
 }
