@@ -16,7 +16,13 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel"
 const features = [
   {
     title: "Real-time Insights",
@@ -912,17 +918,51 @@ export function FeaturesSection() {
 
         {/* Additional feature callout */}
         <div className="mt-12 sm:mt-16 lg:mt-20 rounded-2xl bg-gray-50 dark:bg-[#40221a]/10 border border-gray-200 dark:border-[#40221a]/30 p-6 sm:p-8 lg:p-12">
-          <div className="max-w-3xl mx-auto text-center">
-            <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">
-              Built for privacy and security
-            </h3>
-            <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
-              Your financial data is encrypted using Google Cloud KMS with queryable encryption.
-              We can't see your sensitive information—only you can. GDPR compliant and built with
-               data protection standards in mind.
-            </p>
+          <div className="flex flex-col lg:flex-row items-center lg:items-stretch gap-12 lg:gap-16 max-w-6xl mx-auto">
+            {/* Text content on the left */}
+            <div className="flex-1 flex flex-col justify-center lg:justify-start text-left">
+              <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4">
+                Built for privacy and security
+              </h3>
+              <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed">
+                Your financial data is encrypted using Google Cloud KMS with queryable encryption.
+                We can't see your sensitive information—only you can. GDPR compliant and built with
+                data protection standards in mind.
+              </p>
+            </div>
+            {/* Carousel on the right, bigger and clearer */}
+            {/* <div className="flex-1 flex items-center justify-center">
+              <Carousel className="w-full max-w-xl h-[28rem] sm:h-[32rem] lg:h-[36rem]">
+                <CarouselContent className="h-full">
+                  <CarouselItem className="flex items-center justify-center h-full">
+                    <img
+                      src="/transactions-demo.png"
+                      alt="Transactions"
+                      className="w-full h-full max-h-[32rem] rounded-2xl shadow-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-neutral-900 object-cover"
+                    />
+                  </CarouselItem>
+                  <CarouselItem className="flex items-center justify-center h-full">
+                    <img
+                      src="/budegt-demo.png"
+                      alt="Budget"
+                      className="w-full h-full max-h-[32rem] rounded-2xl shadow-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-neutral-900 object-cover"
+                    />
+                  </CarouselItem>
+                  <CarouselItem className="flex items-center justify-center h-full">
+                    <img
+                      src="/analytics-demo.png"
+                      alt="Analytics"
+                      className="w-full h-full max-h-[32rem] rounded-2xl shadow-2xl border border-gray-200/80 dark:border-white/10 bg-white dark:bg-neutral-900 object-cover"
+                    />
+                  </CarouselItem>
+                </CarouselContent>
+                <CarouselPrevious />
+                <CarouselNext />
+              </Carousel>
+            </div> */}
           </div>
         </div>
+
       </div>
     </section>
   );
