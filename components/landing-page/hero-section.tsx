@@ -163,10 +163,10 @@ export function HeroSection() {
             <Image
               src="/product-demo.png"
               alt="Dashboard Mockup"
-              className="w-full h-full rounded-xl"
+              className="w-full rounded-xl"
               width={1000}
-              height={2000}
-              style={{ objectFit: "fill", height: "120%" }}
+              height={1000}
+              style={{ objectFit: "fill", height: "130%" }}
             />
           {/* </div> */}
         </ContainerScroll>
