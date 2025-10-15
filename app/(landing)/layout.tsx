@@ -53,7 +53,6 @@ export default function LandingLayout({
     >
       {children}
       <Toaster />
-      <CookieConsent />
     </ThemeProvider>
   );
 }
