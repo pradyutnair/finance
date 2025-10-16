@@ -37,6 +37,7 @@ export const metadata: Metadata = {
   },
 };
 
+// No cookie consent
 export default function LandingLayout({
   children,
 }: Readonly<{
