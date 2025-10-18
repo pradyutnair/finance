@@ -115,7 +115,7 @@ export function PricingSection() {
                 {features.map((feature, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#40221a20' }}>
-                      <Check className="w-3 h-3" style={{ color: '#40221a' }} strokeWidth={3} />
+                      <Check className="w-5 h-5" style={{ color: 'white' }} strokeWidth={3} />
                     </div>
                     <span className="text-sm sm:text-base text-gray-700 dark:text-gray-300">
                       {feature}
