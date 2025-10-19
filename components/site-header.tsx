@@ -190,7 +190,7 @@ export function SiteHeader() {
           <ThemeToggle />
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger asChild >
                 <Button
                   variant="outline"
                   size="icon"
