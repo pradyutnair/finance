@@ -16,6 +16,14 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -99,6 +107,12 @@ export function TransactionsTable() {
   })
   const [showFilters, setShowFilters] = useState(false)
   const [editingCounterparty, setEditingCounterparty] = useState<{ id: string; value: string } | null>(null)
+  const [categorizeDialog, setCategorizeDialog] = useState<{
+    open: boolean
+    transaction: TxRow | null
+    category: string | null
+    similarTransactionIds: string[]
+  }>({ open: false, transaction: null, category: null, similarTransactionIds: [] })
   const offset = pagination.pageIndex * pagination.pageSize
 
   const { dateRange, formatDateForAPI } = useDateRange()
@@ -193,7 +207,7 @@ export function TransactionsTable() {
     const normalize = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "")
     const targetDesc = normalize(tx.rawDescription)
     const targetCp = normalize(tx.counterparty)
-    
+
     // Find all transactions with matching description or counterparty across ALL transactions
     const similarTransactionIds: string[] = []
     if (targetDesc || targetCp) {
@@ -207,18 +221,28 @@ export function TransactionsTable() {
         }
       })
     }
-    
-    console.log(`[Category Update] Updating transaction "${tx.description}" to "${category}"`)
+
     console.log(`[Category Update] Found ${similarTransactionIds.length} similar transactions across all time`)
     console.log(`[Category Update] Total transactions to update: ${similarTransactionIds.length + 1}`)
-    
-    updateTx.mutate({ 
-      id: tx.id, 
-      category, 
-      description: tx.rawDescription, 
-      counterparty: tx.counterparty,
-      similarTransactionIds 
-    })
+
+    // Show confirmation dialog if there are similar transactions
+    if (similarTransactionIds.length > 0) {
+      setCategorizeDialog({
+        open: true,
+        transaction: tx,
+        category,
+        similarTransactionIds
+      })
+    } else {
+      // No similar transactions, update directly
+      updateTx.mutate({
+        id: tx.id,
+        category,
+        description: tx.rawDescription,
+        counterparty: tx.counterparty,
+        similarTransactionIds: []
+      })
+    }
   }
 
   function handleStartEditCounterparty(tx: TxRow) {
@@ -243,6 +267,36 @@ export function TransactionsTable() {
     if (editingCounterparty) {
       setEditingCounterparty({ ...editingCounterparty, value })
     }
+  }
+
+  function handleCategorizeOnlyThis() {
+    if (categorizeDialog.transaction && categorizeDialog.category) {
+      updateTx.mutate({
+        id: categorizeDialog.transaction.id,
+        category: categorizeDialog.category,
+        description: categorizeDialog.transaction.rawDescription,
+        counterparty: categorizeDialog.transaction.counterparty,
+        similarTransactionIds: []
+      })
+      setCategorizeDialog({ open: false, transaction: null, category: null, similarTransactionIds: [] })
+    }
+  }
+
+  function handleCategorizeAllMatching() {
+    if (categorizeDialog.transaction && categorizeDialog.category) {
+      updateTx.mutate({
+        id: categorizeDialog.transaction.id,
+        category: categorizeDialog.category,
+        description: categorizeDialog.transaction.rawDescription,
+        counterparty: categorizeDialog.transaction.counterparty,
+        similarTransactionIds: categorizeDialog.similarTransactionIds
+      })
+      setCategorizeDialog({ open: false, transaction: null, category: null, similarTransactionIds: [] })
+    }
+  }
+
+  function handleCancelCategorize() {
+    setCategorizeDialog({ open: false, transaction: null, category: null, similarTransactionIds: [] })
   }
 
   const activeFilterCount = columnFilters.length
@@ -539,15 +593,16 @@ export function TransactionsTable() {
   }
 
   return (
-    <div
-      className="border rounded-xl overflow-hidden shadow-sm bg-card h-full flex flex-col"
-      onClick={(e) => {
-        // Cancel editing if clicking outside edit input
-        if (editingCounterparty && !(e.target as HTMLElement).closest('.edit-counterparty')) {
-          setEditingCounterparty(null)
-        }
-      }}
-    >
+    <>
+      <div
+        className="border rounded-xl overflow-hidden shadow-sm bg-card h-full flex flex-col"
+        onClick={(e) => {
+          // Cancel editing if clicking outside edit input
+          if (editingCounterparty && !(e.target as HTMLElement).closest('.edit-counterparty')) {
+            setEditingCounterparty(null)
+          }
+        }}
+      >
       {/* Header with Search and Filter Toggle */}
       <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/30 to-muted/10 border-b">
         <div className="flex items-center gap-3">
@@ -829,6 +884,52 @@ export function TransactionsTable() {
           </div>
         </div>
       </div>
+
+      {/* Category Confirmation Dialog */}
+      <Dialog open={categorizeDialog.open} onOpenChange={(open) => !open && handleCancelCategorize()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Transaction Category</DialogTitle>
+            <DialogDescription>
+              Found {categorizeDialog.similarTransactionIds.length} similar transaction{categorizeDialog.similarTransactionIds.length !== 1 ? 's' : ''} with the same payee or description.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center gap-3 py-4">
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ backgroundColor: categoryToColor(categorizeDialog.category || '') }}
+            />
+            <span className="font-medium">{categorizeDialog.category}</span>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCancelCategorize}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleCategorizeOnlyThis}
+              className="flex-1"
+            >
+              Only This Transaction
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleCategorizeAllMatching}
+              className="flex-1 bg-primary hover:bg-primary/90"
+            >
+              All ({categorizeDialog.similarTransactionIds.length + 1})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
+  </>
   )
 }
