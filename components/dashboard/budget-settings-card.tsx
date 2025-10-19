@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { LiquidProgress } from "./liquid-progress"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -164,6 +164,11 @@ export function BudgetSettingsCard() {
     const m = String(d.getMonth() + 1).padStart(2, '0')
     const day = String(d.getDate()).padStart(2, '0')
     return `${y}-${m}-${day}`
+  }
+
+  const getLiquidProgressClass = (categoryName: string) => {
+    const className = categoryName.toLowerCase()
+    return `liquid-progress-${className}`
   }
 
   const fetchCategorySpend = async (skipCache = false) => {
@@ -330,7 +335,11 @@ export function BudgetSettingsCard() {
               {formatAmount(totalSpent)} / {formatAmount(totalBudget)}
             </span>
           </div>
-          <Progress className="mt-2 [&>div]:bg-[#40221a] dark:[&>div]:bg-white" value={totalPct} />
+          <LiquidProgress
+            className="mt-2 h-2 w-full rounded bg-muted"
+            gradientClass="liquid-progress-overall dark:liquid-progress-overall-dark"
+            value={totalPct}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -376,12 +385,11 @@ export function BudgetSettingsCard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="h-2 w-full rounded bg-muted overflow-hidden">
-                    <div
-                      className="h-2 rounded"
-                      style={{ width: `${pct}%`, backgroundColor: color }}
-                    />
-                  </div>
+                  <LiquidProgress
+                    className="h-2 w-full rounded bg-muted"
+                    gradientClass={getLiquidProgressClass(category.categoryName)}
+                    value={pct}
+                  />
                 </div>
               </div>
             )
