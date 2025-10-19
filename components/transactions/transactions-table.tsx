@@ -139,17 +139,11 @@ export function TransactionsTable() {
     })
   }, [columnFilters])
 
-  // Always use consistent pagination - don't change fetch behavior based on filters
-  const fetchLimit = pageSize
-  const fetchOffset = offset
-
-  const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
-  
-  // Fetch ALL transactions for similarity matching (no date range, no pagination)
-  // This ensures we find similar transactions across all time periods
-  const { data: allTransactionsData } = useTransactions({ 
-    all: true, 
-    includeExcluded: true 
+  // Fetch ALL transactions once - this will be used for both display and similarity matching
+  // This eliminates the need for backend pagination calls
+  const { data: allTransactionsData, isLoading, error } = useTransactions({
+    all: true,
+    includeExcluded: true
     // Note: No dateRange filter - we want ALL transactions for accurate similarity matching
   })
 
@@ -163,22 +157,8 @@ export function TransactionsTable() {
     return map
   }, [accounts])
 
-  const rows: TxRow[] = (data?.transactions || []).map((t: any) => ({
-    id: t.$id || t.id,
-    description: t.description || t.counterparty || "Unknown",
-    rawDescription: t.description,
-    category: t.category || "Uncategorized",
-    bankName: accountIdToInstitutionId.get(t.accountId) || "Unknown",
-    bookingDate: t.bookingDate || t.date,
-    amount: Number(t.amount) || 0,
-    currency: t.currency || "EUR",
-    accountId: t.accountId,
-    exclude: Boolean(t.exclude),
-    counterparty: t.counterparty,
-  }))
-  
-  // All transactions for similarity matching (decrypted on client)
-  const allTransactions: TxRow[] = useMemo(() => 
+  // All transactions for similarity matching and display (decrypted on client)
+  const allTransactions: TxRow[] = useMemo(() =>
     (allTransactionsData?.transactions || []).map((t: any) => ({
       id: t.$id || t.id,
       description: t.description || t.counterparty || "Unknown",
@@ -194,9 +174,21 @@ export function TransactionsTable() {
     })), [allTransactionsData, accountIdToInstitutionId]
   )
 
-  const totalCount = data?.total || rows.length
+  // Filter transactions by date range (this is the only filter we do client-side outside the table)
+  const dateFilteredTransactions = useMemo(() => {
+    if (!allTransactions.length) return []
 
-  const bankOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.bankName).filter(Boolean))).sort(), [rows])
+    return allTransactions.filter(tx => {
+      // Apply date range filter
+      if (apiDateRange?.from && tx.bookingDate < apiDateRange.from) return false
+      if (apiDateRange?.to && tx.bookingDate > apiDateRange.to) return false
+      return true
+    })
+  }, [allTransactions, apiDateRange])
+
+  const totalCount = dateFilteredTransactions.length
+
+  const bankOptions = useMemo(() => Array.from(new Set(dateFilteredTransactions.map((r) => r.bankName).filter(Boolean))).sort(), [dateFilteredTransactions])
 
   function handleToggleExclude(tx: TxRow) {
     updateTx.mutate({ id: tx.id, exclude: !tx.exclude })
@@ -514,7 +506,7 @@ export function TransactionsTable() {
   )
 
   const table = useReactTable({
-    data: rows,
+    data: dateFilteredTransactions,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -524,16 +516,13 @@ export function TransactionsTable() {
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     state: { pagination, columnFilters, columnVisibility },
-    manualPagination: true,
+    manualPagination: false, // Use client-side pagination now
     pageCount: Math.max(1, Math.ceil(totalCount / pageSize)),
   })
 
   const visibleTransactions = useMemo(() => {
-    if (hasActiveFilters) {
-      return table.getFilteredRowModel().rows.map(row => row.original)
-    }
-    return rows
-  }, [rows, table, hasActiveFilters])
+    return table.getFilteredRowModel().rows.map(row => row.original)
+  }, [table])
 
   const { totalIncome, totalExpenses, netTotal } = useMemo(() => {
     const income = visibleTransactions
@@ -772,46 +761,55 @@ export function TransactionsTable() {
       )}
 
       {/* Table */}
-      <Table className="flex-1">
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/50">
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-muted-foreground h-12 first:pl-6 bg-muted/10">
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full flex flex-col">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/50">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} className="text-muted-foreground h-12 first:pl-6 bg-muted/10">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
               ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {rowsToRender?.length ? (
-            rowsToRender.map((row) => (
-              <TableRow 
-                key={row.id} 
-                className="hover:bg-muted/30 transition-colors border-border/30"
-                data-state={row.getIsSelected() && "selected"}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="first:pl-6 py-3">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-32 text-center">
-                <div className="flex flex-col items-center justify-center text-muted-foreground">
-                  <div className="mb-2">📊</div>
-                  <div className="font-medium">No transactions found</div>
-                  <div className="text-sm">Try adjusting your filters</div>
-                </div>
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            </TableHeader>
+          </Table>
+
+          <div className="flex-1 overflow-y-auto">
+            <Table>
+              <TableBody>
+                {rowsToRender?.length ? (
+                  rowsToRender.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      className="hover:bg-muted/30 transition-colors border-border/30"
+                      data-state={row.getIsSelected() && "selected"}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="first:pl-6 py-3">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-full text-center">
+                      <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-muted-foreground">
+                        <div className="mb-2">📊</div>
+                        <div className="font-medium">No transactions found</div>
+                        <div className="text-sm">Try adjusting your filters</div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
 
       {/* Pagination */}
       <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
