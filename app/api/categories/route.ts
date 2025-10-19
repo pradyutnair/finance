@@ -63,8 +63,6 @@ export async function GET(request: NextRequest) {
 
     console.log(`Found ${transactions.length} expense transactions`);
     
-    
-    
     // Group by category
     const categoryData = new Map();
     let totalExpenses = 0;
@@ -84,8 +82,6 @@ export async function GET(request: NextRequest) {
         console.error('Error processing transaction:', transaction, error);
       }
     });
-
-    console.log(`Processed ${categoryData.size} categories, total expenses: ${totalExpenses}`);
 
     // Convert to array and calculate percentages
     const categoriesData = Array.from(categoryData.entries())
