@@ -118,15 +118,16 @@ export function TransactionsTable() {
     return columnFilters.some((f: any) => {
       const val = f?.value
       if (val == null) return false
-      if (typeof val === "string") 
+      if (typeof val === "string")
       return val.trim() !== "" && val !== "all"
       if (typeof val === "object") return (val.min != null && !Number.isNaN(val.min)) || (val.max != null && !Number.isNaN(val.max))
       return true
     })
   }, [columnFilters])
 
-  const fetchLimit = hasActiveFilters ? 100 : pageSize
-  const fetchOffset = hasActiveFilters ? 0 : offset
+  // Always use consistent pagination - don't change fetch behavior based on filters
+  const fetchLimit = pageSize
+  const fetchOffset = offset
 
   const { data, isLoading, error } = useTransactions({ limit: fetchLimit, offset: fetchOffset, dateRange: apiDateRange, includeExcluded: true })
   
@@ -508,9 +509,8 @@ export function TransactionsTable() {
     }
   }, [visibleTransactions, convertAmount, baseCurrency])
 
-  const filteredRowCount = table.getFilteredRowModel().rows.length
-  const showAllFilteredInOnePage = hasActiveFilters && filteredRowCount <= pageSize
-  const rowsToRender = showAllFilteredInOnePage ? table.getFilteredRowModel().rows : table.getRowModel().rows
+  // Always use proper pagination - don't show all results at once even when filtered
+  const rowsToRender = table.getRowModel().rows
 
   if (isLoading) {
     return (
@@ -759,78 +759,76 @@ export function TransactionsTable() {
       </Table>
 
       {/* Pagination */}
-      {!showAllFilteredInOnePage && (
-        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-muted-foreground">
-              Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
+      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-muted-foreground">
+            Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
+          </div>
+          {(totalIncome > 0 || totalExpenses > 0) && (
+            <div className="flex items-center gap-3 text-sm">
+              {totalIncome > 0 && (
+                <div className="font-medium">
+                  Income: <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    +{formatAmount(totalIncome)}
+                  </span>
+                </div>
+              )}
+              {totalExpenses > 0 && (
+                <div className="font-medium">
+                  Expenses: <span className="font-bold text-rose-600 dark:text-rose-400">
+                    -{formatAmount(totalExpenses)}
+                  </span>
+                </div>
+              )}
             </div>
-            {(totalIncome > 0 || totalExpenses > 0) && (
-              <div className="flex items-center gap-3 text-sm">
-                {totalIncome > 0 && (
-                  <div className="font-medium">
-                    Income: <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                      +{formatAmount(totalIncome)}
-                    </span>
-                  </div>
-                )}
-                {totalExpenses > 0 && (
-                  <div className="font-medium">
-                    Expenses: <span className="font-bold text-rose-600 dark:text-rose-400">
-                      -{formatAmount(totalExpenses)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+          )}
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-sm font-medium text-muted-foreground">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="text-sm font-medium text-muted-foreground">
-              Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-            </div>
-
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => table.setPageIndex(0)}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <ChevronsLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-                disabled={!table.getCanNextPage()}
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
