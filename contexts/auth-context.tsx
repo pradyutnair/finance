@@ -13,6 +13,8 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
+  isEmailVerified: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -32,8 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const currentUser = await account.get();
       setUser(currentUser);
+      setIsEmailVerified(currentUser.emailVerification);
     } catch (error) {
       setUser(null);
+      setIsEmailVerified(false);
     } finally {
       setLoading(false);
     }
@@ -43,8 +48,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const currentUser = await account.get();
       setUser(currentUser);
+      setIsEmailVerified(currentUser.emailVerification);
     } catch (error) {
       setUser(null);
+      setIsEmailVerified(false);
     }
   };
 
@@ -53,7 +60,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await account.createEmailPasswordSession(email, password);
       const currentUser = await account.get();
       setUser(currentUser);
-      router.push('/dashboard');
+      setIsEmailVerified(currentUser.emailVerification);
+
+      // Only allow dashboard access if email is verified
+      if (!currentUser.emailVerification) {
+        router.push('/verify-email');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error) {
       throw error;
     }
@@ -74,8 +88,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, password: string, name: string) => {
     try {
+      // Create account without automatically logging in
       await account.create('unique()', email, password, name);
-      await login(email, password);
+
+      // Send verification email
+      await account.createVerification(`${window.location.origin}/verify-email-success`);
+
+      // Create session for the user so they can be redirected to verification page
+      await account.createEmailPasswordSession(email, password);
+      const currentUser = await account.get();
+      setUser(currentUser);
+      setIsEmailVerified(currentUser.emailVerification);
+
+      router.push('/verify-email');
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const sendVerificationEmail = async () => {
+    try {
+      await account.createVerification(`${window.location.origin}/verify-email-success`);
     } catch (error) {
       throw error;
     }
@@ -85,29 +118,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // Delete current session
       await account.deleteSession('current');
-      
+
       // Also delete all sessions to be thorough
       try {
         await account.deleteSessions();
       } catch (error) {
         // Ignore errors if no other sessions exist
       }
-      
+
       // Clear the app session flag so next visit requires fresh login
       sessionStorage.removeItem('nexpass-app-session');
-      
+
       setUser(null);
+      setIsEmailVerified(false);
       router.push('/login');
     } catch (error) {
       // Even if logout fails, clear local state and redirect
       sessionStorage.removeItem('nexpass-app-session');
       setUser(null);
+      setIsEmailVerified(false);
       router.push('/login');
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, register, logout, refresh, sendVerificationEmail, isEmailVerified }}>
       {children}
     </AuthContext.Provider>
   );
