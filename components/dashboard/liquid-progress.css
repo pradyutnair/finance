@@ -53,81 +53,15 @@
 .liquid-progress-groceries {
   background: linear-gradient(
     90deg,
-    #10b981,
-    #34d399,
-    #10b981,
-    #059669,
-    #10b981
+    #c6cfc9,
+    #d8e0da,
+    #c6cfc9,
+    #b4bdb7,
+    #c6cfc9
   );
 }
 
 .liquid-progress-restaurants {
-  background: linear-gradient(
-    90deg,
-    #f59e0b,
-    #fbbf24,
-    #f59e0b,
-    #d97706,
-    #f59e0b
-  );
-}
-
-.liquid-progress-transport {
-  background: linear-gradient(
-    90deg,
-    #3b82f6,
-    #60a5fa,
-    #3b82f6,
-    #2563eb,
-    #3b82f6
-  );
-}
-
-.liquid-progress-travel {
-  background: linear-gradient(
-    90deg,
-    #8b5cf6,
-    #a78bfa,
-    #8b5cf6,
-    #7c3aed,
-    #8b5cf6
-  );
-}
-
-.liquid-progress-shopping {
-  background: linear-gradient(
-    90deg,
-    #ec4899,
-    #f472b6,
-    #ec4899,
-    #db2777,
-    #ec4899
-  );
-}
-
-.liquid-progress-utilities {
-  background: linear-gradient(
-    90deg,
-    #f97316,
-    #fb923c,
-    #f97316,
-    #ea580c,
-    #f97316
-  );
-}
-
-.liquid-progress-entertainment {
-  background: linear-gradient(
-    90deg,
-    #06b6d4,
-    #22d3ee,
-    #06b6d4,
-    #0891b2,
-    #06b6d4
-  );
-}
-
-.liquid-progress-health {
   background: linear-gradient(
     90deg,
     #ef4444,
@@ -138,14 +72,124 @@
   );
 }
 
+.liquid-progress-transport {
+  background: linear-gradient(
+    90deg,
+    #fde68a,
+    #fef3c7,
+    #fde68a,
+    #fcd34d,
+    #fde68a
+  );
+}
+
+.liquid-progress-travel {
+  background: linear-gradient(
+    90deg,
+    #3b82f6,
+    #60a5fa,
+    #3b82f6,
+    #2563eb,
+    #3b82f6
+  );
+}
+
+.liquid-progress-shopping {
+  background: linear-gradient(
+    90deg,
+    #ac8fdb,
+    #c5a7e4,
+    #ac8fdb,
+    #9b77d2,
+    #ac8fdb
+  );
+}
+
+.liquid-progress-utilities {
+  background: linear-gradient(
+    90deg,
+    #40221a,
+    #6b3e35,
+    #40221a,
+    #2e1913,
+    #40221a
+  );
+}
+
+.liquid-progress-entertainment {
+  background: linear-gradient(
+    90deg,
+    #c752bf,
+    #d770d1,
+    #c752bf,
+    #b346ab,
+    #c752bf
+  );
+}
+
+.liquid-progress-health {
+  background: linear-gradient(
+    90deg,
+    #52c7a6,
+    #6dd4b8,
+    #52c7a6,
+    #3db594,
+    #52c7a6
+  );
+}
+
 .liquid-progress-miscellaneous {
   background: linear-gradient(
     90deg,
-    #6b7280,
     #9ca3af,
-    #6b7280,
-    #4b5563,
-    #6b7280
+    #b8bfc7,
+    #9ca3af,
+    #8b919b,
+    #9ca3af
+  );
+}
+
+.liquid-progress-education {
+  background: linear-gradient(
+    90deg,
+    #8fc2db,
+    #a8d3e5,
+    #8fc2db,
+    #74b1d1,
+    #8fc2db
+  );
+}
+
+.liquid-progress-income {
+  background: linear-gradient(
+    90deg,
+    #20d462,
+    #3ddb7a,
+    #20d462,
+    #1cbb54,
+    #20d462
+  );
+}
+
+.liquid-progress-uncategorized {
+  background: linear-gradient(
+    90deg,
+    #4f5952,
+    #6b756d,
+    #4f5952,
+    #3d4741,
+    #4f5952
+  );
+}
+
+.liquid-progress-bank-transfer {
+  background: linear-gradient(
+    90deg,
+    #585f96,
+    #7378a3,
+    #585f96,
+    #444a89,
+    #585f96
   );
 }
 
