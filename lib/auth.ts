@@ -116,8 +116,11 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
     const user = await account.get();
     return user;
   } catch (sessionError: any) {
-    console.error('Session verification error:', sessionError.message);
-    throw new StatusError(`Invalid session: ${sessionError.message}`, 401);
+    //console.error('Session verification error:', sessionError.message);
+    // throw new StatusError(`Invalid session: ${sessionError.message}`, 401);
+    // Do something that wont be visible to the user
+    console.log('Session verification error:', sessionError.message);
+    return null;
   }
 }
 
