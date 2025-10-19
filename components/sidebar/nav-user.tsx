@@ -129,7 +129,7 @@ export function NavUser() {
             </DropdownMenuLabel>
               
             <DropdownMenuSeparator /> */}
-            <DropdownMenuItem 
+            {/* <DropdownMenuItem 
               onClick={clearAllCaches}
               disabled={isClearingCache}
               className="text-orange-600 focus:text-orange-600"
@@ -137,7 +137,7 @@ export function NavUser() {
               <IconTrash />
               {isClearingCache ? "Clearing..." : "Clear All Caches"}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator /> */}
             <DropdownMenuItem onClick={logout}>
               <IconLogout />
               Log out
