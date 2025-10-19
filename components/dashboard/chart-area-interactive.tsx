@@ -76,6 +76,7 @@ export function ChartAreaInteractive() {
     ? { from: formatDateForAPI(dateRange.from), to: formatDateForAPI(dateRange.to) }
     : undefined
   const { data } = useTimeseries(dateRangeForAPI)
+  const { data: allTimeData } = useTimeseries() // Fetch all time data for projection calculation
   const current = React.useMemo<ChartDatum[]>(() => {
     if (!dateRange?.from || !dateRange?.to) return [];
 
@@ -149,7 +150,7 @@ export function ChartAreaInteractive() {
 
     // For expenses and savings, split cumulative into actual and projected lines
     if (metric === 'expenses' || metric === 'savings') {
-      const lastActualIndex = chartData.findLastIndex((d) => !d.isProjected);
+      const lastActualIndex = chartData.reduce((lastIndex, d, i) => !d.isProjected ? i : lastIndex, -1);
       if (lastActualIndex >= 0) {
         chartData.forEach((d, i) => {
           d.actualCum = i <= lastActualIndex ? d.cumulative : null;
@@ -183,7 +184,7 @@ export function ChartAreaInteractive() {
   }, [current])
 
   const projectedEomExpenses = React.useMemo(() => {
-  if (!data || data.length === 0) return 0
+  if (!allTimeData || allTimeData.length === 0) return 0
 
   // --- Always project for the current month ---
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -193,7 +194,7 @@ export function ChartAreaInteractive() {
 
   // Build a map of daily totals from the entire dataset
   const dataMap = new Map<number, { expenses: number; income: number }>()
-  data.forEach((d: TimeseriesPoint) => {
+  allTimeData.forEach((d: TimeseriesPoint) => {
     const [year, month, day] = d.date.split('-').map(Number)
     const dt = new Date(year, month - 1, day)
     dt.setHours(0, 0, 0, 0)
@@ -225,7 +226,7 @@ export function ChartAreaInteractive() {
   const projectedEOM = absMTD + dailyBurn * remainingDays
 
   return projectedEOM
-}, [data, baseCurrency, convertAmount]) // <- dateRange intentionally excluded
+}, [allTimeData, baseCurrency, convertAmount]) // <- dateRange intentionally excluded
 
 
 
@@ -475,7 +476,7 @@ export function ChartAreaInteractive() {
             </span>
             <span className="inline mx-2 text-muted-foreground">|</span>
             <span>
-              Projection: {nf.format((projectedEomExpenses as number) ?? 0)}
+              Projection EOM: {nf.format((projectedEomExpenses as number) ?? 0)}
             </span>
 
             {/* Info icon as a focusable button for a11y */}
@@ -505,7 +506,7 @@ export function ChartAreaInteractive() {
             >
               {/* <div className="font-medium text-foreground mb-1">How projection is calculated</div> */}
               <ul className="list-disc ml-4 space-y-1">
-                <li><span className="text-foreground">Projection</span> = Current total + (Daily burn × Remaining days).</li>
+                <li><span className="text-foreground">Projection End of Month</span> = Current total + (Daily burn × Remaining days).</li>
                 <li>Daily burn = Total spent this month ÷ Days elapsed this month.</li>
                 <li>Remaining days = Tomorrow through the last day of <span className="text-foreground">this month</span>.</li>
               </ul>
