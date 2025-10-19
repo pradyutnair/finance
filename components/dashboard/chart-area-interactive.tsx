@@ -476,7 +476,7 @@ export function ChartAreaInteractive() {
             </span>
             <span className="inline mx-2 text-muted-foreground">|</span>
             <span>
-              Projection EOM: {nf.format((projectedEomExpenses as number) ?? 0)}
+              Projection: {nf.format((projectedEomExpenses as number) ?? 0)}
             </span>
 
             {/* Info icon as a focusable button for a11y */}
