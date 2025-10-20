@@ -413,9 +413,9 @@ export function TransactionsTable() {
       },
       {
         accessorKey: "description",
-        header: "Description",
+        header: () => <div className="hidden sm:block">Description</div>,
         cell: ({ row }) => (
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground truncate max-w-[120px] sm:max-w-[200px]">
             {row.getValue("description")}
           </div>
         ),
@@ -426,7 +426,7 @@ export function TransactionsTable() {
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 px-2 hover:bg-muted/50 border border-border/50">
+              <Button variant="ghost" size="sm" className="h-7 px-2 hover:bg-muted/50 border border-border/50 text-xs sm:text-sm">
                 <span 
                   className="inline-block h-2 w-2 rounded-full mr-2" 
                   style={{ backgroundColor: categoryToColor(String(row.getValue("category"))) }} 
@@ -477,7 +477,7 @@ export function TransactionsTable() {
       },
       {
         accessorKey: "amount",
-        header: () => <div className="text-right">Amount</div>,
+        header: () => <div className="text-right hidden sm:block">Amount</div>,
         cell: ({ row }) => {
           const original = Number(row.getValue("amount"))
           const converted = convertAmount(original, row.original.currency, baseCurrency)
@@ -485,7 +485,7 @@ export function TransactionsTable() {
           const formatted = `${isIncome ? "+" : ""}${getCurrencySymbol(baseCurrency)}${converted.toFixed(2)}`
           return (
             <div className="text-right">
-              <span className={`font-medium ${isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+              <span className={`font-medium text-sm ${isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                 {formatted}
               </span>
             </div>
@@ -584,7 +584,7 @@ export function TransactionsTable() {
   return (
     <>
       <div
-        className="border rounded-xl overflow-hidden shadow-sm bg-card h-full flex flex-col"
+        className="border rounded-xl overflow-hidden shadow-sm bg-card min-h-0 flex flex-col h-full"
         onClick={(e) => {
           // Cancel editing if clicking outside edit input
           if (editingCounterparty && !(e.target as HTMLElement).closest('.edit-counterparty')) {
@@ -593,15 +593,15 @@ export function TransactionsTable() {
         }}
       >
       {/* Header with Search and Filter Toggle */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/30 to-muted/10 border-b">
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gradient-to-r from-muted/30 to-muted/10 border-b">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="relative flex-1 sm:flex-initial max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search payees..."
               value={(table.getColumn("counterparty")?.getFilterValue() as string) ?? ""}
               onChange={(e) => table.getColumn("counterparty")?.setFilterValue(e.target.value)}
-              className="h-9 w-64 pl-9 bg-background/50 border-border/50 focus:bg-background"
+              className="h-9 w-full pl-9 bg-background/50 border-border/50 focus:bg-background"
             />
           </div>
           
@@ -609,10 +609,10 @@ export function TransactionsTable() {
             variant={showFilters ? "secondary" : "outline"}
             size="sm"
             onClick={() => setShowFilters(!showFilters)}
-            className="h-9 gap-2"
+            className="h-9 gap-2 flex-shrink-0"
           >
             <Filter className="h-4 w-4" />
-            Filters
+            <span className="hidden sm:inline">Filters</span>
             {activeFilterCount > 0 && (
               <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 text-xs">
                 {activeFilterCount}
@@ -621,9 +621,9 @@ export function TransactionsTable() {
           </Button>
 
           {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 gap-2">
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-9 gap-2 flex-shrink-0">
               <X className="h-4 w-4" />
-              Clear
+              <span className="hidden sm:inline">Clear</span>
             </Button>
           )}
         </div>
@@ -632,19 +632,21 @@ export function TransactionsTable() {
           <Button
             variant="outline"
             size="sm"
-            className="h-9 gap-2"
+            className="h-9 gap-2 flex-shrink-0"
             onClick={() => autoCategorize.mutate(undefined)}
             disabled={autoCategorize.isPending}
           >
             <Sparkles className="h-4 w-4" />
-            {autoCategorize.isPending ? "Categorizing..." : "Auto-categorize"}
+            <span className="hidden sm:inline">
+              {autoCategorize.isPending ? "Categorizing..." : "Auto-categorize"}
+            </span>
           </Button>
 
           <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2 flex-shrink-0">
               <Zap className="h-4 w-4" />
-              Columns
+              <span className="hidden sm:inline">Columns</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -668,7 +670,7 @@ export function TransactionsTable() {
       {/* Expandable Filters */}
       {showFilters && (
         <div className="p-4 bg-muted/20 border-b">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Select
               value={(table.getColumn("bankName")?.getFilterValue() as string) ?? "all"}
               onValueChange={(val) => table.getColumn("bankName")?.setFilterValue(val === "all" ? "" : val)}
@@ -781,23 +783,35 @@ export function TransactionsTable() {
             <Table>
               <TableBody>
                 {rowsToRender?.length ? (
-                  rowsToRender.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      className="hover:bg-muted/30 transition-colors border-border/30"
-                      data-state={row.getIsSelected() && "selected"}
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="first:pl-6 py-3">
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
+                  <>
+                    {rowsToRender.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        className="hover:bg-muted/30 transition-colors border-border/30"
+                        data-state={row.getIsSelected() && "selected"}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id} className="first:pl-6 py-3">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                    {/* Add empty rows to fill remaining space and maintain consistent height */}
+                    {Array.from({ length: Math.max(0, pageSize - rowsToRender.length) }).map((_, index) => (
+                      <TableRow key={`empty-${index}`} className="hover:bg-transparent">
+                        {columns.map((_, colIndex) => (
+                          <TableCell key={colIndex} className="first:pl-6 py-3 h-[60px] border-b border-border/20">
+                            <div className="h-[60px]" />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </>
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={columns.length} className="h-full text-center">
-                      <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-muted-foreground">
+                    <TableCell colSpan={columns.length} className="text-center">
+                      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                         <div className="mb-2">📊</div>
                         <div className="font-medium">No transactions found</div>
                         <div className="text-sm">Try adjusting your filters</div>
@@ -812,24 +826,24 @@ export function TransactionsTable() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gradient-to-r from-muted/10 to-muted/5 border-t">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
           <div className="text-sm text-muted-foreground">
             Showing {offset + 1} to {Math.min(offset + pageSize, totalCount)} of {totalCount} transactions
           </div>
           {(totalIncome > 0 || totalExpenses > 0) && (
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 text-sm">
               {totalIncome > 0 && (
                 <div className="font-medium">
-                  Income: <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    +{formatAmount(totalIncome)}
+                  <span className="text-xs sm:text-sm text-emerald-600 dark:text-emerald-400">
+                    Income: +{formatAmount(totalIncome)}
                   </span>
                 </div>
               )}
               {totalExpenses > 0 && (
                 <div className="font-medium">
-                  Expenses: <span className="font-bold text-rose-600 dark:text-rose-400">
-                    -{formatAmount(totalExpenses)}
+                  <span className="text-xs sm:text-sm text-rose-600 dark:text-rose-400">
+                    Expenses: -{formatAmount(totalExpenses)}
                   </span>
                 </div>
               )}
