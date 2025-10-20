@@ -41,7 +41,7 @@ import { useCurrency } from "@/contexts/currency-context"
 import { useUpdateTransaction } from "@/lib/api"
 import { useAutoCategorize } from "@/lib/api"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
-
+import { formatBankName } from "@/lib/bank-name-mapping"
 type TxRow = {
   id: string
   description: string
@@ -87,14 +87,6 @@ function categoryToColor(cat: string): string {
   } catch {
     return "#6b7280"
   }
-}
-
-export function formatBankName(raw: string | undefined | null): string {
-  if (typeof raw !== "string" || raw.length === 0) return "Unknown"
-  const idx = raw.indexOf("_")
-  const first = idx > -1 ? raw.slice(0, idx) : raw
-  const lower = first.toLowerCase()
-  return lower.length ? lower[0].toUpperCase() + lower.slice(1) : first
 }
 
 export function TransactionsTable() {
@@ -765,22 +757,20 @@ export function TransactionsTable() {
       {/* Table */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex flex-col">
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/50">
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="text-muted-foreground h-12 first:pl-6 bg-muted/10">
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-          </Table>
-
           <div className="flex-1 overflow-y-auto">
-            <Table>
+            <div className="w-full">
+              <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/50 sticky top-0 bg-background z-10">
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} className="text-muted-foreground h-12 first:pl-6 bg-muted/10">
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
               <TableBody>
                 {rowsToRender?.length ? (
                   <>
@@ -821,6 +811,7 @@ export function TransactionsTable() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </div>
         </div>
       </div>
