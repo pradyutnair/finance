@@ -17,6 +17,7 @@ export interface UserEmailData {
     pushNotifications?: boolean;
     monthlyReports?: boolean;
     weeklyReports?: boolean;
+    marketingEmails?: boolean;
   };
 }
 
@@ -71,18 +72,20 @@ export class EmailService {
         );
         preferences = {
           emailNotifications: prefsData.emailNotifications ?? true,
-          pushNotifications: prefsData.pushNotifications ?? true,
+          pushNotifications: prefsData.pushNotifications ?? false,
           monthlyReports: prefsData.monthlyReports ?? false,
           weeklyReports: prefsData.weeklyReports ?? false,
+          marketingEmails: prefsData.marketingEmails ?? false,
         };
       } catch (error) {
         console.warn(`Could not fetch preferences for user ${userId}:`, error);
         // Use default preferences if not found
         preferences = {
           emailNotifications: true,
-          pushNotifications: true,
+          pushNotifications: false,
           monthlyReports: false,
           weeklyReports: false,
+          marketingEmails: false,
         };
       }
 
@@ -108,6 +111,99 @@ export class EmailService {
 
     const userData = await this.getUserData(userId);
     return userData?.preferences?.emailNotifications ?? true;
+  }
+
+  /**
+   * Check if user has opted in for weekly reports
+   */
+  async canSendWeeklyReport(userId: string): Promise<boolean> {
+    try {
+      const userData = await this.getUserData(userId);
+      if (!userData || !userData.preferences) {
+        return false;
+      }
+      return userData.preferences.emailNotifications && userData.preferences.weeklyReports;
+    } catch (error) {
+      console.error(`Error checking weekly report preference for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user has opted in for monthly reports
+   */
+  async canSendMonthlyReport(userId: string): Promise<boolean> {
+    try {
+      const userData = await this.getUserData(userId);
+      if (!userData || !userData.preferences) {
+        return false;
+      }
+      return userData.preferences.emailNotifications && userData.preferences.monthlyReports;
+    } catch (error) {
+      console.error(`Error checking monthly report preference for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user has opted in for marketing emails
+   */
+  async canSendMarketingEmail(userId: string): Promise<boolean> {
+    try {
+      const userData = await this.getUserData(userId);
+      if (!userData || !userData.preferences) {
+        return false;
+      }
+      return userData.preferences.emailNotifications && userData.preferences.marketingEmails;
+    } catch (error) {
+      console.error(`Error checking marketing email preference for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all users who have opted in for weekly reports
+   */
+  async getUsersOptedInForWeeklyReports(): Promise<string[]> {
+    try {
+      // Note: This would require implementing a method to list all users from Appwrite
+      // For now, this is a placeholder for the concept
+      console.warn('Getting users opted in for weekly reports requires implementing user listing from Appwrite');
+      return [];
+    } catch (error) {
+      console.error('Error getting users for weekly reports:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all users who have opted in for monthly reports
+   */
+  async getUsersOptedInForMonthlyReports(): Promise<string[]> {
+    try {
+      // Note: This would require implementing a method to list all users from Appwrite
+      // For now, this is a placeholder for the concept
+      console.warn('Getting users opted in for monthly reports requires implementing user listing from Appwrite');
+      return [];
+    } catch (error) {
+      console.error('Error getting users for monthly reports:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all users who have opted in for marketing emails
+   */
+  async getUsersOptedInForMarketing(): Promise<string[]> {
+    try {
+      // Note: This would require implementing a method to list all users from Appwrite
+      // For now, this is a placeholder for the concept
+      console.warn('Getting users opted in for marketing emails requires implementing user listing from Appwrite');
+      return [];
+    } catch (error) {
+      console.error('Error getting users for marketing emails:', error);
+      return [];
+    }
   }
 
   /**
