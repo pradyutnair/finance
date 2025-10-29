@@ -395,10 +395,36 @@ export function TransactionsTable() {
         },
       },
       {
+        accessorKey: "amount",
+        header: () => <div className="text-center min-w-[80px] sm:min-w-[100px]">Amount</div>,
+        cell: ({ row }) => {
+          const original = Number(row.getValue("amount"))
+          const converted = convertAmount(original, row.original.currency, baseCurrency)
+          const isIncome = converted > 0
+          const formatted = `${isIncome ? "+" : ""}${getCurrencySymbol(baseCurrency)}${converted.toFixed(2)}`
+          return (
+            <div className="text-center px-2 sm:px-4 min-w-[80px] sm:min-w-[100px]">
+              <span className={`font-medium text-sm ${isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                {formatted}
+              </span>
+            </div>
+          )
+        },
+        filterFn: (row, columnId, value: { min?: number; max?: number }) => {
+          const original = Number(row.getValue(columnId))
+          const converted = convertAmount(original, row.original.currency, baseCurrency)
+          const absAmount = Math.abs(converted) // Compare absolute values for filtering
+
+          if (typeof value?.min === "number" && !Number.isNaN(value.min) && absAmount < value.min) return false
+          if (typeof value?.max === "number" && !Number.isNaN(value.max) && absAmount > value.max) return false
+          return true
+        },
+      },
+      {
         accessorKey: "bankName",
-        header: "Bank",
+        header: () => <div className="pl-6">Bank</div>,
         cell: ({ row }) => (
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground pl-6">
             {formatBankName(String(row.getValue("bankName") || ""))}
           </div>
         ),
@@ -419,9 +445,9 @@ export function TransactionsTable() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 px-2 hover:bg-muted/50 border border-border/50 text-xs sm:text-sm">
-                <span 
-                  className="inline-block h-2 w-2 rounded-full mr-2" 
-                  style={{ backgroundColor: categoryToColor(String(row.getValue("category"))) }} 
+                <span
+                  className="inline-block h-2 w-2 rounded-full mr-2"
+                  style={{ backgroundColor: categoryToColor(String(row.getValue("category"))) }}
                 />
                 <span className="text-xs font-medium">{row.getValue("category")}</span>
               </Button>
@@ -466,32 +492,6 @@ export function TransactionsTable() {
             {row.getValue("accountId")}
           </div>
         ),
-      },
-      {
-        accessorKey: "amount",
-        header: () => <div className="text-right hidden sm:block">Amount</div>,
-        cell: ({ row }) => {
-          const original = Number(row.getValue("amount"))
-          const converted = convertAmount(original, row.original.currency, baseCurrency)
-          const isIncome = converted > 0
-          const formatted = `${isIncome ? "+" : ""}${getCurrencySymbol(baseCurrency)}${converted.toFixed(2)}`
-          return (
-            <div className="text-right">
-              <span className={`font-medium text-sm ${isIncome ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                {formatted}
-              </span>
-            </div>
-          )
-        },
-        filterFn: (row, columnId, value: { min?: number; max?: number }) => {
-          const original = Number(row.getValue(columnId))
-          const converted = convertAmount(original, row.original.currency, baseCurrency)
-          const absAmount = Math.abs(converted) // Compare absolute values for filtering
-          
-          if (typeof value?.min === "number" && !Number.isNaN(value.min) && absAmount < value.min) return false
-          if (typeof value?.max === "number" && !Number.isNaN(value.max) && absAmount > value.max) return false
-          return true
-        },
       }
     ],
     [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange]
