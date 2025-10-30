@@ -77,7 +77,7 @@ export class RecurringDetector {
     const groups = new Map<string, Transaction[]>()
 
     for (const transaction of transactions) {
-      const counterparty = (transaction.counterparty || transaction.description || 'Unknown').trim().toLowerCase()
+      const counterparty = (transaction.counterparty || transaction.description || 'Unknown').trim()
 
       if (!groups.has(counterparty)) {
         groups.set(counterparty, [])
