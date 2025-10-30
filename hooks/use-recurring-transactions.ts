@@ -38,12 +38,12 @@ export function useRecurringTransactionsWithDateRange() {
       const counterparty = tx.counterparty || tx.description || 'Unknown'
       return {
         id: tx.id,
-        date: tx.bookingDate || tx.date || new Date().toISOString().split('T')[0], // Use bookingDate first
+        date: tx.bookingDate || tx.date || tx.valueDate || new Date().toISOString().split('T')[0],
         merchant: counterparty,
         counterparty: counterparty,
         description: tx.description,
         category: tx.category,
-        amount: Math.abs(tx.amount), // Use absolute amount for pattern detection
+        amount: tx.amount, // Keep original sign - detector will filter for expenses (negative amounts)
         currency: tx.currency,
         accountId: tx.accountId,
       }
@@ -52,9 +52,9 @@ export function useRecurringTransactionsWithDateRange() {
     // Detect recurring patterns with production-ready parameters
     const detectedPatterns = detectRecurringTransactions(transactionData, {
       minOccurrences: 3, // Require at least 3 occurrences
-      confidenceThreshold: 0.4, // Lower confidence threshold
-      amountTolerance: 0.25, // 25% tolerance for amount variations
-      dayTolerance: 10, // 10 days tolerance for date variations
+      confidenceThreshold: 0.3, // More permissive confidence threshold
+      minCoverage: 0.5, // 50% coverage required
+      amountStabilityThreshold: 0.15, // 15% amount variation tolerance
     })
 
     return detectedPatterns
