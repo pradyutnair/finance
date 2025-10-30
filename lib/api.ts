@@ -12,6 +12,8 @@ const categoriesInflight = new Map<string, Promise<CategorySlice[]>>();
 export interface Transaction {
   id: string;
   date: string;
+  bookingDate?: string; // Actual date field from backend
+  valueDate?: string; // Alternative date field
   merchant: string;
   counterparty?: string;
   description?: string;
@@ -19,6 +21,7 @@ export interface Transaction {
   amount: number;
   currency: string;
   accountId: string;
+  exclude?: boolean;
 }
 
 export interface Metrics {
