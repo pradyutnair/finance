@@ -125,7 +125,7 @@ export async function getUserTransactionCache(
         .limit(fetchAllTime ? 100000 : 20000);
       const docs = await cursor.toArray();
       allTransactions = docs.map((d: any) => ({
-        $id: d._id?.toString?.() || d._id,
+        id: d._id?.toString?.() || d._id,
         userId: d.userId,
         accountId: d.accountId,
         amount: d.amount,
@@ -170,7 +170,7 @@ export async function getUserTransactionCache(
         allTransactions.push(...docs);
 
         if (docs.length < pageSize) break;
-        cursor = docs[docs.length - 1].$id;
+        cursor = docs[docs.length - 1].id;
         if (!cursor) break;
       }
     }
@@ -287,7 +287,7 @@ export async function getUserBalanceCache(
         .toArray();
       
       allBalances = docs.map((d: any) => ({
-        $id: d._id?.toString?.() || d._id,
+        id: d._id?.toString?.() || d._id,
         userId: d.userId,
         accountId: d.accountId,
         balanceAmount: d.balanceAmount,
@@ -324,7 +324,7 @@ export async function getUserBalanceCache(
         allBalances.push(...docs);
 
         if (docs.length < pageSize) break;
-        cursor = docs[docs.length - 1].$id;
+        cursor = docs[docs.length - 1].id;
         if (!cursor) break;
       }
     }
