@@ -13,6 +13,7 @@ export interface Transaction {
   id: string;
   date: string;
   merchant: string;
+  counterparty?: string;
   description?: string;
   category?: string;
   amount: number;
@@ -439,3 +440,4 @@ export const useSendMessage = () => {
     }),
   });
 };
+

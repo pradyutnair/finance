@@ -1,0 +1,1 @@
+Do not run `npm run build` unless explicitly asked to build the project.

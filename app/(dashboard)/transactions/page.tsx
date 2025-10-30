@@ -15,7 +15,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TransactionsTable } from "@/components/transactions/transactions-table"
 import { RulesList } from "@/components/rules/rules-list"
 import { RuleDialog } from "@/components/rules/rule-dialog"
+import { RecurringGrid } from "@/components/recurring/recurring-grid"
+import { useRecurringTransactionsWithDateRange } from "@/hooks/use-recurring-transactions"
 import { Table, Settings, RefreshCw } from "lucide-react"
+
+// Separate component for recurring transactions that uses the date range context
+function RecurringTransactionsTab() {
+  const { patterns, isLoading, refetch } = useRecurringTransactionsWithDateRange()
+
+  return (
+    <RecurringGrid
+      patterns={patterns}
+      isLoading={isLoading}
+      onRefresh={() => refetch()}
+    />
+  )
+}
 
 export default function TransactionsPage() {
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
@@ -68,13 +83,7 @@ export default function TransactionsPage() {
                       </TabsContent>
 
                       <TabsContent value="recurring" className="space-y-6">
-                        <div className="flex flex-col items-center justify-center h-64 text-center">
-                          <RefreshCw className="h-12 w-12 text-muted-foreground mb-4" />
-                          <h3 className="text-lg font-semibold mb-2">Recurring Transactions</h3>
-                          <p className="text-muted-foreground max-w-md">
-                            This feature is coming soon. You&apos;ll be able to set up and manage recurring transactions here.
-                          </p>
-                        </div>
+                        <RecurringTransactionsTab />
                       </TabsContent>
                     </Tabs>
                   </div>
