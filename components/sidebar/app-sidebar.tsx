@@ -5,6 +5,7 @@ import {
   IconDashboard,
   IconCreditCard,
   IconArrowsUpDown,
+  IconSettings,
   IconUser,
   IconInnerShadowTop,
   IconChevronRight,
@@ -43,6 +44,11 @@ const data = {
       title: "Transactions",
       url: "/transactions",
       icon: IconArrowsUpDown,
+    },
+    {
+      title: "Rules",
+      url: "/rules",
+      icon: IconSettings,
     },
     {
       title: "Profile",

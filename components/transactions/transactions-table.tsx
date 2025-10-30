@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Edit2, Check } from "lucide-react"
+import { Edit2, Check, Plus, Settings } from "lucide-react"
 import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap, Sparkles } from "lucide-react"
 import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
@@ -40,8 +40,12 @@ import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
 import { useUpdateTransaction } from "@/lib/api"
 import { useAutoCategorize } from "@/lib/api"
+import { useTransactionRules } from "@/lib/api/transaction-rules"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
 import { formatBankName } from "@/lib/bank-name-mapping"
+import { RuleDialog } from "@/components/rules/rule-dialog"
+import { applyBestMatchingRule } from "@/lib/rule-engine"
+import type { TransactionRule } from "@/lib/types/transaction-rules"
 type TxRow = {
   id: string
   description: string
@@ -56,7 +60,15 @@ type TxRow = {
   counterparty?: string
 }
 
-function RowActions({ onCategorize }: { onCategorize: (category: string) => void }) {
+function RowActions({
+  onCategorize,
+  onCreateRule,
+  onCreateRuleFromTransaction
+}: {
+  onCategorize: (category: string) => void
+  onCreateRule: () => void
+  onCreateRuleFromTransaction: (transaction: TxRow) => void
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -67,6 +79,16 @@ function RowActions({ onCategorize }: { onCategorize: (category: string) => void
         </div>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onCreateRule} className="cursor-pointer">
+            <Settings className="h-4 w-4 mr-3" />
+            <span>Create Rule</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onCreateRuleFromTransaction} className="cursor-pointer">
+            <Plus className="h-4 w-4 mr-3" />
+            <span>Create Rule from This Transaction</span>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
         <DropdownMenuGroup>
           {CATEGORY_OPTIONS.map((cat) => (
             <DropdownMenuItem key={cat} onClick={() => onCategorize(cat)} className="cursor-pointer">
@@ -99,6 +121,8 @@ export function TransactionsTable() {
   })
   const [showFilters, setShowFilters] = useState(false)
   const [editingCounterparty, setEditingCounterparty] = useState<{ id: string; value: string } | null>(null)
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
+  const [transactionForRule, setTransactionForRule] = useState<TxRow | null>(null)
   const [categorizeDialog, setCategorizeDialog] = useState<{
     open: boolean
     transaction: TxRow | null
@@ -112,6 +136,7 @@ export function TransactionsTable() {
   const updateTx = useUpdateTransaction()
   const autoCategorize = useAutoCategorize()
   const { data: accounts } = useAccounts()
+  const { data: rules } = useTransactionRules()
 
   const apiDateRange = useMemo(() => {
     if (dateRange?.from && dateRange?.to) {
@@ -152,7 +177,7 @@ export function TransactionsTable() {
   // All transactions for similarity matching and display (decrypted on client)
   const allTransactions: TxRow[] = useMemo(() =>
     (allTransactionsData?.transactions || []).map((t: any) => ({
-      id: t.$id || t.id,
+      id: t.id || t.$id,
       description: t.description || t.counterparty || "Unknown",
       rawDescription: t.description,
       category: t.category || "Uncategorized",
@@ -166,17 +191,30 @@ export function TransactionsTable() {
     })), [allTransactionsData, accountIdToInstitutionId]
   )
 
-  // Filter transactions by date range (this is the only filter we do client-side outside the table)
+  // Filter transactions by date range and apply rules
   const dateFilteredTransactions = useMemo(() => {
     if (!allTransactions.length) return []
 
-    return allTransactions.filter(tx => {
+    let filteredTransactions = allTransactions.filter(tx => {
       // Apply date range filter
       if (apiDateRange?.from && tx.bookingDate < apiDateRange.from) return false
       if (apiDateRange?.to && tx.bookingDate > apiDateRange.to) return false
       return true
     })
-  }, [allTransactions, apiDateRange])
+
+    // Apply user rules to transactions if available
+    if (rules && rules.length > 0) {
+      const enabledRules = rules.filter(rule => rule.enabled)
+      if (enabledRules.length > 0) {
+        filteredTransactions = filteredTransactions.map(tx => {
+          const result = applyBestMatchingRule(tx, enabledRules)
+          return result.transaction
+        })
+      }
+    }
+
+    return filteredTransactions
+  }, [allTransactions, apiDateRange, rules])
 
   const totalCount = dateFilteredTransactions.length
 
@@ -281,6 +319,16 @@ export function TransactionsTable() {
 
   function handleCancelCategorize() {
     setCategorizeDialog({ open: false, transaction: null, category: null, similarTransactionIds: [] })
+  }
+
+  function handleCreateRule() {
+    setTransactionForRule(null)
+    setRuleDialogOpen(true)
+  }
+
+  function handleCreateRuleFromTransaction(transaction: TxRow) {
+    setTransactionForRule(transaction)
+    setRuleDialogOpen(true)
   }
 
   const activeFilterCount = columnFilters.length
@@ -492,9 +540,22 @@ export function TransactionsTable() {
             {row.getValue("accountId")}
           </div>
         ),
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-center">Actions</div>,
+        cell: ({ row }) => (
+          <RowActions
+            onCategorize={(category) => handleCategorize(row.original, category)}
+            onCreateRule={handleCreateRule}
+            onCreateRuleFromTransaction={() => handleCreateRuleFromTransaction(row.original)}
+          />
+        ),
+        enableSorting: false,
+        size: 50,
       }
     ],
-    [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange]
+    [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange, handleCreateRule, handleCreateRuleFromTransaction]
   )
 
   const table = useReactTable({
@@ -621,6 +682,16 @@ export function TransactionsTable() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-2 flex-shrink-0"
+            onClick={handleCreateRule}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Add Rule</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -931,6 +1002,42 @@ export function TransactionsTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rule Dialog */}
+      <RuleDialog
+        open={ruleDialogOpen}
+        onOpenChange={setRuleDialogOpen}
+        rule={transactionForRule ? {
+          id: "",
+          userId: "",
+          name: `Rule for ${transactionForRule.counterparty || transactionForRule.description}`,
+          description: "Auto-generated from transaction",
+          enabled: true,
+          priority: 50,
+          conditions: [
+            {
+              field: "counterparty",
+              operator: "contains",
+              value: transactionForRule.counterparty || transactionForRule.description,
+              caseSensitive: false
+            }
+          ],
+          conditionLogic: "AND",
+          actions: [
+            {
+              type: "setCategory",
+              value: transactionForRule.category
+            }
+          ],
+          matchCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } : undefined}
+        onSuccess={() => {
+          setRuleDialogOpen(false)
+          setTransactionForRule(null)
+        }}
+      />
 
     </div>
   </>
