@@ -215,8 +215,8 @@ export function RulesList({ onCreateRule, onEditRule }: RulesListProps) {
             Apply All Rules
           </Button>
           {onCreateRule && (
-            <Button onClick={onCreateRule}>
-              <Settings className="h-4 w-4 mr-2" />
+            <Button onClick={onCreateRule} className="bg-[#40221a] text-white">
+              <Settings className="h-4 w-4 mr-2 " />
               Create Rule
             </Button>
           )}
@@ -257,6 +257,7 @@ export function RulesList({ onCreateRule, onEditRule }: RulesListProps) {
                       checked={rule.enabled}
                       onCheckedChange={() => handleToggleRuleEnabled(rule)}
                       disabled={updateRule.isPending}
+                      className="data-[state=checked]:bg-[#40221a] dark:data-[state=checked]:bg-white"
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

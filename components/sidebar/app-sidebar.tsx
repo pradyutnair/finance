@@ -45,12 +45,7 @@ const data = {
       url: "/transactions",
       icon: IconArrowsUpDown,
     },
-    {
-      title: "Rules",
-      url: "/rules",
-      icon: IconSettings,
-    },
-    {
+        {
       title: "Profile",
       url: "/profile",
       icon: IconUser,

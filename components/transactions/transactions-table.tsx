@@ -682,7 +682,7 @@ export function TransactionsTable() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
+          {/* <Button
             variant="outline"
             size="sm"
             className="h-9 gap-2 flex-shrink-0"
@@ -690,7 +690,7 @@ export function TransactionsTable() {
           >
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Add Rule</span>
-          </Button>
+          </Button> */}
 
           <Button
             variant="outline"
