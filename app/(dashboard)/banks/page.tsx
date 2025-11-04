@@ -20,6 +20,8 @@ import { Gauge } from '@mui/x-charts/Gauge'
 import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
 import { useQueries } from "@tanstack/react-query"
 import { formatBankName } from "@/lib/bank-name-mapping"
+import { PaymentWall } from "@/components/payment/payment-wall"
+import { usePremiumStatus } from "@/components/payment/checkout-button"
 
 type BankAccountDoc = {
   $id: string
@@ -311,6 +313,7 @@ export default function BanksPage() {
   const { data: accounts, isLoading } = useAccounts()
   const searchParams = useSearchParams()
   const simulateExpired = (process.env.NEXT_PUBLIC_SIMULATE_EXPIRED === '1') || (searchParams?.get('simulateExpired') === '1')
+  const { isPremium, isLoading: premiumLoading } = usePremiumStatus()
 
   const grouped = React.useMemo(() => {
     if (!Array.isArray(accounts)) return [] as { representative: BankAccountDoc; ids: string[] }[]
@@ -346,79 +349,99 @@ export default function BanksPage() {
               <div className="@container/main flex flex-1 flex-col gap-2">
                 <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
                   <div className="px-4 lg:px-6">
-                  {/* Header Section */}
-                  <div className="flex items-center justify-end mb-4">
-                    <Link href="/link-bank" className="inline-flex">
-                      <Button className="gap-2 shadow-lg hover:shadow-xl transition-all duration-200 px-5 py-2.5 text-sm">
-                        <Plus className="h-4 w-4" />
-                        Connect Bank
-                      </Button>
-                    </Link>
-                  </div>
 
-                  {/* Content */}
-                  {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <Card key={i} className="group transition-all duration-300 bg-white dark:bg-black border border-gray-200 dark:border-white">
-                          <CardHeader className="pb-4">
-                            <div className="flex items-center gap-4">
-                              <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-white/20"></div>
-                              <div className="flex-1">
-                                <Skeleton className="h-6 w-40 mb-2 rounded-lg" />
-                                <Skeleton className="h-4 w-24 rounded-lg" />
-                              </div>
-                              <div className="w-8 h-8">
-                                <Skeleton className="w-full h-full rounded-full" />
-                              </div>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="pt-0">
-                            <div className="flex items-end justify-between">
-                              <div>
-                                <Skeleton className="h-10 w-32 mb-2 rounded-lg" />
-                                <Skeleton className="h-5 w-20 rounded-lg" />
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : Array.isArray(accounts) && accounts.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {grouped.map(({ representative, ids }) => (
-                        <AccountCard
-                          key={representative.institutionId || representative.$id}
-                          account={representative}
-                          groupAccountIds={ids}
-                          forceExpired={Boolean(simulateExpired)}
+                    {/* Premium Wall for non-premium users */}
+                    {!premiumLoading && !isPremium && (
+                      <div className="mb-8">
+                        <PaymentWall
+                          title="Connect Your Banks"
+                          description="Premium users can connect unlimited bank accounts and access real-time financial insights."
+                          feature="Bank Connections"
+                          ctaText="Upgrade to Connect Banks"
+                          redirectTo="/banks"
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center min-h-[400px]">
-                      <Card className="max-w-md w-full bg-white dark:bg-black border border-gray-200 dark:border-white shadow-xl">
-                        <CardHeader className="text-center pb-6">
-                          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-white/20">
-                            <Building2 className="w-10 h-10 text-gray-600 dark:text-gray-400" />
-                          </div>
-                          <CardTitle className="text-2xl font-bold text-gray-800 dark:text-white mb-3">
-                            No Banks Connected
-                          </CardTitle>
-                          <CardDescription className="text-gray-600 dark:text-gray-300 text-base">
-                            Connect your first bank account to start tracking your finances
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="text-center">
-                          <Link href="/link-bank" className="inline-flex">
-                            <Button className="gap-3 shadow-lg hover:shadow-xl transition-all duration-300 px-10 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 rounded-full text-base font-semibold">
-                              <Plus className="h-5 w-5" />
-                              Connect Your First Bank
-                            </Button>
-                          </Link>
-                        </CardContent>
-                      </Card>
-                    </div>
+                      </div>
+                    )}
+
+                    {/* Header Section - Only show for premium users */}
+                    {(!premiumLoading && isPremium) && (
+                      <div className="flex items-center justify-end mb-4">
+                        <Link href="/link-bank" className="inline-flex">
+                          <Button className="gap-2 shadow-lg hover:shadow-xl transition-all duration-200 px-5 py-2.5 text-sm">
+                            <Plus className="h-4 w-4" />
+                            Connect Bank
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+
+                  {/* Content - Only show for premium users */}
+                  {(!premiumLoading && isPremium) && (
+                    <>
+                      {isLoading ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <Card key={i} className="group transition-all duration-300 bg-white dark:bg-black border border-gray-200 dark:border-white">
+                              <CardHeader className="pb-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-white/20"></div>
+                                  <div className="flex-1">
+                                    <Skeleton className="h-6 w-40 mb-2 rounded-lg" />
+                                    <Skeleton className="h-4 w-24 rounded-lg" />
+                                  </div>
+                                  <div className="w-8 h-8">
+                                    <Skeleton className="w-full h-full rounded-full" />
+                                  </div>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="pt-0">
+                                <div className="flex items-end justify-between">
+                                  <div>
+                                    <Skeleton className="h-10 w-32 mb-2 rounded-lg" />
+                                    <Skeleton className="h-5 w-20 rounded-lg" />
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : Array.isArray(accounts) && accounts.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                          {grouped.map(({ representative, ids }) => (
+                            <AccountCard
+                              key={representative.institutionId || representative.$id}
+                              account={representative}
+                              groupAccountIds={ids}
+                              forceExpired={Boolean(simulateExpired)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center min-h-[400px]">
+                          <Card className="max-w-md w-full bg-white dark:bg-black border border-gray-200 dark:border-white shadow-xl">
+                            <CardHeader className="text-center pb-6">
+                              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-white/20">
+                                <Building2 className="w-10 h-10 text-gray-600 dark:text-gray-400" />
+                              </div>
+                              <CardTitle className="text-2xl font-bold text-gray-800 dark:text-white mb-3">
+                                No Banks Connected
+                              </CardTitle>
+                              <CardDescription className="text-gray-600 dark:text-gray-300 text-base">
+                                Connect your first bank account to start tracking your finances
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="text-center">
+                              <Link href="/link-bank" className="inline-flex">
+                                <Button className="gap-3 shadow-lg hover:shadow-xl transition-all duration-300 px-10 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 rounded-full text-base font-semibold">
+                                  <Plus className="h-5 w-5" />
+                                  Connect Your First Bank
+                                </Button>
+                              </Link>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

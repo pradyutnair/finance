@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 import Link from 'next/link';
+import { CheckoutButton, usePremiumStatus } from '@/components/payment/checkout-button';
 
 const features = [
   "Unlimited bank connections",
@@ -16,6 +17,8 @@ const features = [
 ];
 
 export function PricingSection() {
+  const { isPremium, isLoading: premiumLoading } = usePremiumStatus();
+
   return (
     <section className="py-24 sm:py-32 px-4 bg-white dark:bg-black relative overflow-hidden">
       {/* Chocolate blur background for dark mode */}
@@ -95,15 +98,26 @@ export function PricingSection() {
 
               {/* CTA Button */}
             <div className="mb-10">
-              <Button
-                asChild
-                size="lg"
-                className="w-full text-white font-medium py-6 text-base rounded-full border-0 gradient-button"
-              >
-                <Link href="/login">
+              {isPremium ? (
+                <Button
+                  asChild
+                  size="lg"
+                  className="w-full text-white font-medium py-6 text-base rounded-full border-0"
+                  style={{ backgroundColor: '#22c55e' }}
+                >
+                  <Link href="/dashboard">
+                    Go to Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <CheckoutButton
+                  size="lg"
+                  className="w-full text-white font-medium py-6 text-base rounded-full border-0"
+                  redirectTo="/pricing"
+                >
                   Get Started
-                </Link>
-              </Button>
+                </CheckoutButton>
+              )}
             </div>
 
 

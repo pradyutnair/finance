@@ -5,11 +5,13 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { CheckoutButton, usePremiumStatus } from '@/components/payment/checkout-button';
 
 export function LandingHeader() {
   const pathname = usePathname();
   const isHomePage = pathname === '/';
   const [isNearHero, setIsNearHero] = useState(true);
+  const { isPremium, isLoading: premiumLoading } = usePremiumStatus();
 
   useEffect(() => {
     if (!isHomePage) return;
@@ -102,28 +104,54 @@ export function LandingHeader() {
 
           {/* Right side buttons */}
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <Link href="/login" className="hidden sm:block">
-              <Button
-                variant="ghost"
-                className={`transition-colors duration-300 ${
-                  isNearHero 
-                    ? 'text-white/80 dark:text-gray-300 hover:text-white dark:hover:text-white' 
-                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                Sign In
-              </Button>
-            </Link>
+            {isPremium ? (
+              <>
+                <Link href="/login" className="hidden sm:block">
+                  <Button
+                    variant="ghost"
+                    className={`transition-colors duration-300 ${
+                      isNearHero
+                        ? 'text-white/80 dark:text-gray-300 hover:text-white dark:hover:text-white'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Sign In
+                  </Button>
+                </Link>
 
-            <Button
-              asChild
-              className="text-white font-medium rounded-full text-sm sm:text-base px-4 sm:px-6 gradient-button"
-              style={{ backgroundColor: '#40221a' }}
-            >
-              <Link href="/login">
-                Get Started
-              </Link>
-            </Button>
+                <Button
+                  asChild
+                  className="text-white font-medium rounded-full text-sm sm:text-base px-4 sm:px-6"
+                  style={{ backgroundColor: '#22c55e' }}
+                >
+                  <Link href="/dashboard">
+                    Go to Dashboard
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="hidden sm:block">
+                  <Button
+                    variant="ghost"
+                    className={`transition-colors duration-300 ${
+                      isNearHero
+                        ? 'text-white/80 dark:text-gray-300 hover:text-white dark:hover:text-white'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Sign In
+                  </Button>
+                </Link>
+
+                <CheckoutButton
+                  className="text-white font-medium rounded-full text-sm sm:text-base px-4 sm:px-6 gradient-button"
+                  redirectTo="/"
+                >
+                  Get Started
+                </CheckoutButton>
+              </>
+            )}
 
             {/* <ThemeToggle /> */}
           </div>
