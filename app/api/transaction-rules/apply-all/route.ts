@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb()
     const rulesCollection = process.env.MONGODB_RULES_COLLECTION || 'transaction_rules_dev'
-    const transactionsCollection = process.env.MONGODB_TRANSACTIONS_COLLECTION || 'transactions_dev'
+    const transactionsCollection = process.env.MONGODB_TRANSACTIONS_COLLECTION || 'transactions_plaid'
 
     // Get all enabled rules for the user, sorted by priority
     const rules = await db.collection(rulesCollection)
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
             const updateResult = await db.collection(transactionsCollection).updateMany(
               {
-                _id: { $in: matchingTransactions.map(tx => tx._id) },
+                transactionId: { $in: matchingTransactions.map(tx => tx.transactionId) },
               },
               updateOperations
             )
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
             )
 
             totalModified += updateResult.modifiedCount
-            modifiedTransactions.push(...matchingTransactions.map(tx => tx._id.toString()))
+            modifiedTransactions.push(...matchingTransactions.map(tx => tx.transactionId))
           }
         } catch (error) {
           console.error(`Error applying rule ${rule.name}:`, error)
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
 
             const updateResult = await db.collection(transactionsCollection).updateMany(
               {
-                _id: { $in: matchingTransactions.map(tx => tx._id) },
+                transactionId: { $in: matchingTransactions.map(tx => tx.transactionId) },
               },
               updateOperations
             )
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
             )
 
             totalModified += updateResult.modifiedCount
-            modifiedTransactions.push(...matchingTransactions.map(tx => tx._id.toString()))
+            modifiedTransactions.push(...matchingTransactions.map(tx => tx.transactionId))
           }
         } catch (error) {
           console.error(`Error applying rule ${rule.name}:`, error)

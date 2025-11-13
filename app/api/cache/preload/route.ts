@@ -9,10 +9,15 @@ export async function POST(request: Request) {
   try {
     // Require authenticated user
     const user = await requireAuthUser(request) as { $id?: string; id?: string };
+
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "User not authenticated" }, { status: 401 });
+    }
+
     const userId = user.$id || user.id;
 
     if (!userId) {
-      return NextResponse.json({ ok: false, error: "User not authenticated" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Invalid user ID" }, { status: 401 });
     }
 
     // Create Appwrite client

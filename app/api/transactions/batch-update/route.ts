@@ -24,11 +24,11 @@ export async function PATCH(request: Request) {
     
     // Validate and update all transactions
     const db = await getDb()
-    const coll = db.collection('transactions_dev')
+    const coll = db.collection('transactions_plaid')
     
-    // MongoDB uses string IDs (not ObjectId) for transactions
+    // transactions_plaid uses transactionId as the primary identifier
     const result = await coll.updateMany(
-      { _id: { $in: transactionIds }, userId },
+      { transactionId: { $in: transactionIds }, userId },
       { $set: encryptedUpdatePayload }
     )
     

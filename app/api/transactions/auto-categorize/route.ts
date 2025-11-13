@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     if (process.env.DATA_BACKEND === 'mongodb') {
       const db = await getDb();
-      const coll = db.collection('transactions_dev');
+      const coll = db.collection('transactions_plaid');
       
       const cursor = coll
         .find({ 
@@ -44,11 +44,11 @@ export async function POST(request: Request) {
       let processed = 0;
       for await (const d of cursor) {
         if (processed >= limit) break;
-        console.log(`[auto-categorize] Categorizing tx ${d._id} desc='${d.description}' cp='${d.counterparty}'`);
-        const byExisting = await findExistingCategoryMongo(db, 'transactions_dev', userId, d.description, d.counterparty);
+        console.log(`[auto-categorize] Categorizing tx ${d.transactionId} desc='${d.description}' cp='${d.counterparty}'`);
+        const byExisting = await findExistingCategoryMongo(db, 'transactions_plaid', userId, d.description, d.counterparty);
         const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
-        await coll.updateOne({ _id: d._id }, { $set: { category: cat } });
-        console.log(`[auto-categorize] Updated tx ${d._id} => ${cat}`);
+        await coll.updateOne({ transactionId: d.transactionId }, { $set: { category: cat } });
+        console.log(`[auto-categorize] Updated tx ${d.transactionId} => ${cat}`);
         processed++;
       }
 
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     const databases = new Databases(client);
 
     const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_plaid';
 
     let offset = 0;
     let processed = 0;

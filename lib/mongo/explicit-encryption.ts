@@ -251,6 +251,92 @@ export async function encryptTransactionFields(
 }
 
 /**
+ * Encrypt Plaid transaction fields for the transactions_plaid table
+ * Enhanced encryption for richer Plaid data
+ */
+export async function encryptPlaidTransactionFields(
+  transactionRecord: any
+) {
+  const {
+    userId,
+    accountId,
+    transactionId,
+    amount,
+    currency,
+    bookingDate,
+    bookingMonth,
+    bookingYear,
+    bookingWeekday,
+    valueDate,
+    authorizedDate,
+    bookingDateTime,
+    status,
+    pending,
+    paymentChannel,
+    category,
+    exclude,
+    description,
+    counterparty,
+    merchantName,
+    originalDescription,
+    transactionCode,
+    transactionType,
+    checkNumber,
+    location,
+    counterparties,
+    personalFinanceCategory,
+    merchantEntityId,
+    logoUrl,
+    website,
+    paymentMeta,
+    pendingTransactionId,
+    raw,
+    createdAt,
+    updatedAt
+  } = transactionRecord;
+
+  return {
+    // Public fields (plaintext - needed for queries)
+    userId,
+    transactionId: await encryptQueryable(transactionId),
+    accountId: await encryptQueryable(accountId),
+    amount: await encryptQueryable(amount), // Amount needs to be queryable for sums
+    currency: await encryptQueryable(currency),
+    bookingDate: await encryptQueryable(bookingDate),
+    bookingMonth: await encryptQueryable(bookingMonth),
+    bookingYear: await encryptQueryable(bookingYear),
+    bookingWeekday: await encryptQueryable(bookingWeekday),
+    valueDate: await encryptQueryable(valueDate),
+    authorizedDate: await encryptQueryable(authorizedDate),
+    status: await encryptQueryable(status),
+    pending: await encryptQueryable(pending),
+    paymentChannel: await encryptQueryable(paymentChannel),
+    category: await encryptQueryable(category),
+    exclude: await encryptQueryable(exclude),
+    createdAt: await encryptQueryable(createdAt),
+    updatedAt: await encryptQueryable(updatedAt),
+
+    // Sensitive fields (random encryption - maximum security)
+    description: await encryptRandom(description),
+    counterparty: await encryptRandom(counterparty),
+    merchantName: await encryptRandom(merchantName),
+    originalDescription: await encryptRandom(originalDescription),
+    transactionCode: await encryptRandom(transactionCode),
+    transactionType: await encryptRandom(transactionType),
+    checkNumber: await encryptRandom(checkNumber),
+    location: await encryptRandom(location ? JSON.stringify(location) : null),
+    counterparties: await encryptRandom(counterparties ? JSON.stringify(counterparties) : null),
+    personalFinanceCategory: await encryptRandom(personalFinanceCategory ? JSON.stringify(personalFinanceCategory) : null),
+    merchantEntityId: await encryptRandom(merchantEntityId),
+    logoUrl: await encryptRandom(logoUrl),
+    website: await encryptRandom(website),
+    paymentMeta: await encryptRandom(paymentMeta ? JSON.stringify(paymentMeta) : null),
+    pendingTransactionId: await encryptRandom(pendingTransactionId),
+    raw: await encryptRandom(raw ? JSON.stringify(raw) : null),
+  };
+}
+
+/**
  * Helper to encrypt transaction update fields (for PATCH operations)
  */
 export async function encryptTransactionUpdateFields(updatePayload: Record<string, any>) {

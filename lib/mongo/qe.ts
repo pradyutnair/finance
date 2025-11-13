@@ -137,7 +137,7 @@ export async function ensureCollections() {
   await ensureEncCollection('requisitions_dev', requisitionsEnc);
   await ensureEncCollection('bank_connections_dev', bankConnectionsEnc);
   await ensureEncCollection('bank_accounts_dev', bankAccountsEnc);
-  await ensureEncCollection('transactions_dev', transactionsEnc);
+  await ensureEncCollection('transactions_plaid', transactionsEnc);
   await ensureEncCollection('balances_dev', balancesEnc);
 
   // Indexes for plaintext query fields only (cannot index encrypted fields)
@@ -161,7 +161,7 @@ export async function ensureCollections() {
   }
   
   try {
-    await db.collection('transactions_dev').createIndex({ userId: 1, bookingDate: -1 });
+    await db.collection('transactions_plaid').createIndex({ userId: 1, bookingDate: -1 });
   } catch (e: any) {
     if (!e.message?.includes('already exists')) console.warn('Index creation warning:', e.message);
   }

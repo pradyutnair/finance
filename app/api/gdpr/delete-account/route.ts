@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       try {
         // Delete transactions
         const transactionsResult = await db
-          .collection('transactions_dev')
+          .collection('transactions_plaid')
           .deleteMany({ userId });
         if (transactionsResult.deletedCount > 0) {
           deletionLog.deletedDataTypes.push(`transactions (${transactionsResult.deletedCount} records)`);

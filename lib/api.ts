@@ -14,6 +14,8 @@ export interface Transaction {
   date: string;
   bookingDate?: string; // Actual date field from backend
   valueDate?: string; // Alternative date field
+  authorizedDate?: string; // Date transaction was authorized
+  bookingDateTime?: string; // Full ISO datetime
   merchant: string;
   counterparty?: string;
   description?: string;
@@ -22,6 +24,33 @@ export interface Transaction {
   currency: string;
   accountId: string;
   exclude?: boolean;
+  pending?: boolean; // Transaction pending status
+  paymentChannel?: string; // online, in store, etc.
+  location?: {
+    address?: string;
+    city?: string;
+    region?: string;
+    postalCode?: string;
+    country?: string;
+    lat?: number;
+    lon?: number;
+    storeNumber?: string;
+  };
+  counterparties?: Array<{
+    name: string;
+    type: string;
+    website?: string;
+    logoUrl?: string;
+    confidenceLevel?: string;
+  }>;
+  personalFinanceCategory?: {
+    primary?: string;
+    detailed?: string;
+    confidenceLevel?: string;
+  };
+  merchantName?: string;
+  logoUrl?: string;
+  website?: string;
 }
 
 export interface Metrics {

@@ -16,10 +16,39 @@ type TransactionDoc = {
   currency?: string;
   bookingDate?: string;
   valueDate?: string;
+  authorizedDate?: string;
+  bookingDateTime?: string;
   description?: string;
   counterparty?: string;
   category?: string;
   exclude?: boolean;
+  pending?: boolean;
+  paymentChannel?: string;
+  location?: {
+    address?: string;
+    city?: string;
+    region?: string;
+    postalCode?: string;
+    country?: string;
+    lat?: number;
+    lon?: number;
+    storeNumber?: string;
+  };
+  counterparties?: Array<{
+    name: string;
+    type: string;
+    website?: string;
+    logoUrl?: string;
+    confidenceLevel?: string;
+  }>;
+  personalFinanceCategory?: {
+    primary?: string;
+    detailed?: string;
+    confidenceLevel?: string;
+  };
+  merchantName?: string;
+  logoUrl?: string;
+  website?: string;
   $createdAt?: string;
 };
 
@@ -116,32 +145,42 @@ export async function getUserTransactionCache(
     let allTransactions: TransactionDoc[] = [];
 
     if (process.env.DATA_BACKEND === 'mongodb') {
-      console.log('[Cache] Using MongoDB backend (transactions_dev)');
+      console.log('[Cache] Using MongoDB backend (transactions_plaid)');
       const db = await getDb();
-      const coll = db.collection('transactions_dev');
+      const coll = db.collection('transactions_plaid');
       const cursor = coll
         .find({ userId, bookingDate: { $gte: fromDate, $lte: toDate } })
         .sort({ bookingDate: -1 })
         .limit(fetchAllTime ? 100000 : 20000);
       const docs = await cursor.toArray();
       allTransactions = docs.map((d: any) => ({
-        id: d._id?.toString?.() || d._id,
+        id: d.transactionId, // Use transactionId from Plaid as the primary ID
         userId: d.userId,
         accountId: d.accountId,
         amount: d.amount,
         currency: d.currency,
         bookingDate: d.bookingDate,
         valueDate: d.valueDate,
+        authorizedDate: d.authorizedDate,
+        bookingDateTime: d.bookingDateTime,
         description: d.description,
         counterparty: d.counterparty,
         category: d.category,
         exclude: d.exclude,
+        pending: d.pending,
+        paymentChannel: d.paymentChannel,
+        location: d.location,
+        counterparties: d.counterparties,
+        personalFinanceCategory: d.personalFinanceCategory,
+        merchantName: d.merchantName,
+        logoUrl: d.logoUrl,
+        website: d.website,
         $createdAt: d.createdAt,
       }));
     } else {
       const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
       console.log('[Cache] Using legacy Appwrite unencrypted collection');
-      const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+      const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_plaid';
 
       // Fetch all transactions in the date range with pagination
       let cursor: string | undefined;

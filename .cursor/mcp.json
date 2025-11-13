@@ -18,19 +18,6 @@
         "APPWRITE_PROJECT_ID": "68d3cfe5001f03d5c030",
         "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1"
       }
-    },
-    "prompt-kit": {
-      "description": "prompt-kit registry",
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "shadcn@canary",
-        "registry:mcp"
-      ],
-      "env": {
-        "REGISTRY_URL": "https://www.prompt-kit.com/c/registry.json"
-      }
     }
   }
 }

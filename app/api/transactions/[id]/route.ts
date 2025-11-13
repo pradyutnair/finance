@@ -29,7 +29,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (process.env.DATA_BACKEND === 'mongodb') {
       const db = await getDb()
-      const coll = db.collection('transactions_dev')
+      const coll = db.collection('transactions_plaid')
       
       // Explicitly encrypt sensitive fields in the update
       const encryptedUpdatePayload = await encryptTransactionUpdateFields(updatePayload)
@@ -43,10 +43,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       let modifiedCount = 0
       
       for (const txId of allIds) {
-        // MongoDB uses string IDs (not ObjectId) for transactions
-        // IDs are generated from transaction_id in the sync function
+        // transactions_plaid uses transactionId as the primary identifier
         const result = await coll.updateOne(
-          { _id: txId, userId },
+          { transactionId: txId, userId },
           { $set: encryptedUpdatePayload }
         )
         matchedCount += result.matchedCount

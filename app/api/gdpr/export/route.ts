@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       // Transactions
       try {
         const transactions = await db
-          .collection('transactions_dev')
+          .collection('transactions_plaid')
           .find({ userId })
           .sort({ bookingDate: -1 })
           .toArray();

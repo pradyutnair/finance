@@ -26,7 +26,7 @@ export async function POST(
     // Get the rule
     const db = await getDb()
     const rulesCollection = process.env.MONGODB_RULES_COLLECTION || 'transaction_rules_dev'
-    const transactionsCollection = process.env.MONGODB_TRANSACTIONS_COLLECTION || 'transactions_dev'
+    const transactionsCollection = process.env.MONGODB_TRANSACTIONS_COLLECTION || 'transactions_plaid'
 
     const rule = await db.collection(rulesCollection).findOne({
       _id: new ObjectId(id),
@@ -109,7 +109,7 @@ export async function POST(
 
     if (options.dryRun) {
       return NextResponse.json({
-        modifiedTransactions: matchingTransactions.map(tx => tx._id.toString()),
+        modifiedTransactions: matchingTransactions.map(tx => tx.transactionId),
         totalMatched: matchingTransactions.length,
         totalModified: 0,
       } as RuleApplicationResult)
@@ -140,7 +140,7 @@ export async function POST(
     // Update all matching transactions
     const updateResult = await db.collection(transactionsCollection).updateMany(
       {
-        _id: { $in: matchingTransactions.map(tx => tx._id) },
+        transactionId: { $in: matchingTransactions.map(tx => tx.transactionId) },
         userId: user.$id,
       },
       updateOperations
@@ -156,7 +156,7 @@ export async function POST(
     )
 
     const result: RuleApplicationResult = {
-      modifiedTransactions: matchingTransactions.slice(0, updateResult.modifiedCount).map(tx => tx._id.toString()),
+      modifiedTransactions: matchingTransactions.slice(0, updateResult.modifiedCount).map(tx => tx.transactionId),
       totalMatched: matchingTransactions.length,
       totalModified: updateResult.modifiedCount,
     }

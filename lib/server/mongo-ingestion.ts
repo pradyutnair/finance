@@ -185,7 +185,7 @@ export async function storeTransactionMongo(
   transaction: any
 ) {
   const db = await getDb();
-  const coll = db.collection('transactions_dev');
+  const coll = db.collection('transactions_plaid');
   
   const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || '';
   const counterparty = transaction.creditorName || transaction.debtorName || '';

@@ -149,7 +149,7 @@ export async function GET(request: Request) {
 
       try {
         const transactions = await db
-          .collection('transactions_dev')
+          .collection('transactions_plaid')
           .find({ userId })
           .limit(1)
           .toArray();
