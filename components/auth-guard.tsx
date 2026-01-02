@@ -10,7 +10,7 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
-  const { user, loading, isEmailVerified } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -19,11 +19,9 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         router.push('/login');
       } else if (!requireAuth && user) {
         router.push('/dashboard');
-      } else if (requireAuth && user && !isEmailVerified) {
-        router.push('/verify-email');
       }
     }
-  }, [user, loading, isEmailVerified, requireAuth, router]);
+  }, [user, loading, requireAuth, router]);
 
   if (loading) {
     return (
@@ -38,10 +36,6 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
   }
 
   if (!requireAuth && user) {
-    return null;
-  }
-
-  if (requireAuth && user && !isEmailVerified) {
     return null;
   }
 

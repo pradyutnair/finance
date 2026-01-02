@@ -31,9 +31,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
         
         // Encrypt accountId for querying encrypted field
         // With bypassAutoEncryption: true, we must manually encrypt query parameters
-        console.log('[API] Encrypting accountId for query...');
-        const encryptedAccountId = await encryptQueryable(accountId);
-        console.log('[API] AccountId encrypted successfully');
+        let encryptedAccountId;
+        try {
+          console.log('[API] Encrypting accountId for query...');
+          encryptedAccountId = await encryptQueryable(accountId);
+          console.log('[API] AccountId encrypted successfully');
+        } catch (encryptError: any) {
+          console.warn('[API] Failed to encrypt accountId, trying plaintext query:', encryptError.message);
+          // If encryption fails, try querying with plaintext (won't work if data is encrypted)
+          // This is a fallback for when KMS isn't configured
+          encryptedAccountId = accountId;
+        }
         
         const docs = await db
           .collection('balances_dev')

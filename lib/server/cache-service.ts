@@ -124,16 +124,31 @@ export async function getUserTransactionCache(
         .sort({ bookingDate: -1 })
         .limit(fetchAllTime ? 100000 : 20000);
       const docs = await cursor.toArray();
+      
+      // Helper to handle Binary objects (encrypted fields)
+      // If using encrypted client, these should auto-decrypt, but handle both cases
+      const getValue = (value: any): any => {
+        if (!value) return value;
+        // If it's a Binary object, try to get the string value
+        // MongoDB driver should auto-decrypt with encrypted client, but fallback for simple client
+        if (value.constructor?.name === 'Binary' || value instanceof require('mongodb').Binary) {
+          // For now, return as-is - encrypted client should handle decryption
+          // If using simple client, these will be Binary objects (needs KMS fix)
+          return value;
+        }
+        return value;
+      };
+      
       allTransactions = docs.map((d: any) => ({
         id: d._id?.toString?.() || d._id,
         userId: d.userId,
-        accountId: d.accountId,
-        amount: d.amount,
-        currency: d.currency,
+        accountId: getValue(d.accountId),
+        amount: getValue(d.amount),
+        currency: getValue(d.currency),
         bookingDate: d.bookingDate,
-        valueDate: d.valueDate,
-        description: d.description,
-        counterparty: d.counterparty,
+        valueDate: getValue(d.valueDate),
+        description: getValue(d.description),
+        counterparty: getValue(d.counterparty),
         category: d.category,
         exclude: d.exclude,
         $createdAt: d.createdAt,
