@@ -5,13 +5,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { LiquidProgress } from "./liquid-progress"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check } from "lucide-react"
+import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check, BookOpen } from "lucide-react"
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
+import { useDateRange } from "@/contexts/date-range-context"
+import { useCurrency } from "@/contexts/currency-context"
 
 interface BudgetCategory { key: string; label: string; categoryName: string }
 
@@ -20,45 +22,59 @@ interface BudgetData {
   baseCurrency: string
   groceriesBudget: number
   restaurantsBudget: number
+  educationBudget: number
   transportBudget: number
   travelBudget: number
   shoppingBudget: number
   utilitiesBudget: number
   entertainmentBudget: number
   healthBudget: number
+  incomeBudget: number
   miscellaneousBudget: number
+  uncategorizedBudget: number
+  bankTransferBudget: number
 }
 
 const budgetCategories: BudgetCategory[] = [
   { key: 'groceriesBudget', label: 'Groceries', categoryName: 'Groceries' },
-  { key: 'restaurantsBudget', label: 'Restaurants', categoryName: 'Restaurant' },
+  { key: 'restaurantsBudget', label: 'Restaurants', categoryName: 'Restaurants' },
+  { key: 'educationBudget', label: 'Education', categoryName: 'Education' },
   { key: 'transportBudget', label: 'Transport', categoryName: 'Transport' },
   { key: 'travelBudget', label: 'Travel', categoryName: 'Travel' },
   { key: 'shoppingBudget', label: 'Shopping', categoryName: 'Shopping' },
   { key: 'utilitiesBudget', label: 'Utilities', categoryName: 'Utilities' },
   { key: 'entertainmentBudget', label: 'Entertainment', categoryName: 'Entertainment' },
   { key: 'healthBudget', label: 'Health', categoryName: 'Health' },
+  { key: 'incomeBudget', label: 'Income', categoryName: 'Income' },
   { key: 'miscellaneousBudget', label: 'Miscellaneous', categoryName: 'Miscellaneous' },
+  { key: 'uncategorizedBudget', label: 'Uncategorized', categoryName: 'Uncategorized' },
+  { key: 'bankTransferBudget', label: 'Bank Transfer', categoryName: 'Bank Transfer' },
 ]
 
 export function BudgetSettingsCard() {
+  const { dateRange } = useDateRange()
+  const { formatAmount, baseCurrency: displayCurrency } = useCurrency()
   const [budgetData, setBudgetData] = useState<Partial<BudgetData>>({
     baseCurrency: 'EUR',
     groceriesBudget: 0,
     restaurantsBudget: 0,
+    educationBudget: 0,
     transportBudget: 0,
     travelBudget: 0,
     shoppingBudget: 0,
     utilitiesBudget: 0,
     entertainmentBudget: 0,
     healthBudget: 0,
+    incomeBudget: 0,
     miscellaneousBudget: 0,
+    uncategorizedBudget: 0,
+    bankTransferBudget: 0,
   })
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [categorySpend, setCategorySpend] = useState<Record<string, number>>({})
+  const [categorySpend, setCategorySpend] = useState<Record<string, { amount: number; percent: number }>>({})
   const [isLoadingSpend, setIsLoadingSpend] = useState(true)
   const [jwt, setJwt] = useState<string | null>(null)
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(false)
@@ -98,6 +114,14 @@ export function BudgetSettingsCard() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [])
 
+  // Re-fetch category spend when date range changes
+  useEffect(() => {
+    if (didInitRef.current) {
+      fetchCategorySpend(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange])
+
   useEffect(() => {
     budgetRef.current = budgetData
   }, [budgetData])
@@ -115,7 +139,16 @@ export function BudgetSettingsCard() {
   }
 
   const refreshAll = async () => {
-    await Promise.all([fetchBudgets(), fetchCategorySpend()])
+    // Clear sessionStorage cache for category spend
+    try {
+      const today = new Date()
+      const from = dateRange?.from || new Date(today.getFullYear(), today.getMonth(), 1)
+      const to = dateRange?.to || today
+      const cacheKey = `categorySpend:${fmtDate(from)}:${fmtDate(to)}`
+      sessionStorage.removeItem(cacheKey)
+    } catch {}
+    
+    await Promise.all([fetchBudgets(), fetchCategorySpend(true)])
   }
 
   const fetchBudgets = async () => {
@@ -145,34 +178,107 @@ export function BudgetSettingsCard() {
     return `${y}-${m}-${day}`
   }
 
-  const fetchCategorySpend = async () => {
+  const getLiquidProgressClass = (categoryName: string) => {
+    const className = categoryName.toLowerCase()
+    return `liquid-progress-${className}`
+  }
+
+  const fetchCategorySpend = async (skipCache = false) => {
     try {
       setIsLoadingSpend(true)
+      // Use date range from context if available, otherwise default to current month
       const today = new Date()
-      const from = new Date(today.getFullYear(), today.getMonth(), 1)
-      const to = today
+      const from = dateRange?.from || new Date(today.getFullYear(), today.getMonth(), 1)
+      const to = dateRange?.to || today
       const cacheKey = `categorySpend:${fmtDate(from)}:${fmtDate(to)}`
-      try {
-        const cached = sessionStorage.getItem(cacheKey)
-        if (cached) {
-          setCategorySpend(JSON.parse(cached))
-          setIsLoadingSpend(false)
-          return
-        }
-      } catch {}
 
-      const resp = await fetch(`/api/categories?from=${fmtDate(from)}&to=${fmtDate(to)}`, { headers: await authHeaders() })
+            
+      // Use cache only if not skipping
+      if (!skipCache) {
+        try {
+          const cached = sessionStorage.getItem(cacheKey)
+          if (cached) {
+            const cachedData = JSON.parse(cached)
+            // Validate cached data structure
+            if (typeof cachedData === 'object' && cachedData !== null) {
+              setCategorySpend(cachedData)
+              setIsLoadingSpend(false)
+              return
+            }
+          }
+        } catch {}
+      }
+
+      // Add refresh parameter to bust server-side cache
+      const url = `/api/categories?from=${fmtDate(from)}&to=${fmtDate(to)}${skipCache ? '&refresh=true' : ''}`
+      const resp = await fetch(url, { headers: await authHeaders() })
       if (resp.ok) {
-        const data: Array<{ name: string; amount: number }> = await resp.json()
-        const map: Record<string, number> = {}
+        const data: Array<{ name: string; amount: number; percent?: number }> = await resp.json()
+        const map: Record<string, { amount: number; percent: number }> = {}
+
+        // Map API category names to budget category names
         for (const row of data) {
-          map[row.name] = row.amount || 0
+          // Direct match first
+          if (budgetCategories.some(cat => cat.categoryName === row.name)) {
+            map[row.name] = { amount: row.amount || 0, percent: row.percent || 0 }
+          } else {
+            // Try to match case-insensitively
+            const matchingBudgetCategory = budgetCategories.find(cat =>
+              cat.categoryName.toLowerCase() === row.name.toLowerCase()
+            )
+            if (matchingBudgetCategory) {
+              map[matchingBudgetCategory.categoryName] = { amount: row.amount || 0, percent: row.percent || 0 }
+            } else {
+              // Handle common variations
+              const normalizedName = row.name.toLowerCase().trim()
+              let mappedName = row.name
+
+              if (normalizedName.includes('grocer')) {
+                mappedName = 'Groceries'
+              } else if (normalizedName.includes('restaurant') || normalizedName.includes('food')) {
+                mappedName = 'Restaurants'
+              } else if (normalizedName.includes('education') || normalizedName.includes('school') || normalizedName.includes('course')) {
+                mappedName = 'Education'
+              } else if (normalizedName.includes('transport') || normalizedName.includes('car') || normalizedName.includes('gas')) {
+                mappedName = 'Transport'
+              } else if (normalizedName.includes('travel') || normalizedName.includes('vacation')) {
+                mappedName = 'Travel'
+              } else if (normalizedName.includes('shop')) {
+                mappedName = 'Shopping'
+              } else if (normalizedName.includes('utilit')) {
+                mappedName = 'Utilities'
+              } else if (normalizedName.includes('entertain')) {
+                mappedName = 'Entertainment'
+              } else if (normalizedName.includes('health') || normalizedName.includes('medical')) {
+                mappedName = 'Health'
+              } else if (normalizedName.includes('income') || normalizedName.includes('salary') || normalizedName.includes('earn')) {
+                mappedName = 'Income'
+              } else if (normalizedName.includes('misc')) {
+                mappedName = 'Miscellaneous'
+              } else if (normalizedName.includes('uncategorize') || normalizedName.includes('unknown')) {
+                mappedName = 'Uncategorized'
+              } else if (normalizedName.includes('bank') || normalizedName.includes('transfer')) {
+                mappedName = 'Bank Transfer'
+              }
+
+              if (budgetCategories.some(cat => cat.categoryName === mappedName)) {
+                map[mappedName] = { amount: row.amount || 0, percent: row.percent || 0 }
+              }
+            }
+          }
         }
+
         setCategorySpend(map)
         try { sessionStorage.setItem(cacheKey, JSON.stringify(map)) } catch {}
+      } else {
+        console.error('Categories API failed:', resp.status, resp.statusText)
+        // Set empty category spend to prevent undefined issues
+        setCategorySpend({})
       }
     } catch (e) {
-      // ignore soft-fail
+      console.error('Error fetching category spend:', e)
+      // Set empty category spend to prevent undefined issues
+      setCategorySpend({})
     } finally {
       setIsLoadingSpend(false)
     }
@@ -230,8 +336,25 @@ export function BudgetSettingsCard() {
   const totalBudget = Object.entries(budgetData)
     .filter(([key, value]) => key.endsWith('Budget') && typeof value === 'number')
     .reduce((sum, [, value]) => sum + (value as number), 0)
-  const totalSpent = Object.values(categorySpend).reduce((sum, v) => sum + (v || 0), 0)
+
+  // Calculate total spent only from budget categories (excluding income) to avoid including non-budget categories
+  const totalSpent = budgetCategories
+    .filter(category => category.categoryName !== 'Income')
+    .reduce((sum, category) => {
+      const spentData = categorySpend[category.categoryName] || { amount: 0, percent: 0 }
+      return sum + spentData.amount
+    }, 0)
+
   const totalPct = totalBudget > 0 ? Math.min(100, Math.max(0, (totalSpent / totalBudget) * 100)) : 0
+
+  // Filter out income and sort budget categories by percent amount from API response (descending)
+  const sortedBudgetCategories = [...budgetCategories]
+    .filter(category => category.categoryName !== 'Income')
+    .sort((a, b) => {
+      const aPercent = categorySpend[a.categoryName]?.percent || 0
+      const bPercent = categorySpend[b.categoryName]?.percent || 0
+      return bPercent - aPercent
+    })
 
   if (isLoading) {
     return (
@@ -299,28 +422,38 @@ export function BudgetSettingsCard() {
           <div className="flex items-center justify-between text-xs sm:text-sm">
             <span className="font-medium">Overall</span>
             <span className="font-mono">
-              {budgetData.baseCurrency} {totalSpent.toFixed(2)} / {budgetData.baseCurrency} {totalBudget.toFixed(2)}
+              {formatAmount(totalSpent)} / {formatAmount(totalBudget)}
             </span>
           </div>
-          <Progress className="mt-2 [&>div]:bg-[#40221a] dark:[&>div]:bg-white" value={totalPct} />
+          <LiquidProgress
+            className="mt-2 h-2 w-full rounded bg-muted"
+            gradientClass="liquid-progress-overall dark:liquid-progress-overall-dark"
+            value={totalPct}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {budgetCategories.map((category) => {
+          {sortedBudgetCategories.map((category) => {
             const key = category.key as keyof BudgetData
             const total = (budgetData[key] as number) || 0
-            const spent = categorySpend[category.categoryName] || 0
+            const spentData = categorySpend[category.categoryName] || { amount: 0, percent: 0 }
+            const spent = spentData.amount
             const pct = total > 0 ? Math.min(100, Math.max(0, (spent / total) * 100)) : 0
             const color = getCategoryColor(category.categoryName)
             const Icon = (
               category.categoryName === 'Groceries' ? ShoppingCart :
-              category.categoryName === 'Restaurant' ? Utensils :
+              category.categoryName === 'Restaurants' ? Utensils :
+              category.categoryName === 'Education' ? BookOpen :
               category.categoryName === 'Transport' ? Car :
               category.categoryName === 'Travel' ? Plane :
               category.categoryName === 'Shopping' ? ShoppingBag :
               category.categoryName === 'Utilities' ? Zap :
               category.categoryName === 'Entertainment' ? Gamepad2 :
               category.categoryName === 'Health' ? Heart :
+              category.categoryName === 'Income' ? Wallet :
+              category.categoryName === 'Miscellaneous' ? MoreHorizontal :
+              category.categoryName === 'Uncategorized' ? AlertCircle :
+              category.categoryName === 'Bank Transfer' ? RefreshCw :
               MoreHorizontal
             )
 
@@ -334,7 +467,7 @@ export function BudgetSettingsCard() {
                     </div>
                     <div className="mt-1 flex items-center gap-1 text-xs sm:text-sm">
                       <span className="font-mono">
-                        {isLoadingSpend ? '…' : `${budgetData.baseCurrency} ${spent.toFixed(2)}`}
+                        {isLoadingSpend ? '…' : formatAmount(spent)}
                       </span>
                       <span className="opacity-50">/</span>
                       <input
@@ -348,47 +481,20 @@ export function BudgetSettingsCard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="h-2 w-full rounded bg-muted overflow-hidden">
-                    <div
-                      className="h-2 rounded"
-                      style={{ width: `${pct}%`, backgroundColor: color }}
-                    />
-                  </div>
+                  <LiquidProgress
+                    className="h-2 w-full rounded bg-muted"
+                    gradientClass={getLiquidProgressClass(category.categoryName)}
+                    value={pct}
+                  />
                 </div>
               </div>
             )
           })}
         </div>
 
-        <Separator />
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="baseCurrency" className="text-sm font-medium">
-              Base Currency
-            </Label>
-            <Input
-              id="baseCurrency"
-              value={budgetData.baseCurrency || 'EUR'}
-              onChange={(e) => setBudgetData(prev => ({ ...prev, baseCurrency: e.target.value.toUpperCase() }))}
-              className="w-20 text-center"
-              maxLength={3}
-            />
-          </div>
 
-          <div className="flex gap-2 ">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchBudgets}
-              disabled={isSaving}
-              className="hover:bg-chart-1/80"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          </div>
-        </div>
+          
       </CardContent>
     </Card>
   )

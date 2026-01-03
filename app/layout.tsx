@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
 import { QueryProvider } from "@/contexts/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { CurrencyProvider } from "@/contexts/currency-context";
+
+const inter = Inter({
+  variable: "--font-host-grotesk",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,18 +25,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Nexpass - Finance Dashboard",
   description: "Your personal finance management dashboard",
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-    ],
-    apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
-    other: [
-      { url: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
-    ],
-  },
 };
 
 export default function RootLayout({
@@ -43,23 +36,17 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} antialiased font-sans`}
+        style={{ fontFamily: "var(--font-host-grotesk), system-ui, sans-serif" }}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <QueryProvider>
-            <AuthProvider>
-              <CurrencyProvider>
-                {children}
-                <Toaster />
-              </CurrencyProvider>
-            </AuthProvider>
-          </QueryProvider>
-        </ThemeProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <CurrencyProvider>
+              {children}
+              <Toaster />
+            </CurrencyProvider>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

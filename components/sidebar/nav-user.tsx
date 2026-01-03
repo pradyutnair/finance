@@ -32,12 +32,13 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { GradientAvatar } from "../profile-page/gradient-avatar"
 import { useState } from "react"
-import { getAuthHeader } from "@/lib/api"
+import { useCacheInvalidation } from "@/hooks/useCacheInvalidation"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const { user, logout } = useAuth()
   const [isClearingCache, setIsClearingCache] = useState(false)
+  const { invalidateAll } = useCacheInvalidation()
 
   if (!user) return null
 
@@ -51,51 +52,43 @@ export function NavUser() {
     }
 
     setIsClearingCache(true)
-    try {
-      // Clear browser storage first
-      console.log('🧹 Clearing browser storage...')
-      localStorage.clear()
-      sessionStorage.clear()
-      
-      // Clear service worker caches if available
-      if ('caches' in window) {
+    
+    // Clear browser storage first
+    console.log('🧹 Clearing browser storage...')
+    localStorage.clear()
+    sessionStorage.clear()
+    
+    // Clear service worker caches if available
+    if ('caches' in window) {
+      try {
         const cacheNames = await caches.keys()
         await Promise.all(
           cacheNames.map(cacheName => caches.delete(cacheName))
         )
         console.log('🧹 Cleared service worker caches:', cacheNames)
+      } catch (error) {
+        console.warn('⚠️ Could not clear service worker caches:', error)
       }
-
-      // Clear API caches
-      console.log('🧹 Clearing API caches...')
-      const authHeaders = await getAuthHeader()
-      const response = await fetch('/api/clear-cache', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders,
-        },
-        credentials: 'include',
-      })
-
-      const result = await response.json()
-      
-      if (result.ok) {
-        console.log('✅ API caches cleared:', result.clearedCaches)
-        
-        // Force a hard reload to clear all HTTP caches
-        console.log('🔄 Reloading page...')
-        window.location.reload()
-      } else {
-        console.error('❌ Failed to clear API caches:', result.error)
-        alert('Failed to clear API caches: ' + result.error)
-        setIsClearingCache(false)
-      }
-    } catch (error) {
-      console.error('❌ Error clearing caches:', error)
-      alert('Error clearing caches: ' + (error as Error).message)
-      setIsClearingCache(false)
     }
+
+    // Use centralized cache invalidation
+    console.log('🧹 Invalidating all caches...')
+    const result = await invalidateAll({ 
+      scope: 'all', 
+      reason: 'manual-clear-all',
+      silent: false 
+    })
+    
+    if (result.overall) {
+      console.log('✅ All caches cleared')
+    } else {
+      console.warn('⚠️ Some caches could not be cleared:', result)
+      // Continue anyway - partial clearing is better than none
+    }
+    
+    // Force a hard reload to clear all HTTP caches
+    console.log('🔄 Reloading page...')
+    window.location.reload()
   }
 
   return (
@@ -136,7 +129,7 @@ export function NavUser() {
             </DropdownMenuLabel>
               
             <DropdownMenuSeparator /> */}
-            <DropdownMenuItem 
+            {/* <DropdownMenuItem 
               onClick={clearAllCaches}
               disabled={isClearingCache}
               className="text-orange-600 focus:text-orange-600"
@@ -144,7 +137,7 @@ export function NavUser() {
               <IconTrash />
               {isClearingCache ? "Clearing..." : "Clear All Caches"}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator /> */}
             <DropdownMenuItem onClick={logout}>
               <IconLogout />
               Log out

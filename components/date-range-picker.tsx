@@ -47,21 +47,14 @@ const presetRanges = [
   {
     label: "This Week",
     getValue: () => ({
-      from: startOfWeek(new Date()),
-      to: endOfWeek(new Date()),
+      from: startOfWeek(new Date(), { weekStartsOn: 1 }),
+      to: endOfWeek(new Date(), { weekStartsOn: 1 }),
     }),
   },
   {
     label: "Last 2 Weeks",
     getValue: () => ({
       from: subDays(new Date(), 13),
-      to: new Date(),
-    }),
-  },
-  {
-    label: "This Month",
-    getValue: () => ({
-      from: startOfMonth(new Date()),
       to: new Date(),
     }),
   },
@@ -74,6 +67,13 @@ const presetRanges = [
         to: endOfMonth(lastMonth),
       }
     },
+  },
+  {
+    label: "This Month",
+    getValue: () => ({
+      from: startOfMonth(new Date()),
+      to: new Date(),
+    }),
   },
   {
     label: "This Year",

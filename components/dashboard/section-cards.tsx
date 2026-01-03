@@ -55,7 +55,16 @@ export function SectionCards() {
     to: formatDateForAPI(dateRange.to)
   } : undefined
 
-  const { data: metrics, isLoading, error } = useMetrics(dateRangeForAPI)
+
+  // Fetch metrics with date range using TanStack Query
+  const { data: metrics, isLoading: metricsLoading, error: metricsError } = useMetrics(dateRangeForAPI)
+  
+  // Fetch latest balance independently (no date filter) using TanStack Query
+  const { data: balanceData, isLoading: balanceLoading } = useMetrics(undefined)
+  const latestBalance = balanceData?.balance ?? null
+
+  const isLoading = metricsLoading
+  const error = metricsError
 
   // Auth headers for API calls
   const authHeaders = async (): Promise<HeadersInit> => {
@@ -76,11 +85,11 @@ export function SectionCards() {
         const data = await response.json()
         if (data) {
           setBalanceGoal(data.balanceGoal || 0)
-          setSavingsRateGoal(data.savingsRateGoal || 20)
+          setSavingsRateGoal(data.savingsRateGoal || 0)
           try {
             sessionStorage.setItem('budgetGoals', JSON.stringify({
               balanceGoal: Number(data.balanceGoal || 0),
-              savingsRateGoal: Number(data.savingsRateGoal || 20),
+              savingsRateGoal: Number(data.savingsRateGoal || 0),
             }))
           } catch {}
         }
@@ -127,7 +136,7 @@ export function SectionCards() {
       if (cached) {
         const data = JSON.parse(cached)
         setBalanceGoal(Number(data.balanceGoal || 0))
-        setSavingsRateGoal(Number(data.savingsRateGoal || 20))
+        setSavingsRateGoal(Number(data.savingsRateGoal || 0))
         setInitialized(true)
         return
       }
@@ -197,15 +206,19 @@ export function SectionCards() {
   const testConversion = convertAmount(1000, 'EUR', baseCurrency)
   console.log('Test conversion: 1000 EUR ->', testConversion, baseCurrency)
 
+  // Use latest balance (not filtered by date range) for balance card
+  const displayBalance = latestBalance !== null ? latestBalance : (metrics?.balance || 0)
+  const balanceProgressValue = balanceGoal > 0 ? Math.max(0, Math.min(100, (Math.abs(displayBalance) / balanceGoal) * 100)) : 0
+
   const cards = [
     {
       label: "Balance",
-      value: formatCurrency(convertAmount(metrics.balance || 0, 'EUR', baseCurrency), baseCurrency),
+      value: formatCurrency(convertAmount(displayBalance, 'EUR', baseCurrency), baseCurrency),
       icon: <IconWallet className="size-5" />,
-      delta: metrics.deltas?.balancePct ?? 0,
+      delta: 0, // Balance doesn't show delta since it's not date-filtered
       kind: "balance" as const,
       goal: balanceGoalInDisplayCurrency,
-      progress: balanceProgress,
+      progress: balanceProgressValue,
       accentColor: "from-amber-500/10 to-amber-600/10",
       iconBg: "bg-amber-500/10",
       iconColor: "text-amber-700 dark:text-amber-400",
@@ -280,7 +293,7 @@ export function SectionCards() {
                 {card.value}
               </CardTitle>
 
-              {/* Delta indicator for Income/Expenses */}
+              {/* Delta indicator for Income/Expenses (not for Balance since it's static) */}
               {(card.kind === "income" || card.kind === "expenses") && (() => {
                 const d = Number(card.delta || 0)
                 const ad = Math.abs(d)

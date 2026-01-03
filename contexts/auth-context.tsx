@@ -85,17 +85,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // Delete current session
       await account.deleteSession('current');
-      
+
       // Also delete all sessions to be thorough
       try {
         await account.deleteSessions();
       } catch (error) {
         // Ignore errors if no other sessions exist
       }
-      
+
       // Clear the app session flag so next visit requires fresh login
       sessionStorage.removeItem('nexpass-app-session');
-      
+
       setUser(null);
       router.push('/login');
     } catch (error) {
