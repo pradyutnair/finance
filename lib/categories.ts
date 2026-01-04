@@ -9,13 +9,15 @@ export type CategoryKey =
   | "Entertainment"
   | "Health"
   | "Income"
+  | "Finance"
+  | "Subscriptions"
   | "Miscellaneous"
   | "Uncategorized"
   | "Bank Transfer"
 
 export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Groceries: { color: "#c6cfc9" },         // silver (very light)
-  Restaurants: { color: "#ef4444" },       // red
+  Restaurants: { color: "#ea580c" },       // deep orange
   Education: { color: "#8fc2db" },         // sky blue
   Transport: { color: "#fde68a" },         // light amber
   Travel: { color: "#3b82f6" },            // blue
@@ -24,6 +26,8 @@ export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Entertainment: { color: "#c752bf" },     // pink
   Health: { color: "#52c7a6" },            // green
   Income: { color: "#20d462" },            // green
+  Finance: { color: "#00ffff" },           // aqua
+  Subscriptions: { color: "#ef4444" },     // red
   Miscellaneous: { color: "#9ca3af" },     // gray
   Uncategorized: { color: "#4f5952" },     // dark gray
   'Bank Transfer': { color: "#585f96" },     // dark gray
