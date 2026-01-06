@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("🔍 Debug endpoint called");
-    console.log("Headers:", Object.fromEntries(request.headers.entries()));
+    logger.debug("Debug endpoint called", { headers: Object.fromEntries(request.headers.entries()) });
     
     const user: any = await requireAuthUser(request);
     
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       message: "Authentication successful"
     });
   } catch (error: any) {
-    console.error("Debug endpoint error:", error);
+    logger.error("Debug endpoint error", { error: error.message, status: error.status });
     return NextResponse.json(
       { 
         success: false,

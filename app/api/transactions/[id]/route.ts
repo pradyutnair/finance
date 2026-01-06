@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
+import { logger } from "@/lib/logger"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -105,7 +106,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     return NextResponse.json({ ok: true, transaction: updated })
   } catch (err: any) {
-    console.error("Error updating transaction:", err)
+    logger.error("Error updating transaction", { error: err.message, status: err?.status, transactionId: id })
     const status = err?.status || 500
     const message = err?.message || "Internal Server Error"
     return NextResponse.json({ ok: false, error: message }, { status })

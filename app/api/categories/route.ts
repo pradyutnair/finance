@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 import { getUserTransactionCache, filterTransactions } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 type AuthUser = { $id?: string; id?: string };
 
 export async function GET(request: NextRequest) {
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(categoriesData);
 
   } catch (error: unknown) {
-    console.error("Error fetching categories data:", error);
+    logger.error("Error fetching categories data", { error: error instanceof Error ? error.message : String(error) });
     const status = (error as { status?: number })?.status || 500;
     return NextResponse.json(
       { error: "Failed to fetch categories data" },

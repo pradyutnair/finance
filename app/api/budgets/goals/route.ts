@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
+import { logger } from '@/lib/logger'
 
 // Simple in-memory cache for user goals within a single server process lifecycle
 type GoalsPayload = {
@@ -73,12 +74,12 @@ export async function GET(request: NextRequest) {
       }
       goalsCache.set(userId, fallback)
       return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
-    } catch (error) {
-      console.error('Error fetching goals:', error)
+    } catch (error: any) {
+      logger.error('Error fetching goals', { error: error.message })
       return NextResponse.json({ error: 'Failed to fetch goals' }, { status: 500 })
     }
-  } catch (error) {
-    console.error('Error in GET /api/budgets/goals:', error)
+  } catch (error: any) {
+    logger.error('Error in GET /api/budgets/goals', { error: error.message })
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 }
@@ -151,12 +152,12 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({ success: true })
-    } catch (error) {
-      console.error('Error saving goals:', error)
+    } catch (error: any) {
+      logger.error('Error saving goals', { error: error.message })
       return NextResponse.json({ error: 'Failed to save goals' }, { status: 500 })
     }
-  } catch (error) {
-    console.error('Error in POST /api/budgets/goals:', error)
+  } catch (error: any) {
+    logger.error('Error in POST /api/budgets/goals', { error: error.message })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

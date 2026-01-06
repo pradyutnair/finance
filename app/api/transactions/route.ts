@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { getUserTransactionCache, filterTransactions, invalidateUserCache } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   try {
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
     });
 
   } catch (err: any) {
-    console.error('Error fetching transactions:', err);
+    logger.error('Error fetching transactions', { error: err.message, status: err?.status });
     const status = err?.status || 500;
     const message = err?.message || "Internal Server Error";
     return NextResponse.json({ ok: false, error: message }, { status });

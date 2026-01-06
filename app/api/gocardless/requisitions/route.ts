@@ -3,38 +3,21 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { createRequisition, createEndUserAgreement, getInstitution, HttpError } from "@/lib/gocardless";
+import { logger } from "@/lib/logger";
 // No DB writes here; requisitions are persisted only after successful authorization in the callback
 
 export async function POST(request: Request) {
   try {
     // Require authenticated user
-    let user: any;
-    let userId: string;
-    
-    try {
-      user = await requireAuthUser(request);
-      userId = user.$id || user.id;
-    } catch (authError) {
-      console.error('❌ Authentication failed:', authError);
-      
-      // In development, allow bypassing auth for testing
-      if (process.env.NODE_ENV === 'development') {
-        console.log('⚠️ Development mode: bypassing auth for testing');
-        const timestamp = Date.now();
-        userId = `dev-user-${timestamp}`;
-        user = { $id: userId, id: userId };
-        console.log('🔧 Using dev user ID:', userId);
-      } else {
-        throw authError;
-      }
-    }
+    const user: any = await requireAuthUser(request);
+    const userId: string = user.$id || user.id;
     
     const json = await request.json().catch(() => ({}));
     const { redirect, institutionId, reference, userLanguage, agreementId } = json || {};
     
     // Ensure reference uses the same user ID format for consistent parsing
     const finalReference = reference || `user_${userId}_${Date.now()}`;
-    console.log('🔗 Using reference:', finalReference);
+    logger.debug('Using requisition reference', { reference: finalReference, userId });
     
     // Ensure an End User Agreement exists using the institution's max historical days
     let effectiveAgreementId: string | undefined = agreementId;
@@ -67,7 +50,7 @@ export async function POST(request: Request) {
       if (!effectiveAgreementId) {
         throw new HttpError('Failed to create end-user agreement (missing id)', 502);
       }
-      console.log('📝 Created end-user agreement for requisition', { maxHistoricalDays, accessValidForDays, agreementId: effectiveAgreementId });
+      logger.info('Created end-user agreement for requisition', { maxHistoricalDays, accessValidForDays, agreementId: effectiveAgreementId });
     }
 
     // Create requisition with GoCardless
@@ -83,7 +66,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(data, { status: 201 });
   } catch (err: any) {
-    console.error('Error creating requisition:', err);
+    logger.error('Error creating requisition', { error: err.message, status: err?.status });
     if (err instanceof HttpError) {
       return NextResponse.json({ ok: false, error: err.message, details: err.details }, { status: err.status });
     }

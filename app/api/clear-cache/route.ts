@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { invalidateUserCache } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
   try {
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     });
 
   } catch (err: any) {
-    console.error('Error clearing cache:', err);
+    logger.error('Error clearing cache', { error: err.message, status: err?.status });
     const status = err?.status || 500;
     const message = err?.message || "Internal Server Error";
     return NextResponse.json({ ok: false, error: message }, { status });
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
     });
 
   } catch (err: any) {
-    console.error('Error getting cache status:', err);
+    logger.error('Error getting cache status', { error: err.message, status: err?.status });
     const status = err?.status || 500;
     const message = err?.message || "Internal Server Error";
     return NextResponse.json({ ok: false, error: message }, { status });

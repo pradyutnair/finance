@@ -1,4 +1,5 @@
 import type { Transaction } from "@/lib/api"
+import { logger } from "./logger"
 
 export interface RecurringPattern {
   id: string
@@ -108,7 +109,7 @@ export class RecurringDetector {
     
     // CRITICAL: Only analyze expenses (negative amounts)
     const expenses = transactions.filter(tx => tx.amount < 0)
-    console.log(`[Recurring] Filtering for expenses: ${expenses.length} of ${transactions.length} transactions`)
+    logger.debug('Filtering for expenses', { expenseCount: expenses.length, totalCount: transactions.length })
     
     for (const tx of expenses) {
       const rawPayee = tx.counterparty || tx.description || 'UNKNOWN'
@@ -297,7 +298,7 @@ export class RecurringDetector {
     if (txs.length < 2) return null
     
     // Debug: Check if transactions are actually sorted by date
-    console.log(`[Recurring] ${payee}: Dates (first 5):`, txs.slice(0, 5).map(t => t.date))
+    logger.debug('Analyzing cadence - dates', { payee, dates: txs.slice(0, 5).map(t => t.date) })
     
     // Calculate intervals between consecutive transactions
     const intervals: number[] = []
@@ -309,7 +310,7 @@ export class RecurringDetector {
       }
     }
     
-    console.log(`[Recurring] ${payee}: intervals =`, intervals.slice(0, 10), intervals.length > 10 ? `... (${intervals.length} total)` : '')
+    logger.debug('Analyzing cadence - intervals', { payee, intervals: intervals.slice(0, 10), totalIntervals: intervals.length })
     
     if (intervals.length === 0) return null
     
@@ -328,11 +329,11 @@ export class RecurringDetector {
     const cv = mean > 0 ? stdDev / mean : 0
     const iqr = this.calculateIQR(filteredIntervals)
     
-    console.log(`[Recurring] ${payee}: medianInterval=${medianInterval}, cv=${cv.toFixed(3)}, iqr=${iqr}`)
+    logger.debug('Analyzing cadence - statistics', { payee, medianInterval, cv: cv.toFixed(3), iqr })
     
     // Match cadence
     const cadenceMatch = this.matchCadence(medianInterval, iqr, cv, txs)
-    console.log(`[Recurring] ${payee}: cadenceMatch =`, cadenceMatch)
+    logger.debug('Analyzing cadence - match result', { payee, cadenceMatch })
     
     if (!cadenceMatch) return null
     

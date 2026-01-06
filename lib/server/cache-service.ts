@@ -4,6 +4,7 @@
  */
 
 import { Client, Databases, Query } from 'appwrite';
+import { logger } from '../logger';
 
 type TransactionDoc = {
   $id?: string;
@@ -101,7 +102,7 @@ export async function getUserTransactionCache(
     const toDate = ymd(new Date());
     const fromDate = ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
 
-    console.log(`[Cache] Loading ${DEFAULT_DAYS} days of transactions for user ${userId}: ${fromDate} to ${toDate}`);
+    logger.debug(`Loading ${DEFAULT_DAYS} days of transactions for user`, { userId, fromDate, toDate });
 
     const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
     const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
@@ -138,7 +139,7 @@ export async function getUserTransactionCache(
       if (!cursor) break;
     }
 
-    console.log(`[Cache] Loaded ${allTransactions.length} transactions for user ${userId}`);
+    logger.debug('Loaded transactions for user', { userId, count: allTransactions.length });
 
     // Update cache
     cache.set(userId, {
@@ -150,8 +151,8 @@ export async function getUserTransactionCache(
     });
 
     return allTransactions;
-  } catch (error) {
-    console.error('[Cache] Error loading transactions:', error);
+  } catch (error: any) {
+    logger.error('Error loading transactions', { error: error.message, userId });
     // Mark as not loading on error
     const errorCache = cache.get(userId);
     if (errorCache) {
@@ -268,11 +269,11 @@ export async function getUserBalanceCache(
       if (!cursor) break;
     }
 
-    console.log(`[Cache] Loaded ${allBalances.length} balances for user ${userId}`);
+    logger.debug('Loaded balances for user', { userId, count: allBalances.length });
     cache.set(userId, allBalances);
     return allBalances;
-  } catch (error) {
-    console.error('[Cache] Error loading balances:', error);
+  } catch (error: any) {
+    logger.error('Error loading balances', { error: error.message, userId });
     throw error;
   }
 }
@@ -296,7 +297,7 @@ export function invalidateUserCache(userId: string, type: 'transactions' | 'bala
  * Preload cache for a user (call on app init)
  */
 export async function preloadUserCache(userId: string, databases: Databases) {
-  console.log(`[Cache] Preloading data for user ${userId}`);
+  logger.debug('Preloading data for user', { userId });
   
   // Load transactions and balances in parallel
   await Promise.all([
@@ -304,6 +305,6 @@ export async function preloadUserCache(userId: string, databases: Databases) {
     getUserBalanceCache(userId, databases, true)
   ]);
   
-  console.log(`[Cache] Preload complete for user ${userId}`);
+  logger.debug('Preload complete for user', { userId });
 }
 

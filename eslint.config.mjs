@@ -20,6 +20,19 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      "no-console": ["warn", { 
+        allow: ["warn", "error"] // Allow console.warn and console.error in logger.ts only
+      }],
+    },
+  },
+  {
+    files: ["lib/logger.ts"],
+    rules: {
+      "no-console": "off", // Allow all console methods in logger implementation
+    },
+  },
 ];
 
 export default eslintConfig;

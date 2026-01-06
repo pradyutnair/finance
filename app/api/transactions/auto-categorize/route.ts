@@ -5,6 +5,7 @@ import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { invalidateUserCache } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
   try {
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     let processed = 0;
     const pageSize = 100;
     while (processed < limit) {
-      console.log(`[auto-categorize] Fetching page offset=${offset}, processed=${processed}/${limit}`)
+      logger.debug('Auto-categorize: Fetching page', { offset, processed, limit })
       const page = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, [
         Query.equal('userId', userId),
         Query.orderDesc('$createdAt'),
@@ -49,14 +50,14 @@ export async function POST(request: Request) {
         const needs = !d.category || d.category === '' || d.category === 'Uncategorized';
         const excluded = d.exclude === true;
         if (!needs || excluded) {
-          console.log(`[auto-categorize] Skipping tx ${d.$id} needs=${needs} excluded=${excluded}`)
+          logger.debug('Auto-categorize: Skipping transaction', { transactionId: d.$id, needs, excluded })
           continue;
         }
-        console.log(`[auto-categorize] Categorizing tx ${d.$id} desc='${d.description}' cp='${d.counterparty}' amt=${d.amount} ${d.currency}`)
+        logger.debug('Auto-categorize: Categorizing transaction', { transactionId: d.$id, description: d.description, counterparty: d.counterparty, amount: d.amount, currency: d.currency })
         const byExisting = await findExistingCategory(databases, DATABASE_ID, TRANSACTIONS_COLLECTION_ID, userId, d.description, d.counterparty);
         const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
         await databases.updateDocument(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, d.$id, { category: cat });
-        console.log(`[auto-categorize] Updated tx ${d.$id} => ${cat}`)
+        logger.debug('Auto-categorize: Updated transaction', { transactionId: d.$id, category: cat })
         processed += 1;
       }
       offset += docs.length;
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, processed });
   } catch (err: any) {
-    console.error("Error triggering auto-categorization:", err);
+    logger.error("Error triggering auto-categorization", { error: err.message, status: err?.status });
     const status = err?.status || 500;
     const message = err?.message || "Internal Server Error";
     return NextResponse.json({ ok: false, error: message }, { status });

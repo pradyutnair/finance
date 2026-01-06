@@ -7,6 +7,7 @@ import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
 import { createHash } from "crypto";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,7 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       authedUserId = (authedUser?.$id || authedUser?.id || null) as string | null;
     } catch (authError) {
       const message = authError instanceof Error ? authError.message : String(authError);
-      console.log('🔍 Authentication failed in callback, will use reference parsing:', message);
+      logger.debug('Authentication failed in callback, will use reference parsing', { error: message });
       // Not authenticated via JWT/cookie; will fallback to reference parsing
     }
 
@@ -52,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!userId) {
       const reference: string | undefined = requisition.reference;
       if (reference && typeof reference === 'string') {
-        console.log('🔍 Parsing user ID from reference:', reference);
+        logger.debug('Parsing user ID from reference', { reference });
         
         // Support both user_ and sandbox_ prefixes, and dev-user format
         let match = reference.match(/^(?:user|sandbox)_([^_]+)_/);
@@ -63,21 +64,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         
         if (match && match[1]) {
           userId = match[1];
-          console.log('✅ Extracted user ID from reference:', userId);
+          logger.debug('Extracted user ID from reference', { userId });
         } else {
-          console.log('❌ Could not parse user ID from reference format');
+          logger.warn('Could not parse user ID from reference format', { reference });
         }
       }
     }
 
     if (!userId) {
-      console.error('❌ Unable to determine user ID from session or reference');
-      console.error('📝 Requisition reference:', requisition?.reference);
-      console.error('🔑 Authenticated user ID:', authedUserId);
+      logger.error('Unable to determine user ID from session or reference', {
+        requisitionReference: requisition?.reference,
+        authedUserId
+      });
       return NextResponse.json({ ok: false, error: "Unable to determine user from session or reference" }, { status: 400 });
     }
 
-    console.log('✅ Processing requisition for user:', userId);
+    logger.info('Processing requisition for user', { userId, requisitionId });
 
     // If requisition is linked, process the accounts
     if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {
@@ -150,7 +152,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               }
             );
           } else {
-            console.error('Error storing requisition:', error);
+            logger.error('Error storing requisition', { error: error.message, code: error.code });
           }
         }
 
@@ -176,9 +178,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
           );
           connectionDocId = connectionDoc.$id;
-          console.log('✅ Created bank connection:', connectionDocId);
-        } catch (error) {
-          console.error('Error storing bank connection:', error);
+          logger.info('Created bank connection', { connectionDocId, userId });
+        } catch (error: any) {
+          logger.error('Error storing bank connection', { error: error.message, userId });
           throw error; // Stop processing if connection creation fails
         }
 
@@ -198,11 +200,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                   accountId
                 );
                 exists = true;
-                console.log(`Bank account ${accountId} already exists, skipping create.`);
+                logger.debug('Bank account already exists, skipping create', { accountId });
               } catch (checkErr: any) {
                 const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
                 if (code && code !== 404) {
-                  console.warn('Error checking existing bank account, will attempt create:', checkErr);
+                  logger.warn('Error checking existing bank account, will attempt create', { error: checkErr.message, accountId });
                 }
               }
 
@@ -248,11 +250,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         );
                         
                         if (existingBalances.documents.length > 0) {
-                          console.log(`Balance for ${accountId} ${balanceType} ${referenceDate} already exists, skipping`);
+                          logger.debug('Balance already exists, skipping', { accountId, balanceType, referenceDate });
                           continue;
                         }
                       } catch (queryError) {
-                        console.log('Error checking existing balance, proceeding with creation');
+                        logger.debug('Error checking existing balance, proceeding with creation', { accountId });
                       }
                       
                       // Use ID.unique() to generate a unique document ID
@@ -271,15 +273,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       );
                     } catch (error: any) {
                       if (error.message?.includes('already exists')) {
-                        console.log('Balance already exists, skipping');
+                        logger.debug('Balance already exists, skipping', { accountId });
                       } else {
-                        console.error('Error storing balance:', error);
+                        logger.error('Error storing balance', { error: error.message, accountId });
                       }
                     }
                   }
                 }
-              } catch (balanceError) {
-                console.error(`Error fetching balances for account ${accountId}:`, balanceError);
+              } catch (balanceError: any) {
+                logger.error('Error fetching balances for account', { accountId, error: balanceError.message });
               }
 
               // Get and store recent transactions
@@ -358,29 +360,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       if (error?.message?.includes('already exists') || error?.code === 409) {
                         // duplicate id -> already stored
                       } else {
-                        console.error('Error storing transaction:', error);
+                        logger.error('Error storing transaction', { error: error.message, accountId });
                       }
                     }
                   }
                 }
-              } catch (transactionError) {
-                console.error(`Error fetching transactions for account ${accountId}:`, transactionError);
+              } catch (transactionError: any) {
+                logger.error('Error fetching transactions for account', { accountId, error: transactionError.message });
               }
-            } catch (error) {
+            } catch (error: any) {
               const code = (error && (error as any).code) as number | undefined;
               if (code === 409) {
-                console.log(`Bank account ${accountId} already exists (409), skipping.`);
+                logger.debug('Bank account already exists (409), skipping', { accountId });
               } else {
-                console.error('Error storing bank account:', error);
+                logger.error('Error storing bank account', { error: error.message, accountId });
               }
             }
-          } catch (accountError) {
-            console.error(`Error processing account ${accountId}:`, accountError);
+          } catch (accountError: any) {
+            logger.error('Error processing account', { accountId, error: accountError.message });
           }
         }
 
-      } catch (dbError) {
-        console.error("Error storing data in database:", dbError);
+      } catch (dbError: any) {
+        logger.error("Error storing data in database", { error: dbError.message });
         // Still return success if GoCardless connection worked
       }
     }
@@ -394,7 +396,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     });
 
   } catch (err: any) {
-    console.error("Error processing requisition callback:", err);
+    logger.error("Error processing requisition callback", { error: err.message, status: err?.status });
     if (err instanceof HttpError) {
       return NextResponse.json({ ok: false, error: err.message, details: err.details }, { status: err.status });
     }

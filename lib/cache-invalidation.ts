@@ -4,6 +4,7 @@
  */
 
 import { QueryClient } from '@tanstack/react-query';
+import { logger } from './logger';
 
 // Custom event for cache invalidation
 export const CACHE_INVALIDATION_EVENT = 'nexpass:cache-invalidate';
@@ -24,7 +25,7 @@ export async function invalidateServerCache(options: CacheInvalidationOptions = 
   
   try {
     if (!silent) {
-      console.log(`[Cache] Invalidating server cache (scope: ${scope}, reason: ${reason})`);
+      logger.debug('Invalidating server cache', { scope, reason });
     }
     
     const response = await fetch('/api/clear-cache', {
@@ -37,19 +38,19 @@ export async function invalidateServerCache(options: CacheInvalidationOptions = 
     });
 
     if (!response.ok) {
-      console.error(`[Cache] Server cache invalidation failed: ${response.status}`);
+      logger.error('Server cache invalidation failed', { status: response.status, scope });
       return false;
     }
 
     const data = await response.json();
     
     if (!silent) {
-      console.log('[Cache] Server cache invalidated:', data);
+      logger.debug('Server cache invalidated', { scope, data });
     }
     
     return true;
-  } catch (error) {
-    console.error('[Cache] Failed to invalidate server cache:', error);
+  } catch (error: any) {
+    logger.error('Failed to invalidate server cache', { error: error.message, scope });
     return false;
   }
 }
@@ -65,7 +66,7 @@ export async function invalidateClientCache(
   
   try {
     if (!silent) {
-      console.log(`[Cache] Invalidating client cache (scope: ${scope}, reason: ${reason})`);
+      logger.debug('Invalidating client cache', { scope, reason });
     }
 
     // Invalidate based on scope
@@ -104,12 +105,12 @@ export async function invalidateClientCache(
     }
     
     if (!silent) {
-      console.log('[Cache] Client cache invalidated');
+      logger.debug('Client cache invalidated', { scope });
     }
     
     return true;
-  } catch (error) {
-    console.error('[Cache] Failed to invalidate client cache:', error);
+  } catch (error: any) {
+    logger.error('Failed to invalidate client cache', { error: error.message, scope });
     return false;
   }
 }
@@ -125,7 +126,7 @@ export async function invalidateAllCaches(
   const { scope = 'all', reason = 'manual', silent = false } = options;
   
   if (!silent) {
-    console.log(`[Cache] Invalidating all caches (scope: ${scope}, reason: ${reason})`);
+    logger.debug('Invalidating all caches', { scope, reason });
   }
 
   // Invalidate in parallel, but don't let one failure block the other
@@ -145,9 +146,9 @@ export async function invalidateAllCaches(
   
   if (!silent) {
     if (overall) {
-      console.log('[Cache] All caches invalidated successfully');
+      logger.info('All caches invalidated successfully', { scope });
     } else {
-      console.warn('[Cache] Cache invalidation completed with errors', { serverSuccess, clientSuccess });
+      logger.warn('Cache invalidation completed with errors', { serverSuccess, clientSuccess, scope });
     }
   }
   

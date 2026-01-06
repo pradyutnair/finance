@@ -1,4 +1,5 @@
 import { Client, Account, Databases, ID } from "appwrite";
+import { logger } from "./logger";
 
 function assertAuthEnv(): void {
   const missing: string[] = [];
@@ -81,7 +82,7 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
       throw new StatusError("No authentication provided", 401);
     }
 
-    console.log('🍪 Received cookies:', cookies);
+    logger.debug('Received cookies for session verification');
 
     // Parse session cookie - try multiple formats
     let sessionMatch = null;
@@ -97,12 +98,11 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
     }
     
     if (!sessionMatch) {
-      console.error('❌ No session cookie found in available cookies:', cookies);
-      console.error('🔍 Looking for patterns: a_session_*, appwrite-session, session');
+      logger.warn('No session cookie found in available cookies', { cookieCount: cookies.split(';').length });
       throw new StatusError("No session cookie found", 401);
     }
 
-    console.log('✅ Found session cookie:', sessionMatch[0].split('=')[0]);
+    logger.debug('Found session cookie', { cookieName: sessionMatch[0].split('=')[0] });
 
     const sessionToken = decodeURIComponent(sessionMatch[1]);
     
@@ -116,11 +116,12 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
     const user = await account.get();
     return user;
   } catch (sessionError: any) {
-    //console.error('Session verification error:', sessionError.message);
-    // throw new StatusError(`Invalid session: ${sessionError.message}`, 401);
-    // Do something that wont be visible to the user
-    console.log('Session verification error:', sessionError.message);
-    return null;
+    // If it's already a StatusError, re-throw it
+    if (sessionError instanceof StatusError) {
+      throw sessionError;
+    }
+    // Otherwise, throw a new StatusError with 401
+    throw new StatusError(`Invalid session: ${sessionError.message || 'Authentication failed'}`, 401);
   }
 }
 
@@ -137,21 +138,18 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
   const client = createAppwriteClient();
   const databases = new Databases(client);
   
-  console.log("🔍 Creating user private record...");
-  console.log("Database ID:", process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID);
-  console.log("Collection ID:", process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID);
-  console.log("User ID:", userId);
+  logger.debug("Creating user private record", { userId });
   
   try {
     // Check if user record already exists by document ID (which will be the user ID)
-    console.log("📋 Checking for existing user record...");
+    logger.debug("Checking for existing user record");
     try {
       const existingUser = await databases.getDocument(
         process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
         process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID as string,
         userId
       );
-      console.log("✅ Found existing user record");
+      logger.debug("Found existing user record");
       return existingUser;
     } catch (getError: any) {
       // Document doesn't exist, continue to create it
@@ -161,7 +159,7 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
     }
     
     // Create new user record using userId as the document ID
-    console.log("🆕 Creating new user record...");
+    logger.debug("Creating new user record");
     
     // Use the actual attributes from your collection schema
     const documentData = {
@@ -171,7 +169,7 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
       ...(name && { name })    // Only add if name exists
     };
     
-    console.log("📝 Document data:", documentData);
+    logger.debug("Document data prepared", { hasEmail: !!email, hasName: !!name });
     
     const userRecord = await databases.createDocument(
       process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
@@ -180,14 +178,14 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
       documentData
     );
     
-    console.log("✅ User record created successfully");
+    logger.info("User record created successfully", { userId });
     return userRecord;
   } catch (error: any) {
-    console.error("❌ Error creating user private record:", error);
-    console.error("Error details:", {
+    logger.error("Error creating user private record", {
       message: error.message,
       code: error.code,
-      type: error.type
+      type: error.type,
+      userId
     });
     
     // Provide helpful error messages

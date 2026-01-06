@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 import { getUserTransactionCache, getUserBalanceCache, filterTransactions } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 
 type AuthUser = { $id?: string; id?: string };
 
@@ -148,7 +149,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    console.error("Error fetching metrics:", error);
+    logger.error("Error fetching metrics", { error: error instanceof Error ? error.message : String(error) });
     const status = (error as { status?: number })?.status || 500;
     return NextResponse.json(
       { error: "Failed to fetch metrics" },

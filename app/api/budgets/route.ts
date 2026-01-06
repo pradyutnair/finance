@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
+import { logger } from '@/lib/logger'
 
 // In-memory cache of budget preferences for the current server process
 type BudgetPayload = {
@@ -101,15 +102,15 @@ export async function GET(request: NextRequest) {
         budgetsCache.set(userId, fallback)
         return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
       }
-    } catch (error) {
-      console.error('Error fetching budgets:', error)
+    } catch (error: any) {
+      logger.error('Error fetching budgets', { error: error.message })
       return NextResponse.json(
         { error: 'Failed to fetch budget data' },
         { status: 500 }
       )
     }
-  } catch (error) {
-    console.error('Error in GET /api/budgets:', error)
+  } catch (error: any) {
+    logger.error('Error in GET /api/budgets', { error: error.message })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -227,15 +228,15 @@ export async function POST(request: NextRequest) {
         message: 'Budget preferences saved successfully'
       })
 
-    } catch (error) {
-      console.error('Error saving budget:', error)
+    } catch (error: any) {
+      logger.error('Error saving budget', { error: error.message })
       return NextResponse.json(
         { error: 'Failed to save budget data' },
         { status: 500 }
       )
     }
-  } catch (error) {
-    console.error('Error in POST /api/budgets:', error)
+  } catch (error: any) {
+    logger.error('Error in POST /api/budgets', { error: error.message })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

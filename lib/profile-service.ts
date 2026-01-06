@@ -1,5 +1,6 @@
 import { databases, account } from '@/lib/appwrite-client'
 import { ID, Query } from 'appwrite'
+import { logger } from './logger'
 
 const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9'
 const USERS_PRIVATE_COLLECTION_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID || 'users_private'
@@ -38,7 +39,7 @@ export class ProfileService {
         // Profile doesn't exist, create it
         return await this.createUserProfile(userId)
       }
-      console.error('Error fetching user profile:', error)
+      logger.error('Error fetching user profile', { error: error.message, userId })
       throw error
     }
   }
@@ -67,8 +68,8 @@ export class ProfileService {
       )
 
       return profile as UserProfile
-    } catch (error) {
-      console.error('Error creating user profile:', error)
+    } catch (error: any) {
+      logger.error('Error creating user profile', { error: error.message, userId })
       throw error
     }
   }
@@ -88,8 +89,8 @@ export class ProfileService {
         userId,
         { name }
       )
-    } catch (error) {
-      console.error('Error updating user name:', error)
+    } catch (error: any) {
+      logger.error('Error updating user name', { error: error.message, userId })
       throw error
     }
   }
@@ -110,7 +111,7 @@ export class ProfileService {
         // Silently ignore if schema doesn't support this field
         return
       }
-      console.error('Error updating user avatar:', error)
+      logger.error('Error updating user avatar', { error: error.message, userId })
       throw error
     }
   }
@@ -131,7 +132,7 @@ export class ProfileService {
         // Silently ignore if schema doesn't support this field
         return
       }
-      console.error('Error updating currency preferences:', error)
+      logger.error('Error updating currency preferences', { error: error.message, userId })
       throw error
     }
   }
@@ -158,7 +159,7 @@ export class ProfileService {
         // Silently ignore if schema doesn't support some fields
         return
       }
-      console.error('Error updating user profile:', error)
+      logger.error('Error updating user profile', { error: error.message, userId })
       throw error
     }
   }

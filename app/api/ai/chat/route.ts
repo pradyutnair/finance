@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import OpenAI from "openai";
+import { logger } from "@/lib/logger";
 
 type AuthUser = { $id?: string; id?: string };
 
@@ -347,8 +348,8 @@ export async function POST(request: Request) {
           name: "query_transactions",
           content: JSON.stringify(heuristicResult)
         });
-      } catch (prefetchErr) {
-        console.warn("Heuristic query prefetch failed", prefetchErr);
+      } catch (prefetchErr: any) {
+        logger.warn("Heuristic query prefetch failed", { error: prefetchErr.message });
       }
     }
 
@@ -431,7 +432,7 @@ export async function POST(request: Request) {
       }
     });
   } catch (error: any) {
-    console.error("AI chat route error:", error);
+    logger.error("AI chat route error", { error: error.message, status: error?.status });
     const status = error?.status || 500;
     return NextResponse.json({ ok: false, error: error?.message || "Internal Server Error" }, { status });
   }
