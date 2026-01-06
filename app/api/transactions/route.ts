@@ -5,12 +5,18 @@ import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import { getUserTransactionCache, filterTransactions, invalidateUserCache } from "@/lib/server/cache-service";
 import { logger } from "@/lib/logger";
+import { APPWRITE_CONFIG } from "@/lib/config";
+import { handleApiError } from "@/lib/api-error-handler";
+import type { AuthUser } from "@/lib/types";
 
 export async function GET(request: Request) {
   try {
     // Require authenticated user
-    const user = await requireAuthUser(request) as { $id?: string; id?: string };
+    const user = await requireAuthUser(request) as AuthUser;
     const userId = user.$id || user.id;
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get("accountId");
@@ -23,20 +29,28 @@ export async function GET(request: Request) {
 
     // Create Appwrite client for cache service
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
+    const apiKey = APPWRITE_CONFIG.apiKey;
     if (apiKey) {
-      (client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey };
+      (client as { headers: Record<string, string> }).headers = { 
+        ...(client as { headers: Record<string, string> }).headers, 
+        'X-Appwrite-Key': apiKey 
+      };
     } else {
       const auth = request.headers.get("authorization") || request.headers.get("Authorization");
       const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
-      if (token) (client as any).headers = { ...(client as any).headers, 'X-Appwrite-JWT': token };
+      if (token) {
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          'X-Appwrite-JWT': token 
+        };
+      }
     }
     const databases = new Databases(client);
 
     // Get cached transactions (loads 365 days on first call)
-    const allTransactions = await getUserTransactionCache(userId!, databases);
+    const allTransactions = await getUserTransactionCache(userId, databases);
 
     // Filter transactions based on request parameters
     const filtered = filterTransactions(allTransactions, {
@@ -64,10 +78,7 @@ export async function GET(request: Request) {
       total
     });
 
-  } catch (err: any) {
-    logger.error('Error fetching transactions', { error: err.message, status: err?.status });
-    const status = err?.status || 500;
-    const message = err?.message || "Internal Server Error";
-    return NextResponse.json({ ok: false, error: message }, { status });
+  } catch (error: unknown) {
+    return handleApiError(error, 500);
   }
 }

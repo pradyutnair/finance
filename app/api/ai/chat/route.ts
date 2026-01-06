@@ -6,12 +6,9 @@ import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
-
-type AuthUser = { $id?: string; id?: string };
-
-const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || "68d42ac20031b27284c9") as string;
-const TX_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || "transactions_dev";
-const BUDGETS_COLLECTION_ID = process.env.APPWRITE_BUDGETS_COLLECTION_ID || "preferences_budgets_dev";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
+import { handleApiError } from "@/lib/api-error-handler";
+import type { AuthUser } from "@/lib/types";
 
 // Streaming + tool-calling route. The model decides what to fetch via tools.
 
@@ -23,13 +20,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Missing message" }, { status: 400 });
     }
 
-    const user = (await requireAuthUser(request)) as AuthUser;
-    const userId = (user.$id ?? user.id) as string;
+    const user = await requireAuthUser(request) as AuthUser;
+    const userId = user.$id ?? user.id;
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 });
+    }
 
     // Appwrite client (server-side)
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
 
     // Use JWT token from Authorization header (same as other API routes)
     const auth = request.headers.get("authorization") || request.headers.get("Authorization");
@@ -37,9 +37,12 @@ export async function POST(request: Request) {
     if (token) {
       client.setJWT(token);
     } else {
-      const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+      const apiKey = APPWRITE_CONFIG.apiKey;
       if (apiKey) {
-        (client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": apiKey };
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          "X-Appwrite-Key": apiKey 
+        };
       } else {
         throw new Error("No authentication provided");
       }
@@ -209,7 +212,7 @@ export async function POST(request: Request) {
         const pageLimit = Math.min(100, limit - txs.length);
         const q = [...base, Query.limit(pageLimit)];
         if (cursor) q.push(Query.cursorAfter(cursor));
-        const page = await databases.listDocuments(DATABASE_ID, TX_COLLECTION_ID, q);
+        const page = await databases.listDocuments(APPWRITE_CONFIG.databaseId, COLLECTIONS.transactions, q);
         const docs = page.documents as TxDoc[];
         txs.push(...docs);
         if (docs.length < pageLimit) break;
@@ -431,10 +434,8 @@ export async function POST(request: Request) {
         "X-Accel-Buffering": "no"
       }
     });
-  } catch (error: any) {
-    logger.error("AI chat route error", { error: error.message, status: error?.status });
-    const status = error?.status || 500;
-    return NextResponse.json({ ok: false, error: error?.message || "Internal Server Error" }, { status });
+  } catch (error: unknown) {
+    return handleApiError(error, 500);
   }
 }
 

@@ -5,6 +5,7 @@
 
 import { Client, Databases, Query } from 'appwrite';
 import { logger } from '../logger';
+import { APPWRITE_CONFIG, COLLECTIONS } from '../config';
 
 type TransactionDoc = {
   $id?: string;
@@ -104,9 +105,6 @@ export async function getUserTransactionCache(
 
     logger.debug(`Loading ${DEFAULT_DAYS} days of transactions for user`, { userId, fromDate, toDate });
 
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
-
     // Fetch all transactions in the date range with pagination
     const allTransactions: TransactionDoc[] = [];
     let cursor: string | undefined;
@@ -126,8 +124,8 @@ export async function getUserTransactionCache(
       }
 
       const response = await databases.listDocuments(
-        DATABASE_ID,
-        TRANSACTIONS_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.transactions,
         queries
       );
 
@@ -236,8 +234,6 @@ export async function getUserBalanceCache(
   }
 
   try {
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9';
-    const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
 
     // Fetch all balances for the user
     const allBalances: BalanceDoc[] = [];
@@ -256,8 +252,8 @@ export async function getUserBalanceCache(
       }
 
       const response = await databases.listDocuments(
-        DATABASE_ID,
-        BALANCES_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.balances,
         queries
       );
 

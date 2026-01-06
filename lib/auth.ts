@@ -1,5 +1,7 @@
 import { Client, Account, Databases, ID } from "appwrite";
 import { logger } from "./logger";
+import type { AuthUser, AuthUserResult } from "./types";
+import { APPWRITE_CONFIG, COLLECTIONS } from "./config";
 
 function assertAuthEnv(): void {
   const missing: string[] = [];
@@ -44,8 +46,8 @@ export async function verifyAppwriteJWT(jwt: string | null): Promise<VerifyJWTRe
   }
   try {
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
       .setJWT(jwt);
 
     const account = new Account(client);
@@ -65,7 +67,7 @@ export class StatusError extends Error {
   }
 }
 
-export async function requireAuthUser(request: Request): Promise<unknown> {
+export async function requireAuthUser(request: Request): Promise<AuthUserResult> {
   // Try JWT token first
   const token = extractBearerToken(request);
   if (token) {
@@ -108,20 +110,21 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
     
     // Verify session with Appwrite
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
       .setSession(sessionToken);
 
     const account = new Account(client);
     const user = await account.get();
     return user;
-  } catch (sessionError: any) {
+  } catch (sessionError: unknown) {
     // If it's already a StatusError, re-throw it
     if (sessionError instanceof StatusError) {
       throw sessionError;
     }
     // Otherwise, throw a new StatusError with 401
-    throw new StatusError(`Invalid session: ${sessionError.message || 'Authentication failed'}`, 401);
+    const errorMessage = sessionError instanceof Error ? sessionError.message : 'Authentication failed';
+    throw new StatusError(`Invalid session: ${errorMessage}`, 401);
   }
 }
 
@@ -129,8 +132,8 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
 export function createAppwriteClient() {
   assertAuthEnv();
   return new Client()
-    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-    .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+    .setEndpoint(APPWRITE_CONFIG.endpoint)
+    .setProject(APPWRITE_CONFIG.projectId);
 }
 
 export async function createUserPrivateRecord(userId: string, email?: string, name?: string) {
@@ -145,15 +148,16 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
     logger.debug("Checking for existing user record");
     try {
       const existingUser = await databases.getDocument(
-        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-        process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID as string,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId
       );
       logger.debug("Found existing user record");
       return existingUser;
-    } catch (getError: any) {
+    } catch (getError: unknown) {
       // Document doesn't exist, continue to create it
-      if (getError.code !== 404) {
+      const error = getError as { code?: number };
+      if (error.code !== 404) {
         throw getError;
       }
     }
@@ -172,28 +176,30 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
     logger.debug("Document data prepared", { hasEmail: !!email, hasName: !!name });
     
     const userRecord = await databases.createDocument(
-      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-      process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID as string,
+      APPWRITE_CONFIG.databaseId,
+      COLLECTIONS.usersPrivate,
       userId, // Use userId as document ID instead of ID.unique()
       documentData
     );
     
     logger.info("User record created successfully", { userId });
     return userRecord;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: number | string; type?: string };
     logger.error("Error creating user private record", {
-      message: error.message,
-      code: error.code,
-      type: error.type,
+      message: err.message,
+      code: err.code,
+      type: err.type,
       userId
     });
     
     // Provide helpful error messages
-    if (error.message?.includes('Database not found')) {
+    const errorMessage = err.message || '';
+    if (errorMessage.includes('Database not found')) {
       throw new Error('Database "finance" not found. Please create it in Appwrite Console.');
-    } else if (error.message?.includes('Collection not found')) {
+    } else if (errorMessage.includes('Collection not found')) {
       throw new Error('Collection "users_private" not found. Please create it in the "finance" database.');
-    } else if (error.message?.includes('Failed to fetch')) {
+    } else if (errorMessage.includes('Failed to fetch')) {
       throw new Error('Network error: Cannot connect to Appwrite. Check your endpoint and project ID.');
     }
     

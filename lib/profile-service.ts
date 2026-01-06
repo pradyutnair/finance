@@ -1,9 +1,7 @@
 import { databases, account } from '@/lib/appwrite-client'
 import { ID, Query } from 'appwrite'
 import { logger } from './logger'
-
-const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9'
-const USERS_PRIVATE_COLLECTION_ID = process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID || 'users_private'
+import { APPWRITE_CONFIG, COLLECTIONS } from './config'
 
 export interface UserProfile {
   userId: string
@@ -18,7 +16,7 @@ export interface UserProfile {
 }
 
 export class ProfileService {
-  private static isUnknownAttributeError(error: any): boolean {
+  private static isUnknownAttributeError(error: unknown): boolean {
     const message = String(error?.message || "");
     return /Unknown attribute/i.test(message);
   }
@@ -29,13 +27,14 @@ export class ProfileService {
   static async getUserProfile(userId: string): Promise<UserProfile | null> {
     try {
       const profile = await databases.getDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId
       )
       return profile as UserProfile
-    } catch (error: any) {
-      if (error.code === 404) {
+    } catch (error: unknown) {
+      const err = error as { code?: number };
+      if (err.code === 404) {
         // Profile doesn't exist, create it
         return await this.createUserProfile(userId)
       }
@@ -61,15 +60,16 @@ export class ProfileService {
       }
 
       const profile = await databases.createDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId, // Use userId as document ID
         profileData
       )
 
       return profile as UserProfile
-    } catch (error: any) {
-      logger.error('Error creating user profile', { error: error.message, userId })
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      logger.error('Error creating user profile', { error: err.message, userId })
       throw error
     }
   }
@@ -84,13 +84,14 @@ export class ProfileService {
       
       // Update in users_private collection
       await databases.updateDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId,
         { name }
       )
-    } catch (error: any) {
-      logger.error('Error updating user name', { error: error.message, userId })
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      logger.error('Error updating user name', { error: err.message, userId })
       throw error
     }
   }
@@ -101,8 +102,8 @@ export class ProfileService {
   static async updateAvatar(userId: string, avatarUrl: string): Promise<void> {
     try {
       await databases.updateDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId,
         { avatarUrl }
       )
@@ -111,7 +112,8 @@ export class ProfileService {
         // Silently ignore if schema doesn't support this field
         return
       }
-      logger.error('Error updating user avatar', { error: error.message, userId })
+      const err = error as { message?: string };
+      logger.error('Error updating user avatar', { error: err.message, userId })
       throw error
     }
   }
@@ -122,8 +124,8 @@ export class ProfileService {
   static async updateCurrencyPreferences(userId: string, preferredCurrencies: string[]): Promise<void> {
     try {
       await databases.updateDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId,
         { preferredCurrencies }
       )
@@ -132,7 +134,8 @@ export class ProfileService {
         // Silently ignore if schema doesn't support this field
         return
       }
-      logger.error('Error updating currency preferences', { error: error.message, userId })
+      const err = error as { message?: string };
+      logger.error('Error updating currency preferences', { error: err.message, userId })
       throw error
     }
   }
@@ -149,8 +152,8 @@ export class ProfileService {
 
       // Update users_private collection
       await databases.updateDocument(
-        DATABASE_ID,
-        USERS_PRIVATE_COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId,
         updates
       )
@@ -159,7 +162,8 @@ export class ProfileService {
         // Silently ignore if schema doesn't support some fields
         return
       }
-      logger.error('Error updating user profile', { error: error.message, userId })
+      const err = error as { message?: string };
+      logger.error('Error updating user profile', { error: err.message, userId })
       throw error
     }
   }

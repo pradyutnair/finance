@@ -3,6 +3,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
+import { handleApiError } from "@/lib/api-error-handler";
+import type { AuthUser } from "@/lib/types";
 
 type BalanceDoc = {
   accountId?: string;
@@ -12,34 +15,43 @@ type BalanceDoc = {
   referenceDate?: string;
 };
 
-const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || "68d42ac20031b27284c9") as string;
-const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || "balances_dev";
-
 export async function GET(request: Request, { params }: { params: Promise<{ accountId: string }> }) {
   try {
-    const user: any = await requireAuthUser(request);
+    const user = await requireAuthUser(request) as AuthUser;
     const userId = user.$id || user.id;
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 });
+    }
+    
     const { accountId } = await params;
 
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
 
-    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+    const apiKey = APPWRITE_CONFIG.apiKey;
     if (apiKey) {
-      (client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": apiKey };
+      (client as { headers: Record<string, string> }).headers = { 
+        ...(client as { headers: Record<string, string> }).headers, 
+        "X-Appwrite-Key": apiKey 
+      };
     } else {
-      const auth = (request.headers.get("authorization") || request.headers.get("Authorization")) ?? undefined;
+      const auth = request.headers.get("authorization") || request.headers.get("Authorization");
       const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
-      if (token) (client as any).headers = { ...(client as any).headers, "X-Appwrite-JWT": token };
+      if (token) {
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          "X-Appwrite-JWT": token 
+        };
+      }
     }
 
     const databases = new Databases(client);
 
     // Get latest balances for this account, preferring ClosingBooked then interimAvailable/expected
     const resp = await databases.listDocuments(
-      DATABASE_ID,
-      BALANCES_COLLECTION_ID,
+      APPWRITE_CONFIG.databaseId,
+      COLLECTIONS.balances,
       [
         Query.equal("userId", userId),
         Query.equal("accountId", accountId),
@@ -62,10 +74,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ acco
     // Build payload: details can be minimal here; card only reads balances
     const payload = { details: { accountId }, balances: { balances } };
     return NextResponse.json(payload);
-  } catch (err: any) {
-    const status = err?.status || 500;
-    const message = err?.message || "Internal Server Error";
-    return NextResponse.json({ ok: false, error: message }, { status });
+  } catch (error: unknown) {
+    return handleApiError(error, 500);
   }
 }
 

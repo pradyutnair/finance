@@ -5,33 +5,46 @@ import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
 import { logger } from "@/lib/logger"
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config"
+import { handleApiError } from "@/lib/api-error-handler"
+import type { AuthUser, TransactionDocument } from "@/lib/types"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuthUser(request)
-    const userId = (user as any).$id || (user as any).id
+    const userId = (user as AuthUser).$id || (user as AuthUser).id
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 })
+    }
+    
     const { id } = await params
-    const body = await request.json()
+    const body = await request.json() as { category?: string; exclude?: boolean }
 
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
 
-    const apiKey = process.env.APPWRITE_API_KEY as string | undefined
+    const apiKey = APPWRITE_CONFIG.apiKey
     if (apiKey) {
-      ;(client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": apiKey }
+      (client as { headers: Record<string, string> }).headers = { 
+        ...(client as { headers: Record<string, string> }).headers, 
+        "X-Appwrite-Key": apiKey 
+      }
     } else {
       const auth = request.headers.get("authorization") || request.headers.get("Authorization")
       const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined
-      if (token) (client as any).headers = { ...(client as any).headers, "X-Appwrite-JWT": token }
+      if (token) {
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          "X-Appwrite-JWT": token 
+        }
+      }
     }
 
     const databases = new Databases(client)
-    const DATABASE_ID = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || "68d42ac20031b27284c9") as string
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || "transactions_dev"
 
     // Only allow updating specific fields
-    const updatePayload: Record<string, any> = {}
+    const updatePayload: Partial<TransactionDocument> = {}
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
     if (Object.keys(updatePayload).length === 0) {
@@ -40,23 +53,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     // Ensure the doc belongs to the user by relying on Appwrite permissions or fetching first if needed
     const updated = await databases.updateDocument(
-      DATABASE_ID,
-      TRANSACTIONS_COLLECTION_ID,
+      APPWRITE_CONFIG.databaseId,
+      COLLECTIONS.transactions,
       id,
       updatePayload
-    )
+    ) as unknown as TransactionDocument
 
     // When category is updated, also apply to similar transactions with same description or counterparty
     if (typeof updatePayload.category === "string") {
       const newCategory = updatePayload.category
-      const description = (updated as any)?.description
-      const counterparty = (updated as any)?.counterparty
+      const description = updated.description
+      const counterparty = updated.counterparty
 
-      const updatedIds = new Set<string>([(updated as any)?.$id])
+      const updatedIds = new Set<string>([updated.$id])
       const pageLimit = 100
 
       async function updateByField(field: "description" | "counterparty", value: string) {
-        if (!value || typeof value !== "string") return
+        if (!value || typeof value !== "string" || !userId) return
         let offset = 0
         while (true) {
           const filters = [
@@ -67,11 +80,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             Query.offset(offset),
           ]
           const page = await databases.listDocuments(
-            DATABASE_ID,
-            TRANSACTIONS_COLLECTION_ID,
+            APPWRITE_CONFIG.databaseId,
+            COLLECTIONS.transactions,
             filters
           )
-          const docs = (page as any)?.documents || []
+          const docs = (page.documents || []) as unknown as TransactionDocument[]
           if (!docs.length) break
 
           for (const doc of docs) {
@@ -80,8 +93,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             updatedIds.add(docId)
             if (doc.category !== newCategory) {
               await databases.updateDocument(
-                DATABASE_ID,
-                TRANSACTIONS_COLLECTION_ID,
+                APPWRITE_CONFIG.databaseId,
+                COLLECTIONS.transactions,
                 docId,
                 { category: newCategory }
               )
@@ -105,11 +118,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     invalidateUserCache(userId, 'transactions')
 
     return NextResponse.json({ ok: true, transaction: updated })
-  } catch (err: any) {
-    logger.error("Error updating transaction", { error: err.message, status: err?.status, transactionId: id })
-    const status = err?.status || 500
-    const message = err?.message || "Internal Server Error"
-    return NextResponse.json({ ok: false, error: message }, { status })
+  } catch (error: unknown) {
+    return handleApiError(error, 500)
   }
 }
 

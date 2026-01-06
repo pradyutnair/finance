@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
 import { logger } from '@/lib/logger'
+import { APPWRITE_CONFIG, COLLECTIONS } from '@/lib/config'
+import { handleApiError } from '@/lib/api-error-handler'
+import type { AuthUser } from '@/lib/types'
 
 // Simple in-memory cache for user goals within a single server process lifecycle
 type GoalsPayload = {
@@ -15,17 +18,15 @@ type GoalsPayload = {
 const goalsCache = new Map<string, GoalsPayload>()
 
 const client = new Client()
-  .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1')
-  .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
+  .setEndpoint(APPWRITE_CONFIG.endpoint)
+  .setProject(APPWRITE_CONFIG.projectId)
 
 const databases = new Databases(client)
-const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9'
-const COLLECTION_ID = process.env.APPWRITE_PREFERENCES_BUDGETS_COLLECTION_ID || 'preferences_budgets_dev'
 
 export async function GET(request: NextRequest) {
   try {
-    const user: any = await requireAuthUser(request)
-    const userId: string = user.$id || user.id
+    const user = await requireAuthUser(request) as AuthUser
+    const userId: string = user.$id || user.id || ''
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
@@ -38,23 +39,31 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const apiKey = process.env.APPWRITE_API_KEY as string | undefined
+      const apiKey = APPWRITE_CONFIG.apiKey
       if (apiKey) {
-        ;(client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey }
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          'X-Appwrite-Key': apiKey 
+        }
       } else {
         const auth = request.headers.get('authorization') || request.headers.get('Authorization')
         const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined
-        if (token) (client as any).headers = { ...(client as any).headers, 'X-Appwrite-JWT': token }
+        if (token) {
+          (client as { headers: Record<string, string> }).headers = { 
+            ...(client as { headers: Record<string, string> }).headers, 
+            'X-Appwrite-JWT': token 
+          }
+        }
       }
 
       const response = await databases.listDocuments(
-        databaseId,
-        COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.goals,
         [Query.equal('userId', userId)]
       )
 
       if (response.documents.length > 0) {
-        const doc: any = response.documents[0]
+        const doc = response.documents[0] as { $id: string; userId: string; balanceGoal?: number; savingsRateGoal?: number; baseCurrency?: string }
         const payload: GoalsPayload = {
           $id: doc.$id,
           userId: doc.userId,
@@ -74,13 +83,11 @@ export async function GET(request: NextRequest) {
       }
       goalsCache.set(userId, fallback)
       return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
-    } catch (error: any) {
-      logger.error('Error fetching goals', { error: error.message })
-      return NextResponse.json({ error: 'Failed to fetch goals' }, { status: 500 })
+    } catch (error: unknown) {
+      return handleApiError(error, 500)
     }
-  } catch (error: any) {
-    logger.error('Error in GET /api/budgets/goals', { error: error.message })
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  } catch (error: unknown) {
+    return handleApiError(error, 401)
   }
 }
 
@@ -96,22 +103,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'savingsRateGoal must be a non-negative number' }, { status: 400 })
     }
 
-    const user: any = await requireAuthUser(request)
-    const userId: string = user.$id || user.id
+    const user = await requireAuthUser(request) as AuthUser
+    const userId: string = user.$id || user.id || ''
 
     try {
-      const apiKey = process.env.APPWRITE_API_KEY as string | undefined
+      const apiKey = APPWRITE_CONFIG.apiKey
       if (apiKey) {
-        ;(client as any).headers = { ...(client as any).headers, 'X-Appwrite-Key': apiKey }
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          'X-Appwrite-Key': apiKey 
+        }
       } else {
         const auth = request.headers.get('authorization') || request.headers.get('Authorization')
         const token = auth?.startsWith('Bearer ') ? auth.slice(7) : undefined
-        if (token) (client as any).headers = { ...(client as any).headers, 'X-Appwrite-JWT': token }
+        if (token) {
+          (client as { headers: Record<string, string> }).headers = { 
+            ...(client as { headers: Record<string, string> }).headers, 
+            'X-Appwrite-JWT': token 
+          }
+        }
       }
 
       const existing = await databases.listDocuments(
-        databaseId,
-        COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.goals,
         [Query.equal('userId', userId)]
       )
 
@@ -121,7 +136,7 @@ export async function POST(request: NextRequest) {
 
       if (existing.documents.length > 0) {
         const doc = existing.documents[0]
-        await databases.updateDocument(databaseId, COLLECTION_ID, doc.$id, updateData)
+        await databases.updateDocument(APPWRITE_CONFIG.databaseId, COLLECTIONS.goals, doc.$id, updateData)
         // Update cache with new values when present
         const current = goalsCache.get(userId)
         goalsCache.set(userId, {
@@ -133,8 +148,8 @@ export async function POST(request: NextRequest) {
         })
       } else {
         await databases.createDocument(
-          databaseId,
-          COLLECTION_ID,
+          APPWRITE_CONFIG.databaseId,
+          COLLECTIONS.goals,
           ID.unique(),
           {
             userId,
@@ -152,13 +167,11 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({ success: true })
-    } catch (error: any) {
-      logger.error('Error saving goals', { error: error.message })
-      return NextResponse.json({ error: 'Failed to save goals' }, { status: 500 })
+    } catch (error: unknown) {
+      return handleApiError(error, 500)
     }
-  } catch (error: any) {
-    logger.error('Error in POST /api/budgets/goals', { error: error.message })
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (error: unknown) {
+    return handleApiError(error, 500)
   }
 }
 
