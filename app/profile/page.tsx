@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/contexts/auth-context"
 import { ProfileService, UserProfile } from "@/lib/profile-service"
+import { getAuthHeader } from "@/lib/api"
 // Avatar upload intentionally removed
 // Inline name editing implemented locally on this page
 import { CurrencyPreferences } from "@/components/profile-page/currency-preferences"
@@ -32,8 +33,24 @@ export default function ProfilePage() {
     if (!user) return
     ;(async () => {
       try {
-        const userProfile = await ProfileService.getUserProfile(user.$id)
-        setProfile(userProfile)
+        const authHeader = await getAuthHeader()
+        const response = await fetch('/api/profile', {
+          headers: {
+            ...authHeader,
+          },
+          credentials: 'include',
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          const errorMsg = data.error || 'Failed to fetch profile'
+          toast.error(errorMsg)
+          return
+        }
+        if (data.ok && data.profile) {
+          setProfile(data.profile as UserProfile)
+        } else {
+          throw new Error(data.error || 'Failed to load profile')
+        }
       } catch (err) {
         console.error("Failed to load profile:", err)
         toast.error("Failed to load profile data")

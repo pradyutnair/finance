@@ -67,42 +67,47 @@ export class StatusError extends Error {
   }
 }
 
-export async function requireAuthUser(request: Request): Promise<AuthUserResult> {
+export async function requireAuthUser(request: Request): Promise<AuthUser> {
   // Try JWT token first
   const token = extractBearerToken(request);
-  if (token) {
-    const { valid, user, error } = await verifyAppwriteJWT(token);
-    if (valid) {
-      return user;
-    }
-  }
-
-  // Try session cookies
-  try {
-    const cookies = request.headers.get('cookie');
-    if (!cookies) {
-      throw new StatusError("No authentication provided", 401);
+    if (token) {
+      const { valid, user, error } = await verifyAppwriteJWT(token);
+      if (valid && user) {
+        return user as AuthUser;
+      }
     }
 
-    logger.debug('Received cookies for session verification');
+    // Try session cookies
+    try {
+      const cookies = request.headers.get('cookie');
+      if (!cookies) {
+        throw new StatusError("No authentication provided", 401);
+      }
 
-    // Parse session cookie - try multiple formats
-    let sessionMatch = null;
-    
-    // Try Appwrite's standard format: a_session_[projectId]=[sessionToken]
-    sessionMatch = cookies.match(/a_session_[^=]+=([^;]+)/);
-    
-    if (!sessionMatch) {
-      // Try other common formats
-      sessionMatch = cookies.match(/appwrite-session=([^;]+)/) ||
-                     cookies.match(/session=([^;]+)/) ||
-                     cookies.match(/next-auth\.session-token=([^;]+)/);
-    }
-    
-    if (!sessionMatch) {
-      logger.warn('No session cookie found in available cookies', { cookieCount: cookies.split(';').length });
-      throw new StatusError("No session cookie found", 401);
-    }
+      logger.debug('Received cookies for session verification', {
+        cookieNames: cookies.split(';').map(c => c.split('=')[0].trim()).filter(name => name.includes('session') || name.includes('a_session'))
+      });
+
+      // Parse session cookie - try multiple formats
+      let sessionMatch = null;
+
+      // Try Appwrite's standard format: a_session_[projectId]=[sessionToken]
+      sessionMatch = cookies.match(/a_session_[^=]+=([^;]+)/);
+
+      if (!sessionMatch) {
+        // Try other common formats
+        sessionMatch = cookies.match(/appwrite-session=([^;]+)/) ||
+                       cookies.match(/session=([^;]+)/) ||
+                       cookies.match(/next-auth\.session-token=([^;]+)/);
+      }
+
+      if (!sessionMatch) {
+        logger.warn('No session cookie found in available cookies', {
+          cookieCount: cookies.split(';').length,
+          availableCookies: cookies.split(';').map(c => c.split('=')[0].trim())
+        });
+        throw new StatusError("No session cookie found", 401);
+      }
 
     logger.debug('Found session cookie', { cookieName: sessionMatch[0].split('=')[0] });
 
@@ -116,7 +121,7 @@ export async function requireAuthUser(request: Request): Promise<AuthUserResult>
 
     const account = new Account(client);
     const user = await account.get();
-    return user;
+    return user as AuthUser;
   } catch (sessionError: unknown) {
     // If it's already a StatusError, re-throw it
     if (sessionError instanceof StatusError) {
@@ -196,9 +201,9 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
     // Provide helpful error messages
     const errorMessage = err.message || '';
     if (errorMessage.includes('Database not found')) {
-      throw new Error('Database "finance" not found. Please create it in Appwrite Console.');
+      throw new Error('Database not found. Please create it in Appwrite Console.');
     } else if (errorMessage.includes('Collection not found')) {
-      throw new Error('Collection "users_private" not found. Please create it in the "finance" database.');
+      throw new Error('Collection not found. Please create it in the database.');
     } else if (errorMessage.includes('Failed to fetch')) {
       throw new Error('Network error: Cannot connect to Appwrite. Check your endpoint and project ID.');
     }

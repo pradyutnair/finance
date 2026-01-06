@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
 
 export async function GET(request: Request) {
   try {
@@ -12,15 +13,18 @@ export async function GET(request: Request) {
 
     // Create Appwrite client
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
     
-    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+    const apiKey = APPWRITE_CONFIG.apiKey;
+    if (apiKey) {
+      client.headers['X-Appwrite-Key'] = apiKey;
+    }
     const databases = new Databases(client);
 
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-    const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
-    const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
+    const DATABASE_ID = APPWRITE_CONFIG.databaseId;
+    const BANK_ACCOUNTS_COLLECTION_ID = COLLECTIONS.bankAccounts;
+    const BANK_CONNECTIONS_COLLECTION_ID = COLLECTIONS.bankConnections;
 
     // Fetch user's bank accounts
     const accountsResponse = await databases.listDocuments(

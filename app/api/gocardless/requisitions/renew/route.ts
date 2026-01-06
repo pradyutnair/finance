@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, ID, Query } from "appwrite";
 import { getRequisition, HttpError } from "@/lib/gocardless";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
 
 type RenewBody = {
   requisitionId: string;
@@ -38,14 +39,17 @@ export async function POST(request: Request) {
     }
 
     // Appwrite setup
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-    const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
-    const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
+    const DATABASE_ID = APPWRITE_CONFIG.databaseId;
+    const REQUISITIONS_COLLECTION_ID = COLLECTIONS.requisitions;
+    const BANK_CONNECTIONS_COLLECTION_ID = COLLECTIONS.bankConnections;
 
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
+    const apiKey = APPWRITE_CONFIG.apiKey;
+    if (apiKey) {
+      client.headers['X-Appwrite-Key'] = apiKey;
+    }
     const databases = new Databases(client);
 
     // 1) Update latest bank connection for this user + institution
