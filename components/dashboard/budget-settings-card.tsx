@@ -9,11 +9,12 @@ import { LiquidProgress } from "./liquid-progress"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check, BookOpen } from "lucide-react"
+import { Wallet, Save, RefreshCw, AlertCircle, ShoppingCart, Utensils, Car, Plane, ShoppingBag, Zap, Gamepad2, Heart, MoreHorizontal, Check, BookOpen, CreditCard, Repeat } from "lucide-react"
 import { getCategoryColor } from "@/lib/categories"
 import { account } from "@/lib/appwrite"
 import { useDateRange } from "@/contexts/date-range-context"
 import { useCurrency } from "@/contexts/currency-context"
+import { logger } from "@/lib/logger"
 
 interface BudgetCategory { key: string; label: string; categoryName: string }
 
@@ -30,6 +31,8 @@ interface BudgetData {
   entertainmentBudget: number
   healthBudget: number
   incomeBudget: number
+  financeBudget: number
+  subscriptionsBudget: number
   miscellaneousBudget: number
   uncategorizedBudget: number
   bankTransferBudget: number
@@ -46,6 +49,8 @@ const budgetCategories: BudgetCategory[] = [
   { key: 'entertainmentBudget', label: 'Entertainment', categoryName: 'Entertainment' },
   { key: 'healthBudget', label: 'Health', categoryName: 'Health' },
   { key: 'incomeBudget', label: 'Income', categoryName: 'Income' },
+  { key: 'financeBudget', label: 'Finance', categoryName: 'Finance' },
+  { key: 'subscriptionsBudget', label: 'Subscriptions', categoryName: 'Subscriptions' },
   { key: 'miscellaneousBudget', label: 'Miscellaneous', categoryName: 'Miscellaneous' },
   { key: 'uncategorizedBudget', label: 'Uncategorized', categoryName: 'Uncategorized' },
   { key: 'bankTransferBudget', label: 'Bank Transfer', categoryName: 'Bank Transfer' },
@@ -66,6 +71,8 @@ export function BudgetSettingsCard() {
     entertainmentBudget: 0,
     healthBudget: 0,
     incomeBudget: 0,
+    financeBudget: 0,
+    subscriptionsBudget: 0,
     miscellaneousBudget: 0,
     uncategorizedBudget: 0,
     bankTransferBudget: 0,
@@ -162,8 +169,8 @@ export function BudgetSettingsCard() {
           try { sessionStorage.setItem('budgetPrefs', JSON.stringify(data)) } catch {}
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch budgets:', error)
+    } catch (error: any) {
+      logger.error('Failed to fetch budgets', { error: error.message })
       setError('Failed to load budget data')
     } finally {
       setIsLoading(false)
@@ -253,6 +260,10 @@ export function BudgetSettingsCard() {
                 mappedName = 'Health'
               } else if (normalizedName.includes('income') || normalizedName.includes('salary') || normalizedName.includes('earn')) {
                 mappedName = 'Income'
+              } else if (normalizedName.includes('finance') || normalizedName.includes('financial') || normalizedName.includes('banking') || normalizedName.includes('investment')) {
+                mappedName = 'Finance'
+              } else if (normalizedName.includes('subscription') || normalizedName.includes('recurring') || normalizedName.includes('monthly service')) {
+                mappedName = 'Subscriptions'
               } else if (normalizedName.includes('misc')) {
                 mappedName = 'Miscellaneous'
               } else if (normalizedName.includes('uncategorize') || normalizedName.includes('unknown')) {
@@ -271,12 +282,12 @@ export function BudgetSettingsCard() {
         setCategorySpend(map)
         try { sessionStorage.setItem(cacheKey, JSON.stringify(map)) } catch {}
       } else {
-        console.error('Categories API failed:', resp.status, resp.statusText)
+        logger.error('Categories API failed', { status: resp.status, statusText: resp.statusText })
         // Set empty category spend to prevent undefined issues
         setCategorySpend({})
       }
-    } catch (e) {
-      console.error('Error fetching category spend:', e)
+    } catch (e: any) {
+      logger.error('Error fetching category spend', { error: e.message })
       // Set empty category spend to prevent undefined issues
       setCategorySpend({})
     } finally {
@@ -310,8 +321,8 @@ export function BudgetSettingsCard() {
         const merged = { ...prev, ...(payload ?? budgetRef.current) }
         sessionStorage.setItem('budgetPrefs', JSON.stringify(merged))
       } catch {}
-    } catch (error) {
-      console.error('Failed to save budgets:', error)
+    } catch (error: any) {
+      logger.error('Failed to save budgets', { error: error.message })
       setError('Failed to save budget data')
     } finally {
       setIsSaving(false)
@@ -451,6 +462,8 @@ export function BudgetSettingsCard() {
               category.categoryName === 'Entertainment' ? Gamepad2 :
               category.categoryName === 'Health' ? Heart :
               category.categoryName === 'Income' ? Wallet :
+              category.categoryName === 'Finance' ? CreditCard :
+              category.categoryName === 'Subscriptions' ? Repeat :
               category.categoryName === 'Miscellaneous' ? MoreHorizontal :
               category.categoryName === 'Uncategorized' ? AlertCircle :
               category.categoryName === 'Bank Transfer' ? RefreshCw :

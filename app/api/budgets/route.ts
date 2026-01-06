@@ -132,6 +132,8 @@ export async function POST(request: NextRequest) {
       utilitiesBudget,
       entertainmentBudget,
       healthBudget,
+      financeBudget,
+      subscriptionsBudget,
       miscellaneousBudget,
     } = body
 
@@ -149,6 +151,8 @@ export async function POST(request: NextRequest) {
       utilitiesBudget,
       entertainmentBudget,
       healthBudget,
+      financeBudget,
+      subscriptionsBudget,
       miscellaneousBudget,
     }
 
@@ -197,6 +201,8 @@ export async function POST(request: NextRequest) {
         utilitiesBudget: utilitiesBudget || 0,
         entertainmentBudget: entertainmentBudget || 0,
         healthBudget: healthBudget || 0,
+        financeBudget: financeBudget || 0,
+        subscriptionsBudget: subscriptionsBudget || 0,
         miscellaneousBudget: miscellaneousBudget || 0,
       }
 
