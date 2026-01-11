@@ -83,11 +83,8 @@ export const SERVER_COLLECTIONS = {
   get transactions(): string {
     return getServerOnlyEnv('APPWRITE_TRANSACTIONS_COLLECTION_ID');
   },
-  get budgets(): string {
-    return getServerOnlyEnv('APPWRITE_BUDGETS_COLLECTION_ID');
-  },
-  get goals(): string {
-    return getServerOnlyEnv('APPWRITE_GOALS_COLLECTION_ID');
+  get preferences(): string {
+    return getServerOnlyEnv('APPWRITE_PREFERENCES_COLLECTION_ID');
   },
 } as const;
 
@@ -112,11 +109,8 @@ export const COLLECTIONS = {
   get transactions(): string {
     return SERVER_COLLECTIONS.transactions;
   },
-  get budgets(): string {
-    return SERVER_COLLECTIONS.budgets;
-  },
-  get goals(): string {
-    return SERVER_COLLECTIONS.goals;
+  get preferences(): string {
+    return SERVER_COLLECTIONS.preferences;
   },
 } as const;
 

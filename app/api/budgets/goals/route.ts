@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
       const response = await databases.listDocuments(
         APPWRITE_CONFIG.databaseId,
-        COLLECTIONS.goals,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
 
       const existing = await databases.listDocuments(
         APPWRITE_CONFIG.databaseId,
-        COLLECTIONS.goals,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
 
       if (existing.documents.length > 0) {
         const doc = existing.documents[0]
-        await databases.updateDocument(APPWRITE_CONFIG.databaseId, COLLECTIONS.goals, doc.$id, updateData)
+        await databases.updateDocument(APPWRITE_CONFIG.databaseId, COLLECTIONS.preferences, doc.$id, updateData)
         // Update cache with new values when present
         const current = goalsCache.get(userId)
         goalsCache.set(userId, {
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       } else {
         await databases.createDocument(
           APPWRITE_CONFIG.databaseId,
-          COLLECTIONS.goals,
+          COLLECTIONS.preferences,
           ID.unique(),
           {
             userId,

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
       const response = await databases.listDocuments(
         APPWRITE_CONFIG.databaseId,
-        COLLECTIONS.budgets,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       // First, try to find existing budget document
       const existingBudgets = await databases.listDocuments(
         APPWRITE_CONFIG.databaseId,
-        COLLECTIONS.budgets,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
         const existingBudget = existingBudgets.documents[0]
         await databases.updateDocument(
           APPWRITE_CONFIG.databaseId,
-          COLLECTIONS.budgets,
+          COLLECTIONS.preferences,
           existingBudget.$id,
           budgetData
         )
@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
         // Create new budget document
         await databases.createDocument(
           APPWRITE_CONFIG.databaseId,
-          COLLECTIONS.budgets,
+          COLLECTIONS.preferences,
           ID.unique(),
           budgetData
         )
