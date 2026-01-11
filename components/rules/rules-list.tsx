@@ -37,7 +37,7 @@ import {
   Calendar
 } from "lucide-react"
 import { useTransactionRules, useUpdateTransactionRule, useDeleteTransactionRule, useApplyTransactionRule } from "@/lib/api/transaction-rules"
-import { RuleDialog } from "./rule-dialog"
+import { RuleDialogV2 } from "./rule-dialog-v2"
 import type { TransactionRule } from "@/lib/types/transaction-rules"
 
 interface RulesListProps {
@@ -334,7 +334,7 @@ export function RulesList({ onCreateRule, onEditRule }: RulesListProps) {
       </div>
 
       {/* Edit Rule Dialog */}
-      <RuleDialog
+      <RuleDialogV2
         open={!!editingRule}
         onOpenChange={(open) => !open && setEditingRule(undefined)}
         rule={editingRule}

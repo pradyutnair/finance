@@ -43,7 +43,7 @@ import { useAutoCategorize } from "@/lib/api"
 import { useTransactionRules } from "@/lib/api/transaction-rules"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
 import { formatBankName } from "@/lib/bank-name-mapping"
-import { RuleDialog } from "@/components/rules/rule-dialog"
+import { RuleDialogV2 } from "@/components/rules/rule-dialog-v2"
 import { applyBestMatchingRule } from "@/lib/rule-engine"
 import type { TransactionRule } from "@/lib/types/transaction-rules"
 type TxRow = {
@@ -67,7 +67,7 @@ function RowActions({
 }: {
   onCategorize: (category: string) => void
   onCreateRule: () => void
-  onCreateRuleFromTransaction: (transaction: TxRow) => void
+  onCreateRuleFromTransaction: () => void
 }) {
   return (
     <DropdownMenu>
@@ -84,7 +84,7 @@ function RowActions({
             <Settings className="h-4 w-4 mr-3" />
             <span>Create Rule</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onCreateRuleFromTransaction} className="cursor-pointer">
+          <DropdownMenuItem onClick={onCreateRuleFromTransaction} className="cursor-pointer">
             <Plus className="h-4 w-4 mr-3" />
             <span>Create Rule from This Transaction</span>
           </DropdownMenuItem>
@@ -1009,7 +1009,7 @@ export function TransactionsTable() {
       </Dialog>
 
       {/* Rule Dialog */}
-      <RuleDialog
+      <RuleDialogV2
         open={ruleDialogOpen}
         onOpenChange={setRuleDialogOpen}
         rule={transactionForRule ? {

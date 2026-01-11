@@ -19,11 +19,32 @@ async function authenticatedRequest<T>(endpoint: string, options?: RequestInit):
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.message || `API Error: ${response.status} ${response.statusText}`)
+    const contentType = response.headers.get("content-type")
+    let errorMessage = `API Error: ${response.status} ${response.statusText}`
+    
+    if (contentType && contentType.includes("application/json")) {
+      const error = await response.json().catch(() => null)
+      if (error?.error) {
+        errorMessage = error.error
+      } else if (error?.message) {
+        errorMessage = error.message
+      }
+    } else {
+      const text = await response.text().catch(() => "")
+      if (text && !text.startsWith("<!DOCTYPE")) {
+        errorMessage = text
+      }
+    }
+    
+    throw new Error(errorMessage)
   }
 
-  return response.json()
+  const contentType = response.headers.get("content-type")
+  if (contentType && contentType.includes("application/json")) {
+    return response.json()
+  }
+  
+  throw new Error("Response is not JSON")
 }
 
 // Fetch all transaction rules for the current user
