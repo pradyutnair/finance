@@ -5,7 +5,7 @@ import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 import { APPWRITE_CONFIG } from "@/lib/config";
 import { handleApiError } from "@/lib/api-error-handler";
-import { getUserTransactionCache } from "@/lib/server/cache-service";
+import { getUserTransactionCache, invalidateUserCache } from "@/lib/server/cache-service";
 import { applyBestMatchingRule } from "@/lib/rule-engine";
 import type { AuthUser } from "@/lib/types";
 import type { RuleApplicationOptions, RuleApplicationResult } from "@/lib/types/transaction-rules";
@@ -190,6 +190,9 @@ export async function POST(
             lastMatched: new Date().toISOString(),
           }
         );
+
+        // Invalidate the user's transaction cache so next fetch gets fresh data
+        invalidateUserCache(userId, 'transactions');
       }
 
       const result: RuleApplicationResult = {

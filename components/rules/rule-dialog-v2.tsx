@@ -18,7 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, Play, X } from "lucide-react"
-import { useCreateTransactionRule, useUpdateTransactionRule, useTestTransactionRule } from "@/lib/api/transaction-rules"
+import { useCreateTransactionRule, useUpdateTransactionRule, useTestTransactionRule, useApplyTransactionRule } from "@/lib/api/transaction-rules"
 import type { TransactionRule, TransactionRuleCondition, TransactionRuleAction, TransactionRuleTestResult } from "@/lib/types/transaction-rules"
 import { CATEGORY_OPTIONS } from "@/lib/categories"
 
@@ -75,10 +75,13 @@ export function RuleDialogV2({ open, onOpenChange, rule, onSuccess }: RuleDialog
   const [testResult, setTestResult] = useState<TransactionRuleTestResult | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
+  const [applyToExisting, setApplyToExisting] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
 
   const createRule = useCreateTransactionRule()
   const updateRule = useUpdateTransactionRule()
   const testRule = useTestTransactionRule()
+  const applyRule = useApplyTransactionRule()
 
   const isEditMode = !!rule
   const [ruleData, setRuleData] = useState({
@@ -117,11 +120,35 @@ export function RuleDialogV2({ open, onOpenChange, rule, onSuccess }: RuleDialog
 
     setIsSubmitting(true)
     try {
+      let createdRuleId: string | undefined
+
       if (isEditMode && rule) {
         await updateRule.mutateAsync({ id: rule.id, ...ruleData })
+        createdRuleId = rule.id
       } else {
-        await createRule.mutateAsync(ruleData)
+        const result = await createRule.mutateAsync(ruleData)
+        createdRuleId = result.id
       }
+
+      // Apply the rule to existing transactions if requested and rule is enabled
+      if (applyToExisting && createdRuleId && ruleData.enabled) {
+        setIsApplying(true)
+        try {
+          await applyRule.mutateAsync({
+            ruleId: createdRuleId,
+            options: {
+              applyToExisting: true,
+              dryRun: false,
+            },
+          })
+        } catch (applyError) {
+          console.error("Failed to apply rule:", applyError)
+          // Don't fail the entire operation if applying fails
+        } finally {
+          setIsApplying(false)
+        }
+      }
+
       onSuccess?.()
       onOpenChange(false)
       resetForm()
@@ -143,6 +170,7 @@ export function RuleDialogV2({ open, onOpenChange, rule, onSuccess }: RuleDialog
       actions: [],
     })
     setTestResult(null)
+    setApplyToExisting(false)
   }
 
   function addCondition() {
@@ -509,24 +537,45 @@ export function RuleDialogV2({ open, onOpenChange, rule, onSuccess }: RuleDialog
           )}
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          {isValid && !hasEmptyValues && (
-            <Button
-              variant="outline"
-              onClick={handleTest}
-              disabled={isTesting || testRule.isPending}
-              className="flex-1"
-            >
-              <Play className="h-3 w-3 mr-1" />
-              Test
-            </Button>
+        <DialogFooter className="gap-2 flex-col sm:flex-row">
+          {!isEditMode && (
+            <div className="flex items-center space-x-2 self-start">
+              <Checkbox
+                id="apply-to-existing"
+                checked={applyToExisting}
+                onCheckedChange={(checked) => setApplyToExisting(checked === true)}
+                disabled={isSubmitting || isApplying}
+              />
+              <label
+                htmlFor="apply-to-existing"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Apply to all matching transactions
+              </label>
+            </div>
           )}
-          <Button onClick={handleSave} disabled={!isValid || hasEmptyValues || isSubmitting}>
-            {isSubmitting ? "Saving..." : isEditMode ? "Save" : "Create"}
-          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting || isApplying}>
+              Cancel
+            </Button>
+            {isValid && !hasEmptyValues && (
+              <Button
+                variant="outline"
+                onClick={handleTest}
+                disabled={isTesting || testRule.isPending || isSubmitting || isApplying}
+                className="flex-1"
+              >
+                <Play className="h-3 w-3 mr-1" />
+                Test
+              </Button>
+            )}
+            <Button
+              onClick={handleSave}
+              disabled={!isValid || hasEmptyValues || isSubmitting || isApplying}
+            >
+              {isApplying ? "Applying..." : isSubmitting ? "Saving..." : isEditMode ? "Save" : "Create"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

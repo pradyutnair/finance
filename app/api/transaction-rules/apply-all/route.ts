@@ -5,7 +5,7 @@ import { Client, Databases, Query } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 import { APPWRITE_CONFIG } from "@/lib/config";
 import { handleApiError } from "@/lib/api-error-handler";
-import { getUserTransactionCache } from "@/lib/server/cache-service";
+import { getUserTransactionCache, invalidateUserCache } from "@/lib/server/cache-service";
 import { applyBestMatchingRule } from "@/lib/rule-engine";
 import type { AuthUser } from "@/lib/types";
 import type { RuleApplicationOptions, RuleApplicationResult } from "@/lib/types/transaction-rules";
@@ -187,6 +187,11 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
+
+    // Invalidate the user's transaction cache so next fetch gets fresh data
+    if (totalMatched > 0) {
+      invalidateUserCache(userId, 'transactions');
     }
 
     const result: RuleApplicationResult = {

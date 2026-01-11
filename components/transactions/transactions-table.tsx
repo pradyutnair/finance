@@ -111,7 +111,12 @@ function categoryToColor(cat: string): string {
   }
 }
 
-export function TransactionsTable() {
+interface TransactionsTableProps {
+  onCreateRule?: () => void
+  onCreateRuleFromTransaction?: (transaction: TxRow) => void
+}
+
+export function TransactionsTable({ onCreateRule, onCreateRuleFromTransaction }: TransactionsTableProps) {
   const pageSize = 10
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -121,8 +126,9 @@ export function TransactionsTable() {
   })
   const [showFilters, setShowFilters] = useState(false)
   const [editingCounterparty, setEditingCounterparty] = useState<{ id: string; value: string } | null>(null)
-  const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
-  const [transactionForRule, setTransactionForRule] = useState<TxRow | null>(null)
+  // Only use local state for rule dialog if props are not provided
+  const [localRuleDialogOpen, setLocalRuleDialogOpen] = useState(false)
+  const [localTransactionForRule, setLocalTransactionForRule] = useState<TxRow | null>(null)
   const [categorizeDialog, setCategorizeDialog] = useState<{
     open: boolean
     transaction: TxRow | null
@@ -208,7 +214,14 @@ export function TransactionsTable() {
       if (enabledRules.length > 0) {
         filteredTransactions = filteredTransactions.map(tx => {
           const result = applyBestMatchingRule(tx, enabledRules)
-          return result.transaction
+          // Merge the rule updates with the original TxRow properties
+          return {
+            ...tx,
+            category: result.transaction.category,
+            exclude: result.transaction.exclude ?? tx.exclude,
+            description: result.transaction.description ?? tx.description,
+            counterparty: result.transaction.counterparty ?? tx.counterparty,
+          }
         })
       }
     }
@@ -323,13 +336,21 @@ export function TransactionsTable() {
   }
 
   function handleCreateRule() {
-    setTransactionForRule(null)
-    setRuleDialogOpen(true)
+    if (onCreateRule) {
+      onCreateRule()
+    } else {
+      setLocalTransactionForRule(null)
+      setLocalRuleDialogOpen(true)
+    }
   }
 
   function handleCreateRuleFromTransaction(transaction: TxRow) {
-    setTransactionForRule(transaction)
-    setRuleDialogOpen(true)
+    if (onCreateRuleFromTransaction) {
+      onCreateRuleFromTransaction(transaction)
+    } else {
+      setLocalTransactionForRule(transaction)
+      setLocalRuleDialogOpen(true)
+    }
   }
 
   const activeFilterCount = columnFilters.length
@@ -1008,41 +1029,43 @@ export function TransactionsTable() {
         </DialogContent>
       </Dialog>
 
-      {/* Rule Dialog */}
-      <RuleDialogV2
-        open={ruleDialogOpen}
-        onOpenChange={setRuleDialogOpen}
-        rule={transactionForRule ? {
-          id: "",
-          userId: "",
-          name: `Rule for ${transactionForRule.counterparty || transactionForRule.description}`,
-          description: "Auto-generated from transaction",
-          enabled: true,
-          priority: 50,
-          conditions: [
-            {
-              field: "counterparty",
-              operator: "contains",
-              value: transactionForRule.counterparty || transactionForRule.description,
-              caseSensitive: false
-            }
-          ],
-          conditionLogic: "AND",
-          actions: [
-            {
-              type: "setCategory",
-              value: transactionForRule.category
-            }
-          ],
-          matchCount: 0,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        } : undefined}
-        onSuccess={() => {
-          setRuleDialogOpen(false)
-          setTransactionForRule(null)
-        }}
-      />
+      {/* Rule Dialog - only render if using local state (no props provided) */}
+      {!onCreateRule && !onCreateRuleFromTransaction && (
+        <RuleDialogV2
+          open={localRuleDialogOpen}
+          onOpenChange={setLocalRuleDialogOpen}
+          rule={localTransactionForRule ? {
+            id: "",
+            userId: "",
+            name: `Rule for ${localTransactionForRule.counterparty || localTransactionForRule.description}`,
+            description: "Auto-generated from transaction",
+            enabled: true,
+            priority: 50,
+            conditions: [
+              {
+                field: "counterparty",
+                operator: "contains",
+                value: localTransactionForRule.counterparty || localTransactionForRule.description,
+                caseSensitive: false
+              }
+            ],
+            conditionLogic: "AND",
+            actions: [
+              {
+                type: "setCategory",
+                value: localTransactionForRule.category
+              }
+            ],
+            matchCount: 0,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          } : undefined}
+          onSuccess={() => {
+            setLocalRuleDialogOpen(false)
+            setLocalTransactionForRule(null)
+          }}
+        />
+      )}
 
     </div>
   </>
