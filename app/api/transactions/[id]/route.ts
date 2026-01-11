@@ -18,7 +18,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     
     const { id } = await params
-    const body = await request.json() as { category?: string; exclude?: boolean }
+    const body = await request.json() as { 
+      category?: string; 
+      exclude?: boolean; 
+      description?: string; 
+      counterparty?: string;
+      similarTransactionIds?: string[];
+    }
 
     const client = new Client()
       .setEndpoint(APPWRITE_CONFIG.endpoint)
@@ -47,6 +53,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updatePayload: Partial<TransactionDocument> = {}
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
+    if (typeof body.description === "string") updatePayload.description = body.description.trim() || null
+    if (body.counterparty !== undefined) {
+      // Allow setting counterparty to empty string or null
+      updatePayload.counterparty = typeof body.counterparty === "string" ? (body.counterparty.trim() || null) : null
+    }
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
     }

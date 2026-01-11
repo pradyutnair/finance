@@ -273,9 +273,10 @@ export function TransactionsTable() {
 
   function handleSaveCounterparty() {
     if (editingCounterparty) {
+      const trimmedValue = editingCounterparty.value.trim()
       updateTx.mutate({
         id: editingCounterparty.id,
-        counterparty: editingCounterparty.value.trim() || undefined
+        counterparty: trimmedValue || ""
       })
       setEditingCounterparty(null)
     }
@@ -433,8 +434,12 @@ export function TransactionsTable() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => handleStartEditCounterparty(row.original)}
-                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleStartEditCounterparty(row.original)
+                }}
+                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-transparent"
+                style={{ color: '#40221a' }}
               >
                 <Edit2 className="h-3 w-3" />
               </Button>
