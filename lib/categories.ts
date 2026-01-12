@@ -26,7 +26,7 @@ export const CATEGORIES: Record<CategoryKey, { color: string }> = {
   Entertainment: { color: "#c752bf" },     // pink
   Health: { color: "#52c7a6" },            // green
   Income: { color: "#20d462" },            // green
-  Finance: { color: "#00ffff" },           // aqua
+  Finance: { color: "#184022" },           // olive green
   Subscriptions: { color: "#ef4444" },     // red
   Miscellaneous: { color: "#9ca3af" },     // gray
   Uncategorized: { color: "#4f5952" },     // dark gray
