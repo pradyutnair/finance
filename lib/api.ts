@@ -12,12 +12,16 @@ const categoriesInflight = new Map<string, Promise<CategorySlice[]>>();
 export interface Transaction {
   id: string;
   date: string;
+  bookingDate?: string; // Actual date field from backend
+  valueDate?: string; // Alternative date field
   merchant: string;
+  counterparty?: string;
   description?: string;
   category?: string;
   amount: number;
   currency: string;
   accountId: string;
+  exclude?: boolean;
 }
 
 export interface Metrics {
@@ -254,15 +258,19 @@ export const useUpdateTransaction = () => {
         queryKey: ["transactions"],
       });
 
-      const normalize = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : "");
-      const matchDesc = normalize(args.description);
-      const matchCp = normalize(args.counterparty);
+      // Get all transaction IDs that should be updated (target + similar)
+      const similarTransactionIds = args.similarTransactionIds || [];
+      const allTransactionIdsToUpdate = [args.id, ...similarTransactionIds];
 
       previous.forEach(([key, data]) => {
         if (!data) return;
         const updatedTransactions = data.transactions.map((t) => {
-          const isTarget = (t.$id || t.id) === args.id;
-          if (isTarget) {
+          const transactionId = t.$id || t.id;
+          const isTargetTransaction = transactionId === args.id;
+          const isSimilarTransaction = similarTransactionIds.includes(transactionId);
+
+          // Only update the target transaction and explicitly provided similar transactions
+          if (isTargetTransaction || isSimilarTransaction) {
             return {
               ...t,
               ...(typeof args.category === "string" ? { category: args.category } : {}),
@@ -270,16 +278,6 @@ export const useUpdateTransaction = () => {
               ...(typeof args.counterparty === "string" ? { counterparty: args.counterparty } : {}),
               ...(typeof args.description === "string" ? { description: args.description } : {}),
             };
-          }
-
-          // Optimistically update similar transactions when changing category
-          if (typeof args.category === "string" && (matchDesc || matchCp)) {
-            const tDesc = normalize((t as any).description);
-            const tCp = normalize((t as any).counterparty);
-            const same = (matchDesc && tDesc === matchDesc) || (matchCp && tCp === matchCp);
-            if (same) {
-              return { ...t, category: args.category };
-            }
           }
           return t;
         });
@@ -445,3 +443,4 @@ export const useSendMessage = () => {
     }),
   });
 };
+

@@ -329,7 +329,7 @@ export function FinanceHeatmapCard() {
 
   // Baseline cell size from width so grid always fills card width
   let widthCell = Math.max(8, Math.floor((availableWidth - (cols - 1) * gapPx) / cols))
-  widthCell = 48
+  widthCell = 42
 
   // Height-constrained cell size (only applied for short ranges)
   const heightCell: number | undefined = boxH > 0

@@ -7,8 +7,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { TransactionsTable } from "@/components/transactions/transactions-table"
+import { TransactionsTabs } from "@/components/transactions/transactions-tabs"
 
 export default function TransactionsPage() {
   return (
@@ -29,9 +28,7 @@ export default function TransactionsPage() {
             <div className="flex flex-1 flex-col">
               <div className="@container/main flex flex-1 flex-col gap-2">
                 <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-                  <div className="px-4 lg:px-6">
-                    <TransactionsTable />
-                  </div>
+                  <TransactionsTabs />
                 </div>
               </div>
             </div>

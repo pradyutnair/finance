@@ -7,14 +7,8 @@ import { Client, Databases, ID, Query } from "appwrite";
 import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { createAppwriteClient } from "@/lib/auth";
 import { createHash } from "crypto";
-import { invalidateUserCache } from "@/lib/server/cache-service";
-import {
-  storeRequisitionMongo,
-  storeBankConnectionMongo,
-  storeBankAccountMongo,
-  storeBalanceMongo,
-  storeTransactionMongo
-} from "@/lib/server/mongo-ingestion";
+import { logger } from "@/lib/logger";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       authedUserId = (authedUser?.$id || authedUser?.id || null) as string | null;
     } catch (authError) {
       const message = authError instanceof Error ? authError.message : String(authError);
-      console.log('🔍 Authentication failed in callback, will use reference parsing:', message);
+      logger.debug('Authentication failed in callback, will use reference parsing', { error: message });
       // Not authenticated via JWT/cookie; will fallback to reference parsing
     }
 
@@ -60,7 +54,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!userId) {
       const reference: string | undefined = requisition.reference;
       if (reference && typeof reference === 'string') {
-        console.log('🔍 Parsing user ID from reference:', reference);
+        logger.debug('Parsing user ID from reference', { reference });
         
         // Support both user_ and sandbox_ prefixes, and dev-user format
         let match = reference.match(/^(?:user|sandbox)_([^_]+)_/);
@@ -71,148 +65,42 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         
         if (match && match[1]) {
           userId = match[1];
-          console.log('✅ Extracted user ID from reference:', userId);
+          logger.debug('Extracted user ID from reference', { userId });
         } else {
-          console.log('❌ Could not parse user ID from reference format');
+          logger.warn('Could not parse user ID from reference format', { reference });
         }
       }
     }
 
     if (!userId) {
-      console.error('❌ Unable to determine user ID from session or reference');
-      console.error('📝 Requisition reference:', requisition?.reference);
-      console.error('🔑 Authenticated user ID:', authedUserId);
+      logger.error('Unable to determine user ID from session or reference', {
+        requisitionReference: requisition?.reference,
+        authedUserId
+      });
       return NextResponse.json({ ok: false, error: "Unable to determine user from session or reference" }, { status: 400 });
     }
 
-    console.log('✅ Processing requisition for user:', userId);
+    logger.info('Processing requisition for user', { userId, requisitionId });
 
     // If requisition is linked, process the accounts
     if ((requisition.status === 'LINKED' || requisition.status === 'LN') && requisition.accounts && requisition.accounts.length > 0) {
-      
-      // MongoDB ingestion path
-      if (process.env.DATA_BACKEND === 'mongodb') {
-        try {
-          // Fetch institution metadata
-          let logoUrl: string | null = null;
-          let transactionTotalDays: number | null = null;
-          let maxAccessValidForDays: number | null = null;
-          try {
-            const institution = await getInstitution(requisition.institution_id);
-            logoUrl = (institution && (institution.logo as string)) || null;
-            transactionTotalDays = institution?.transaction_total_days || null;
-            maxAccessValidForDays = institution?.max_access_valid_for_days || null;
-
-            // Change transactionTotalDays and maxAccessValidForDays to number if they are strings
-            if (typeof transactionTotalDays === 'string') {
-              transactionTotalDays = Number(transactionTotalDays);
-            }
-            if (typeof maxAccessValidForDays === 'string') {
-              maxAccessValidForDays = Number(maxAccessValidForDays);
-            }
-          } catch {
-            // proceed without institution metadata
-          }
-
-          // Store requisition
-          await storeRequisitionMongo(requisition, userId);
-          console.log('✅ Stored requisition in MongoDB');
-
-          // Store bank connection
-          await storeBankConnectionMongo(
-            userId,
-            requisition.institution_id,
-            requisition.institution_name || 'Unknown Bank',
-            requisition.id,
-            logoUrl,
-            transactionTotalDays,
-            maxAccessValidForDays
-          );
-          console.log('✅ Stored bank connection in MongoDB');
-
-          // Process each account
-          for (const accountId of requisition.accounts) {
-            try {
-              const accountDetails = await getAccounts(accountId);
-              
-              // Store bank account
-              await storeBankAccountMongo(
-                accountId,
-                userId,
-                requisition.institution_id,
-                requisition.institution_name || 'Unknown Bank',
-                accountDetails
-              );
-              console.log(`✅ Stored bank account in MongoDB`);
-
-              // Get and store balances
-              try {
-                const balancesResponse = await getBalances(accountId);
-                const balances = balancesResponse?.balances || [];
-                for (const balance of balances) {
-                  await storeBalanceMongo(userId, accountId, balance);
-                }
-                console.log(`✅ Stored ${balances.length} balances `);
-              } catch (balanceError) {
-                console.error(`Error fetching balances :`, balanceError);
-              }
-
-              // Get and store transactions (auto-categorized on ingestion)
-              try {
-                const transactionsResponse = await getTransactions(accountId);
-                const transactions = transactionsResponse?.transactions?.booked || [];
-                for (const transaction of transactions.slice(0, 100)) {
-                  await storeTransactionMongo(userId, accountId, transaction);
-                }
-                console.log(`✅ Stored ${transactions.length} transactions `);
-              } catch (transactionError) {
-                console.error(`Error fetching transactions :`, transactionError);
-              }
-            } catch (accountError) {
-              console.error(`Error processing account :`, accountError);
-            }
-          }
-
-          // Invalidate cache after ingestion
-          invalidateUserCache(userId, 'all');
-
-          return NextResponse.json({
-            ok: true,
-            status: requisition.status,
-            institutionName: requisition.institution_name,
-            accountCount: requisition.accounts?.length || 0,
-            requisition
-          });
-        } catch (dbError) {
-          console.error("Error storing data in MongoDB:", dbError);
-          return NextResponse.json({ ok: false, error: "Failed to store data in MongoDB" }, { status: 500 });
-        }
-      }
-
-      // Appwrite ingestion path disabled - MongoDB is now the primary backend
-      // Keeping this code for reference but not executing Appwrite writes
-      console.log('⚠️  Appwrite writes disabled. Use DATA_BACKEND=mongodb for ingestion.');
-      return NextResponse.json({
-        ok: false,
-        error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to enable ingestion.',
-        requisition
-      }, { status: 400 });
-
-      // Legacy code below (disabled)
-      /*
-      const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-      const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
-      const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
-      const BANK_ACCOUNTS_COLLECTION_ID = process.env.APPWRITE_BANK_ACCOUNTS_COLLECTION_ID || 'bank_accounts_dev';
-      const BALANCES_COLLECTION_ID = process.env.APPWRITE_BALANCES_COLLECTION_ID || 'balances_dev';
-      const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
+      // Resolve DB and collection IDs from config
+      const DATABASE_ID = APPWRITE_CONFIG.databaseId;
+      const REQUISITIONS_COLLECTION_ID = COLLECTIONS.requisitions;
+      const BANK_CONNECTIONS_COLLECTION_ID = COLLECTIONS.bankConnections;
+      const BANK_ACCOUNTS_COLLECTION_ID = COLLECTIONS.bankAccounts;
+      const BALANCES_COLLECTION_ID = COLLECTIONS.balances;
+      const TRANSACTIONS_COLLECTION_ID = COLLECTIONS.transactions;
       // Create server-side client with API key
       const client = new Client()
-        .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-        .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+        .setEndpoint(APPWRITE_CONFIG.endpoint)
+        .setProject(APPWRITE_CONFIG.projectId);
       
       // Set API key for server-side operations manually
-      client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+      const apiKey = APPWRITE_CONFIG.apiKey;
+      if (apiKey) {
+        client.headers['X-Appwrite-Key'] = apiKey;
+      }
       const databases = new Databases(client);
 
       try {
@@ -234,25 +122,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
         // Upsert requisition in database (idempotent)
-        // const useEncryption = isEncryptionEnabled();
-        
-        // if (useEncryption) {
-        //   // Store encrypted requisition
-        //   try {
-        //     await storeEncryptedRequisition({
-        //       requisition,
-        //       userId,
-        //       databases,
-        //       databaseId: DATABASE_ID,
-        //     });
-        //     console.log('✅ Stored encrypted requisition');
-        //   } catch (error) {
-        //     console.error('Error storing encrypted requisition:', error);
-        //   }
-        // } else {
-          // Legacy unencrypted storage
-          try {
-            await databases.createDocument(
+        try {
+          await databases.createDocument(
+            DATABASE_ID,
+            REQUISITIONS_COLLECTION_ID,
+            requisition.id,
+            {
+              userId: userId,
+              requisitionId: requisition.id,
+              institutionId: requisition.institution_id,
+              institutionName: requisition.institution_name || 'Unknown Bank',
+              status: requisition.status,
+              reference: requisition.reference,
+              redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
+            }
+          );
+        } catch (error: any) {
+          const code = (error && (error.code || (error.responseCode as number | undefined))) as number | undefined;
+          const message = (error && error.message) || '';
+          if (code === 409 || message.includes('already exists')) {
+            await databases.updateDocument(
               DATABASE_ID,
               REQUISITIONS_COLLECTION_ID,
               requisition.id,
@@ -266,29 +155,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
               }
             );
-          } catch (error: any) {
-            const code = (error && (error.code || (error.responseCode as number | undefined))) as number | undefined;
-            const message = (error && error.message) || '';
-            if (code === 409 || message.includes('already exists')) {
-              await databases.updateDocument(
-                DATABASE_ID,
-                REQUISITIONS_COLLECTION_ID,
-                requisition.id,
-                {
-                  userId: userId,
-                  requisitionId: requisition.id,
-                  institutionId: requisition.institution_id,
-                  institutionName: requisition.institution_name || 'Unknown Bank',
-                  status: requisition.status,
-                  reference: requisition.reference,
-                  redirectUri: (requisition.redirect as string | undefined) || (process.env.GC_REDIRECT_URI as string | undefined) || undefined,
-                }
-              );
-            } else {
-              console.error('Error storing requisition:', error);
-            }
+          } else {
+            logger.error('Error storing requisition', { error: error.message, code: error.code });
           }
-        // }
+        }
 
         // Create bank connection record first to get connectionId
         let connectionDocId = '';
@@ -312,9 +182,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
           );
           connectionDocId = connectionDoc.$id;
-          console.log('✅ Created bank connection:', connectionDocId);
-        } catch (error) {
-          console.error('Error storing bank connection:', error);
+          logger.info('Created bank connection', { connectionDocId, userId });
+        } catch (error: any) {
+          logger.error('Error storing bank connection', { error: error.message, userId });
           throw error; // Stop processing if connection creation fails
         }
 
@@ -326,7 +196,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             
             // Store bank account in database (skip if $id exists)
             try {
-              // Appwrite unencrypted storage (MongoDB uses queryable encryption automatically)
               let exists = false;
               try {
                 await databases.getDocument(
@@ -335,11 +204,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                   accountId
                 );
                 exists = true;
-                console.log(`Bank account  already exists, skipping create.`);
+                logger.debug('Bank account already exists, skipping create', { accountId });
               } catch (checkErr: any) {
                 const code = (checkErr && (checkErr.code || checkErr.responseCode)) as number | undefined;
                 if (code && code !== 404) {
-                  console.warn('Error checking existing bank account, will attempt create:', checkErr);
+                  logger.warn('Error checking existing bank account, will attempt create', { error: checkErr.message, accountId });
                 }
               }
 
@@ -369,10 +238,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (balances && balances.length > 0) {
                   for (const balance of balances) {
                     try {
+                      // Check if balance already exists to avoid duplicates
                       const balanceType = balance.balanceType || 'closingBooked';
                       const referenceDate = balance.referenceDate || new Date().toISOString().split('T')[0];
                       
-                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
                       try {
                         const existingBalances = await databases.listDocuments(
                           DATABASE_ID,
@@ -385,13 +254,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                         );
                         
                         if (existingBalances.documents.length > 0) {
-                          console.log(`Balance  ${balanceType} ${referenceDate} already exists, skipping`);
+                          logger.debug('Balance already exists, skipping', { accountId, balanceType, referenceDate });
                           continue;
                         }
                       } catch (queryError) {
-                        console.log('Error checking existing balance, proceeding with creation');
+                        logger.debug('Error checking existing balance, proceeding with creation', { accountId });
                       }
                       
+                      // Use ID.unique() to generate a unique document ID
                       await databases.createDocument(
                         DATABASE_ID,
                         BALANCES_COLLECTION_ID,
@@ -407,15 +277,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                       );
                     } catch (error: any) {
                       if (error.message?.includes('already exists')) {
-                        console.log('Balance already exists, skipping');
+                        logger.debug('Balance already exists, skipping', { accountId });
                       } else {
-                        console.error('Error storing balance:', error);
+                        logger.error('Error storing balance', { error: error.message, accountId });
                       }
                     }
                   }
                 }
-              } catch (balanceError) {
-                console.error(`Error fetching balances for account :`, balanceError);
+              } catch (balanceError: any) {
+                logger.error('Error fetching balances for account', { accountId, error: balanceError.message });
               }
 
               // Get and store recent transactions
@@ -425,107 +295,100 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 if (transactions && transactions.length > 0) {
                   for (const transaction of transactions.slice(0, 100)) {
                     try {
-                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || '';
-                      const counterparty = transaction.creditorName || transaction.debtorName || '';
-                      
-                      // Get or suggest category
+                      // Use provider transactionId as the Appwrite $id to prevent duplicates, with safe length and charset
+                      const providerTransactionId: string | undefined = transaction.transactionId || undefined;
+                      const fallbackIdBase = transaction.internalTransactionId || `${accountId}_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${(transaction.remittanceInformationUnstructured || transaction.additionalInformation || '')}`;
+
+                      const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
+                      let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                      if (!docIdCandidate || docIdCandidate.length > 36) {
+                        try {
+                          const hashed = createHash('sha1').update(rawKey).digest('hex');
+                          docIdCandidate = hashed.slice(0, 36);
+                        } catch {
+                          docIdCandidate = (docIdCandidate || 'tx').slice(0, 36);
+                        }
+                      }
+                      const docId = docIdCandidate || ID.unique();
+
+                      // Skip if already exists
+                      let exists = false;
+                      try {
+                        await databases.getDocument(
+                          DATABASE_ID,
+                          TRANSACTIONS_COLLECTION_ID,
+                          docId
+                        );
+                        exists = true;
+                      } catch (_nf) {
+                        // Not found -> proceed
+                      }
+                      if (exists) continue;
+
+                      const txDescription = transaction.remittanceInformationUnstructured || transaction.additionalInformation || ''
                       const existingCategory = await findExistingCategory(
                         databases,
                         DATABASE_ID,
                         TRANSACTIONS_COLLECTION_ID,
                         userId,
                         txDescription
-                      );
+                      )
                       const category = existingCategory || await suggestCategory(
                         txDescription,
-                        counterparty,
+                        transaction.creditorName || transaction.debtorName || '',
                         transaction.transactionAmount?.amount,
                         transaction.transactionAmount?.currency
+                      )
+
+                      await databases.createDocument(
+                        DATABASE_ID,
+                        TRANSACTIONS_COLLECTION_ID,
+                        docId,
+                        {
+                          userId: userId,
+                          accountId: accountId,
+                          transactionId: (providerTransactionId || transaction.internalTransactionId || docId).toString().slice(0, 255),
+                          amount: String(transaction.transactionAmount?.amount ?? '0'),
+                          currency: (transaction.transactionAmount?.currency || 'EUR').toString().toUpperCase().slice(0, 3),
+                          bookingDate: transaction.bookingDate ? String(transaction.bookingDate).slice(0, 10) : null,
+                          bookingDateTime: transaction.bookingDateTime ? String(transaction.bookingDateTime).slice(0, 25) : null,
+                          valueDate: transaction.valueDate ? String(transaction.valueDate).slice(0, 10) : null,
+                          description: (transaction.remittanceInformationUnstructured || transaction.additionalInformation || '').toString().slice(0, 500),
+                          counterparty: (transaction.creditorName || transaction.debtorName || '').toString().slice(0, 255),
+                          category,
+                          raw: JSON.stringify(transaction).slice(0, 10000),
+                        }
                       );
-
-                      // Appwrite unencrypted storage (MongoDB has queryable encryption)
-                        const providerTransactionId: string | undefined = transaction.transactionId || undefined;
-                        const fallbackIdBase = transaction.internalTransactionId || `_${(transaction.bookingDate || '')}_${(transaction.transactionAmount?.amount || '')}_${txDescription}`;
-
-                        const rawKey = (providerTransactionId || fallbackIdBase || '').toString();
-                        let docIdCandidate = rawKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-                        if (!docIdCandidate || docIdCandidate.length > 36) {
-                          try {
-                            const hashed = createHash('sha1').update(rawKey).digest('hex');
-                            docIdCandidate = hashed.slice(0, 36);
-                          } catch {
-                            docIdCandidate = (docIdCandidate || 'tx').slice(0, 36);
-                          }
-                        }
-                        const docId = docIdCandidate || ID.unique();
-
-                        // Skip if already exists
-                        let exists = false;
-                        try {
-                          await databases.getDocument(
-                            DATABASE_ID,
-                            TRANSACTIONS_COLLECTION_ID,
-                            docId
-                          );
-                          exists = true;
-                        } catch (_nf) {
-                          // Not found -> proceed
-                        }
-                        if (exists) continue;
-
-                        await databases.createDocument(
-                          DATABASE_ID,
-                          TRANSACTIONS_COLLECTION_ID,
-                          docId,
-                          {
-                            userId: userId,
-                            accountId: accountId,
-                            transactionId: (providerTransactionId || transaction.internalTransactionId || docId).toString().slice(0, 255),
-                            amount: String(transaction.transactionAmount?.amount ?? '0'),
-                            currency: (transaction.transactionAmount?.currency || 'EUR').toString().toUpperCase().slice(0, 3),
-                            bookingDate: transaction.bookingDate ? String(transaction.bookingDate).slice(0, 10) : null,
-                            bookingDateTime: transaction.bookingDateTime ? String(transaction.bookingDateTime).slice(0, 25) : null,
-                            valueDate: transaction.valueDate ? String(transaction.valueDate).slice(0, 10) : null,
-                            description: txDescription.toString().slice(0, 500),
-                            counterparty: counterparty.toString().slice(0, 255),
-                            category,
-                            raw: JSON.stringify(transaction).slice(0, 10000),
-                          }
-                        );
                     } catch (error: any) {
                       // Ignore duplicates silently; continue processing
                       if (error?.message?.includes('already exists') || error?.code === 409) {
                         // duplicate id -> already stored
                       } else {
-                        console.error('Error storing transaction:', error);
+                        logger.error('Error storing transaction', { error: error.message, accountId });
                       }
                     }
                   }
                 }
-                
-                // Invalidate cache after storing transactions
-                invalidateUserCache(userId, 'transactions');
-              } catch (transactionError) {
-                console.error(`Error fetching transactions for account :`, transactionError);
+              } catch (transactionError: any) {
+                logger.error('Error fetching transactions for account', { accountId, error: transactionError.message });
               }
-            } catch (error) {
+            } catch (error: any) {
               const code = (error && (error as any).code) as number | undefined;
               if (code === 409) {
-                console.log(`Bank account  already exists (409), skipping.`);
+                logger.debug('Bank account already exists (409), skipping', { accountId });
               } else {
-                console.error('Error storing bank account:', error);
+                logger.error('Error storing bank account', { error: error.message, accountId });
               }
             }
-          } catch (accountError) {
-            console.error(`Error processing account :`, accountError);
+          } catch (accountError: any) {
+            logger.error('Error processing account', { accountId, error: accountError.message });
           }
         }
 
-      } catch (dbError) {
-        console.error("Error storing data in database:", dbError);
+      } catch (dbError: any) {
+        logger.error("Error storing data in database", { error: dbError.message });
         // Still return success if GoCardless connection worked
       }
-      */
     }
 
     return NextResponse.json({
@@ -537,7 +400,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     });
 
   } catch (err: any) {
-    console.error("Error processing requisition callback:", err);
+    logger.error("Error processing requisition callback", { error: err.message, status: err?.status });
     if (err instanceof HttpError) {
       return NextResponse.json({ ok: false, error: err.message, details: err.details }, { status: err.status });
     }

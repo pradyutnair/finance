@@ -26,13 +26,17 @@ export function LoginForm({
     try {
       if (isSignUp) {
         await register(email, password, name);
-        toast.success('Account created successfully!');
+        toast.success('Account created! Please check your email to verify your account.');
       } else {
         await login(email, password);
-        toast.success('Logged in successfully!');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Authentication failed');
+      // Handle specific Appwrite email verification errors
+      if (error.message?.includes('email verification')) {
+        toast.error('Please verify your email before logging in. Check your inbox for the verification link.');
+      } else {
+        toast.error(error.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }

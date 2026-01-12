@@ -3,94 +3,57 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, Query } from "appwrite";
-import { suggestCategory, findExistingCategory, findExistingCategoryMongo } from "@/lib/server/categorize";
+import { suggestCategory, findExistingCategory } from "@/lib/server/categorize";
 import { invalidateUserCache } from "@/lib/server/cache-service";
-import { getDb } from "@/lib/mongo/client";
+import { logger } from "@/lib/logger";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
+import { handleApiError } from "@/lib/api-error-handler";
+import type { AuthUser, TransactionDocument } from "@/lib/types";
 
 export async function POST(request: Request) {
   try {
-    const user: any = await requireAuthUser(request);
+    const user = await requireAuthUser(request) as AuthUser;
     const userId = user.$id || user.id;
-
-    const body = await request.json().catch(() => ({}));
-    const limit = typeof body?.limit === "number" ? body.limit : 200;
-
-    if (process.env.DATA_BACKEND === 'mongodb') {
-      const db = await getDb();
-      const coll = db.collection('transactions_dev');
-      
-      const cursor = coll
-        .find({ 
-          userId,
-          $and: [
-            {
-              $or: [
-                { category: { $exists: false } },
-                { category: '' },
-                { category: 'Uncategorized' }
-              ]
-            },
-            {
-              $or: [
-                { exclude: { $exists: false } },
-                { exclude: false }
-              ]
-            }
-          ]
-        })
-        .sort({ createdAt: -1 })
-        .limit(limit);
-
-      let processed = 0;
-      for await (const d of cursor) {
-        if (processed >= limit) break;
-        console.log(`[auto-categorize] Categorizing tx ${d._id} desc='${d.description}' cp='${d.counterparty}'`);
-        const byExisting = await findExistingCategoryMongo(db, 'transactions_dev', userId, d.description, d.counterparty);
-        const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
-        await coll.updateOne({ _id: d._id }, { $set: { category: cat } });
-        console.log(`[auto-categorize] Updated tx ${d._id} => ${cat}`);
-        processed++;
-      }
-
-      invalidateUserCache(userId, 'transactions');
-      return NextResponse.json({ ok: true, processed });
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 });
     }
 
-    // Appwrite writes disabled - MongoDB is the primary backend
-    return NextResponse.json({ 
-      ok: false, 
-      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to auto-categorize.' 
-    }, { status: 400 })
+    const body = await request.json().catch(() => ({})) as { limit?: number };
+    const limit = typeof body?.limit === "number" ? body.limit : 200;
 
-    /* Legacy Appwrite code (disabled)
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    const apiKey = process.env.APPWRITE_API_KEY as string | undefined;
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
+    const apiKey = APPWRITE_CONFIG.apiKey;
     if (apiKey) {
-      (client as any).headers = { ...(client as any).headers, "X-Appwrite-Key": apiKey };
+      (client as { headers: Record<string, string> }).headers = { 
+        ...(client as { headers: Record<string, string> }).headers, 
+        "X-Appwrite-Key": apiKey 
+      };
     } else {
       const auth = request.headers.get("authorization") || request.headers.get("Authorization");
       const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
-      if (token) (client as any).headers = { ...(client as any).headers, "X-Appwrite-JWT": token };
+      if (token) {
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          "X-Appwrite-JWT": token 
+        };
+      }
     }
     const databases = new Databases(client);
-
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-    const TRANSACTIONS_COLLECTION_ID = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID || 'transactions_dev';
 
     let offset = 0;
     let processed = 0;
     const pageSize = 100;
     while (processed < limit) {
-      console.log(`[auto-categorize] Fetching page offset=${offset}, processed=${processed}/${limit}`)
-      const page = await databases.listDocuments(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, [
+      logger.debug('Auto-categorize: Fetching page', { offset, processed, limit })
+      const page = await databases.listDocuments(APPWRITE_CONFIG.databaseId, COLLECTIONS.transactions, [
         Query.equal('userId', userId),
         Query.orderDesc('$createdAt'),
         Query.limit(pageSize),
         Query.offset(offset),
       ]);
-      const docs = (page as any)?.documents || [];
+      const docs = (page.documents || []) as unknown as TransactionDocument[];
       if (!docs.length) break;
 
       for (const d of docs) {
@@ -98,14 +61,14 @@ export async function POST(request: Request) {
         const needs = !d.category || d.category === '' || d.category === 'Uncategorized';
         const excluded = d.exclude === true;
         if (!needs || excluded) {
-          console.log(`[auto-categorize] Skipping tx ${d.$id} needs=${needs} excluded=${excluded}`)
+          logger.debug('Auto-categorize: Skipping transaction', { transactionId: d.$id, needs, excluded })
           continue;
         }
-        console.log(`[auto-categorize] Categorizing tx ${d.$id} desc='${d.description}' cp='${d.counterparty}' amt=${d.amount} ${d.currency}`)
-        const byExisting = await findExistingCategory(databases, DATABASE_ID, TRANSACTIONS_COLLECTION_ID, userId, d.description, d.counterparty);
+        logger.debug('Auto-categorize: Categorizing transaction', { transactionId: d.$id, description: d.description, counterparty: d.counterparty, amount: d.amount, currency: d.currency })
+        const byExisting = await findExistingCategory(databases, APPWRITE_CONFIG.databaseId, COLLECTIONS.transactions, userId, d.description, d.counterparty);
         const cat = byExisting || await suggestCategory(d.description, d.counterparty, d.amount, d.currency);
-        await databases.updateDocument(DATABASE_ID, TRANSACTIONS_COLLECTION_ID, d.$id, { category: cat });
-        console.log(`[auto-categorize] Updated tx ${d.$id} => ${cat}`)
+        await databases.updateDocument(APPWRITE_CONFIG.databaseId, COLLECTIONS.transactions, d.$id, { category: cat });
+        logger.debug('Auto-categorize: Updated transaction', { transactionId: d.$id, category: cat })
         processed += 1;
       }
       offset += docs.length;
@@ -116,12 +79,8 @@ export async function POST(request: Request) {
     invalidateUserCache(userId, 'transactions');
 
     return NextResponse.json({ ok: true, processed });
-    */
-  } catch (err: any) {
-    console.error("Error triggering auto-categorization:", err);
-    const status = err?.status || 500;
-    const message = err?.message || "Internal Server Error";
-    return NextResponse.json({ ok: false, error: message }, { status });
+  } catch (error: unknown) {
+    return handleApiError(error, 500);
   }
 }
 

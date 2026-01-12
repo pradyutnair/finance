@@ -4,75 +4,134 @@ import { NextResponse } from "next/server"
 import { requireAuthUser } from "@/lib/auth"
 import { Client, Databases, Query } from "appwrite"
 import { invalidateUserCache } from "@/lib/server/cache-service"
-import { getDb } from "@/lib/mongo/client"
-import { ObjectId } from "mongodb"
-import { encryptTransactionUpdateFields } from "@/lib/mongo/explicit-encryption"
+import { logger } from "@/lib/logger"
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config"
+import { handleApiError } from "@/lib/api-error-handler"
+import type { AuthUser, TransactionDocument } from "@/lib/types"
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuthUser(request)
-    const userId = (user as any).$id || (user as any).id
+    const userId = (user as AuthUser).$id || (user as AuthUser).id
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "User ID not found" }, { status: 401 })
+    }
+    
     const { id } = await params
-    const body = await request.json()
+    const body = await request.json() as { 
+      category?: string; 
+      exclude?: boolean; 
+      description?: string; 
+      counterparty?: string;
+      similarTransactionIds?: string[];
+    }
+
+    const client = new Client()
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
+
+    const apiKey = APPWRITE_CONFIG.apiKey
+    if (apiKey) {
+      (client as { headers: Record<string, string> }).headers = { 
+        ...(client as { headers: Record<string, string> }).headers, 
+        "X-Appwrite-Key": apiKey 
+      }
+    } else {
+      const auth = request.headers.get("authorization") || request.headers.get("Authorization")
+      const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined
+      if (token) {
+        (client as { headers: Record<string, string> }).headers = { 
+          ...(client as { headers: Record<string, string> }).headers, 
+          "X-Appwrite-JWT": token 
+        }
+      }
+    }
+
+    const databases = new Databases(client)
 
     // Only allow updating specific fields
-    const updatePayload: Record<string, any> = {}
+    const updatePayload: Partial<TransactionDocument> = {}
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
-    if (typeof body.counterparty === "string") updatePayload.counterparty = body.counterparty
-    if (body.counterparty === null || body.counterparty === undefined) {
-      updatePayload.counterparty = body.counterparty
+    if (typeof body.description === "string") updatePayload.description = body.description.trim() || null
+    if (body.counterparty !== undefined) {
+      // Allow setting counterparty to empty string or null
+      updatePayload.counterparty = typeof body.counterparty === "string" ? (body.counterparty.trim() || null) : null
     }
-    if (typeof body.description === "string") updatePayload.description = body.description
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
     }
 
-    if (process.env.DATA_BACKEND === 'mongodb') {
-      const db = await getDb()
-      const coll = db.collection('transactions_dev')
-      
-      // Explicitly encrypt sensitive fields in the update
-      const encryptedUpdatePayload = await encryptTransactionUpdateFields(updatePayload)
-      
-      // Handle batch updates for similar transactions
-      const similarTransactionIds = body.similarTransactionIds || []
-      const allIds = [id, ...similarTransactionIds].filter(Boolean)
-      
-      // Update each transaction individually with encrypted fields
-      let matchedCount = 0
-      let modifiedCount = 0
-      
-      for (const txId of allIds) {
-        const result = await coll.updateOne(
-          { _id: new ObjectId(txId), userId },
-          { $set: encryptedUpdatePayload }
-        )
-        matchedCount += result.matchedCount
-        modifiedCount += result.modifiedCount
+    // Ensure the doc belongs to the user by relying on Appwrite permissions or fetching first if needed
+    const updated = await databases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      COLLECTIONS.transactions,
+      id,
+      updatePayload
+    ) as unknown as TransactionDocument
+
+    // When category is updated, also apply to similar transactions with same description or counterparty
+    if (typeof updatePayload.category === "string") {
+      const newCategory = updatePayload.category
+      const description = updated.description
+      const counterparty = updated.counterparty
+
+      const updatedIds = new Set<string>([updated.$id])
+      const pageLimit = 100
+
+      async function updateByField(field: "description" | "counterparty", value: string) {
+        if (!value || typeof value !== "string" || !userId) return
+        let offset = 0
+        while (true) {
+          const filters = [
+            Query.equal("userId", userId),
+            Query.equal(field, value),
+            Query.orderDesc("bookingDate"),
+            Query.limit(pageLimit),
+            Query.offset(offset),
+          ]
+          const page = await databases.listDocuments(
+            APPWRITE_CONFIG.databaseId,
+            COLLECTIONS.transactions,
+            filters
+          )
+          const docs = (page.documents || []) as unknown as TransactionDocument[]
+          if (!docs.length) break
+
+          for (const doc of docs) {
+            const docId = doc.$id
+            if (updatedIds.has(docId)) continue
+            updatedIds.add(docId)
+            if (doc.category !== newCategory) {
+              await databases.updateDocument(
+                APPWRITE_CONFIG.databaseId,
+                COLLECTIONS.transactions,
+                docId,
+                { category: newCategory }
+              )
+            }
+          }
+
+          offset += docs.length
+          if (docs.length < pageLimit) break
+        }
       }
 
-      if (matchedCount === 0) {
-        return NextResponse.json({ ok: false, error: "Transaction not found" }, { status: 404 })
+      if (typeof description === "string" && description.trim()) {
+        await updateByField("description", description.trim())
       }
-
-      invalidateUserCache(userId, 'transactions')
-      return NextResponse.json({ 
-        ok: true, 
-        updated: modifiedCount,
-        totalMatched: matchedCount
-      })
+      if (typeof counterparty === "string" && counterparty.trim()) {
+        await updateByField("counterparty", counterparty.trim())
+      }
     }
 
-    // Appwrite writes disabled - MongoDB is the primary backend
-    return NextResponse.json({ 
-      ok: false, 
-      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to update transactions.' 
-    }, { status: 400 })
-  } catch (err: any) {
-    console.error("Error updating transaction:", err)
-    const status = err?.status || 500
-    const message = err?.message || "Internal Server Error"
-    return NextResponse.json({ ok: false, error: message }, { status })
+    // Invalidate centralized cache for this user
+    invalidateUserCache(userId, 'transactions')
+
+    return NextResponse.json({ ok: true, transaction: updated })
+  } catch (error: unknown) {
+    return handleApiError(error, 500)
   }
 }
+
+

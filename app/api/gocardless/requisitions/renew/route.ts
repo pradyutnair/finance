@@ -4,8 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuthUser } from "@/lib/auth";
 import { Client, Databases, ID, Query } from "appwrite";
 import { getRequisition, HttpError } from "@/lib/gocardless";
-import { getDb } from "@/lib/mongo/client";
-import { encryptQueryable, encryptRandom } from "@/lib/mongo/explicit-encryption";
+import { APPWRITE_CONFIG, COLLECTIONS } from "@/lib/config";
 
 type RenewBody = {
   requisitionId: string;
@@ -39,77 +38,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "'institutionId' is required (could not derive from provider)" }, { status: 400 });
     }
 
-    // MongoDB path with explicit encryption
-    if (process.env.DATA_BACKEND === 'mongodb') {
-      const db = await getDb();
-      
-      // Encrypt sensitive fields before update
-      const encryptedRequisitionId = await encryptQueryable(requisitionId);
-      const encryptedInstitutionName = institutionName ? await encryptRandom(institutionName) : null;
-      const encryptedStatus = await encryptRandom('active');
-      const encryptedStatusLinked = await encryptRandom('LINKED');
-      
-      // Update bank_connections_dev
-      const connectionUpdate: any = {
-        updatedAt: new Date().toISOString(),
-      };
-      if (encryptedRequisitionId) connectionUpdate.requisitionId = encryptedRequisitionId;
-      if (encryptedStatus) connectionUpdate.status = encryptedStatus;
-      if (encryptedInstitutionName) connectionUpdate.institutionName = encryptedInstitutionName;
-      
-      await db.collection('bank_connections_dev').updateOne(
-        { userId, institutionId },
-        {
-          $set: connectionUpdate,
-          $setOnInsert: {
-            userId,
-            institutionId,
-            createdAt: new Date().toISOString(),
-          }
-        },
-        { upsert: true }
-      );
-
-      // Update requisitions_dev
-      const requisitionUpdate: any = {
-        updatedAt: new Date().toISOString(),
-      };
-      if (encryptedRequisitionId) requisitionUpdate.requisitionId = encryptedRequisitionId;
-      if (encryptedStatusLinked) requisitionUpdate.status = encryptedStatusLinked;
-      if (encryptedInstitutionName) requisitionUpdate.institutionName = encryptedInstitutionName;
-      
-      await db.collection('requisitions_dev').updateOne(
-        { userId, institutionId },
-        {
-          $set: requisitionUpdate,
-          $setOnInsert: {
-            userId,
-            institutionId,
-            createdAt: new Date().toISOString(),
-          }
-        },
-        { upsert: true }
-      );
-
-      return NextResponse.json({ ok: true, requisitionId, institutionId });
-    }
-
-    // Appwrite writes disabled - MongoDB is now the primary backend
-    console.log('⚠️  Appwrite writes disabled. Use DATA_BACKEND=mongodb for renew.');
-    return NextResponse.json({
-      ok: false,
-      error: 'Appwrite writes are disabled. Set DATA_BACKEND=mongodb to renew requisitions.'
-    }, { status: 400 });
-
-    /* Legacy Appwrite code (disabled)
-    const DATABASE_ID = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string;
-    const REQUISITIONS_COLLECTION_ID = process.env.APPWRITE_REQUISITIONS_COLLECTION_ID || 'requisitions_dev';
-    const BANK_CONNECTIONS_COLLECTION_ID = process.env.APPWRITE_BANK_CONNECTIONS_COLLECTION_ID || 'bank_connections_dev';
+    // Appwrite setup
+    const DATABASE_ID = APPWRITE_CONFIG.databaseId;
+    const REQUISITIONS_COLLECTION_ID = COLLECTIONS.requisitions;
+    const BANK_CONNECTIONS_COLLECTION_ID = COLLECTIONS.bankConnections;
 
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
-    client.headers['X-Appwrite-Key'] = process.env.APPWRITE_API_KEY as string;
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId);
+    const apiKey = APPWRITE_CONFIG.apiKey;
+    if (apiKey) {
+      client.headers['X-Appwrite-Key'] = apiKey;
+    }
     const databases = new Databases(client);
 
     // 1) Update latest bank connection for this user + institution
@@ -238,7 +178,6 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ ok: true, requisitionId, institutionId });
-    */
   } catch (err: any) {
     console.error('Error in renew requisition endpoint:', err);
     if (err instanceof HttpError) {

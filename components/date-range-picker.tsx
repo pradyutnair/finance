@@ -47,8 +47,8 @@ const presetRanges = [
   {
     label: "This Week",
     getValue: () => ({
-      from: startOfWeek(new Date()),
-      to: endOfWeek(new Date()),
+      from: startOfWeek(new Date(), { weekStartsOn: 1 }),
+      to: endOfWeek(new Date(), { weekStartsOn: 1 }),
     }),
   },
   {

@@ -6,7 +6,6 @@ import { AppSidebar } from "@/components/sidebar/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { useAccounts, getAuthHeader } from "@/lib/api"
 import { useCurrency } from "@/contexts/currency-context"
-import { DateRangeProvider } from "@/contexts/date-range-context"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -16,11 +15,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Banknote, Building2, RefreshCw, AlertCircle, Plus } from "lucide-react"
-import { RadialBarChart, RadialBar, ResponsiveContainer } from "recharts"
-import { ChartContainer } from "@/components/ui/chart"
 import { BudgetSettingsCard } from "@/components/dashboard/budget-settings-card"
 import { useQueries } from "@tanstack/react-query"
-import { formatBankName } from "@/components/transactions/transactions-table"
+import { formatBankName } from "@/lib/bank-name-mapping"
+import { DateRangeProvider } from "@/contexts/date-range-context"
 
 type BankAccountDoc = {
   $id: string
@@ -50,56 +48,31 @@ function capitalizeFirst(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
 }
 
-function AccessGauge({ remainingDays, maxDays }: { remainingDays: number; maxDays: number }) {
+function AccessIndicator({ remainingDays, maxDays }: { remainingDays: number; maxDays: number }) {
   const pctRemaining = Math.max(0, Math.min(100, Math.round((remainingDays / maxDays) * 100)))
   
   // Color based on remaining percentage
-  const getColor = (pct: number) => {
-    if (pct > 60) return "#10b981" // green
-    if (pct > 30) return "#f59e0b" // amber
-    return "#ef4444" // red
+  const getBadgeClasses = (pct: number) => {
+    if (pct > 60) return "bg-emerald-100 text-emerald-700 border-emerald-200"
+    if (pct > 30) return "bg-amber-100 text-amber-700 border-amber-200"
+    return "bg-red-100 text-red-700 border-red-200"
   }
-
-  const chartData = [{ value: pctRemaining }]
-  const color = getColor(pctRemaining)
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="relative w-28 h-28 cursor-help">
-            <ChartContainer
-              config={{ value: { color } }}
-              className="w-full h-full"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <RadialBarChart
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius="60%"
-                  outerRadius="95%"
-                  startAngle={90}
-                  endAngle={-270}
-                >
-                  <RadialBar
-                    dataKey="value"
-                    cornerRadius={5}
-                    fill={color}
-                    background={{ fill: "#e5e7eb" }}
-                  />
-                </RadialBarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            {/* Center text */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-[12px] font-semibold leading-none">{remainingDays}</div>
-              <div className="text-[10px] opacity-60 leading-none mt-0.5">days</div>
-            </div>
-          </div>
+          <Badge 
+            variant="outline" 
+            className={`text-[10px] font-medium px-2 py-0.5 h-5 ${getBadgeClasses(pctRemaining)} border shrink-0 cursor-help`}
+          >
+            {remainingDays}d
+          </Badge>
         </TooltipTrigger>
         <TooltipContent>
-          <p>{remainingDays} days remaining until access to the bank needs to be renewed</p>
+          <p className="text-xs">
+            {remainingDays} of {maxDays} days remaining until access needs to be renewed
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -225,11 +198,11 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
 
   return (
     <Card className="group transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 py-4">
-      <CardHeader className="relative pb-1">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+      <CardHeader className="relative pb-2">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             {account.logoUrl ? (
-              <div className="w-14 h-14 rounded-md shadow-sm overflow-hidden bg-white">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-md shadow-sm overflow-hidden bg-white shrink-0">
                 <img
                   src={account.logoUrl}
                   alt={formatBankName(account.institutionId)}
@@ -237,15 +210,15 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
                 />
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center shadow-sm shrink-0">
                 <Banknote className="w-5 h-5" />
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <CardTitle className="text-base font-semibold truncate">
+              <CardTitle className="text-sm sm:text-base font-semibold truncate">
                 {account.accountName || formatBankName(account.institutionId) || "Bank account"}
               </CardTitle>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-1">
                 <Badge className={`w-fit text-[10px] font-medium px-2 py-0.5 ${
                   isActive
                     ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
@@ -257,11 +230,11 @@ function AccountCard({ account, forceExpired, groupAccountIds }: { account: Bank
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0 ml-6">
+          <div className="flex items-center sm:items-start justify-end sm:justify-start shrink-0">
             {remainingDays !== null && maxDays ? (
-              <AccessGauge remainingDays={remainingDays} maxDays={maxDays} />
+              <AccessIndicator remainingDays={remainingDays} maxDays={maxDays} />
             ) : (
-              <div className="text-xs opacity-50">Access info unavailable</div>
+              <div className="text-[10px] opacity-50 whitespace-nowrap">Access info unavailable</div>
             )}
           </div>
         </div>
@@ -354,13 +327,13 @@ export default function BanksPage() {
             } as React.CSSProperties
           }
         >
-          <AppSidebar variant="inset" />
-          <SidebarInset>
-            <SiteHeader />
-            <div className="flex flex-1 flex-col">
-              <div className="@container/main flex flex-1 flex-col gap-2">
-                <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
-                  <div className="px-4 lg:px-6">
+        <AppSidebar variant="inset" />
+        <SidebarInset>
+          <SiteHeader />
+          <div className="flex flex-1 flex-col">
+            <div className="@container/main flex flex-1 flex-col gap-2">
+              <div className="flex flex-col gap-5 py-5 md:gap-6 md:py-6">
+                <div className="px-4 lg:px-6">
                   {/* Header Section */}
                   <div className="flex items-center justify-end mb-4">
                     <Link href="/link-bank" className="inline-flex">

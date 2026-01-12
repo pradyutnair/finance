@@ -1,4 +1,7 @@
 import { Client, Account, Databases, ID } from "appwrite";
+import { logger } from "./logger";
+import type { AuthUser, AuthUserResult } from "./types";
+import { APPWRITE_CONFIG, COLLECTIONS } from "./config";
 
 function assertAuthEnv(): void {
   const missing: string[] = [];
@@ -43,8 +46,8 @@ export async function verifyAppwriteJWT(jwt: string | null): Promise<VerifyJWTRe
   }
   try {
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
       .setJWT(jwt);
 
     const account = new Account(client);
@@ -64,60 +67,69 @@ export class StatusError extends Error {
   }
 }
 
-export async function requireAuthUser(request: Request): Promise<unknown> {
+export async function requireAuthUser(request: Request): Promise<AuthUser> {
   // Try JWT token first
   const token = extractBearerToken(request);
-  if (token) {
-    const { valid, user, error } = await verifyAppwriteJWT(token);
-    if (valid) {
-      return user;
-    }
-  }
-
-  // Try session cookies
-  try {
-    const cookies = request.headers.get('cookie');
-    if (!cookies) {
-      throw new StatusError("No authentication provided", 401);
+    if (token) {
+      const { valid, user, error } = await verifyAppwriteJWT(token);
+      if (valid && user) {
+        return user as AuthUser;
+      }
     }
 
-    console.log('🍪 Received cookies:', cookies);
+    // Try session cookies
+    try {
+      const cookies = request.headers.get('cookie');
+      if (!cookies) {
+        throw new StatusError("No authentication provided", 401);
+      }
 
-    // Parse session cookie - try multiple formats
-    let sessionMatch = null;
-    
-    // Try Appwrite's standard format: a_session_[projectId]=[sessionToken]
-    sessionMatch = cookies.match(/a_session_[^=]+=([^;]+)/);
-    
-    if (!sessionMatch) {
-      // Try other common formats
-      sessionMatch = cookies.match(/appwrite-session=([^;]+)/) ||
-                     cookies.match(/session=([^;]+)/) ||
-                     cookies.match(/next-auth\.session-token=([^;]+)/);
-    }
-    
-    if (!sessionMatch) {
-      console.error('❌ No session cookie found in available cookies:', cookies);
-      console.error('🔍 Looking for patterns: a_session_*, appwrite-session, session');
-      throw new StatusError("No session cookie found", 401);
-    }
+      logger.debug('Received cookies for session verification', {
+        cookieNames: cookies.split(';').map(c => c.split('=')[0].trim()).filter(name => name.includes('session') || name.includes('a_session'))
+      });
 
-    console.log('✅ Found session cookie:', sessionMatch[0].split('=')[0]);
+      // Parse session cookie - try multiple formats
+      let sessionMatch = null;
+
+      // Try Appwrite's standard format: a_session_[projectId]=[sessionToken]
+      sessionMatch = cookies.match(/a_session_[^=]+=([^;]+)/);
+
+      if (!sessionMatch) {
+        // Try other common formats
+        sessionMatch = cookies.match(/appwrite-session=([^;]+)/) ||
+                       cookies.match(/session=([^;]+)/) ||
+                       cookies.match(/next-auth\.session-token=([^;]+)/);
+      }
+
+      if (!sessionMatch) {
+        logger.warn('No session cookie found in available cookies', {
+          cookieCount: cookies.split(';').length,
+          availableCookies: cookies.split(';').map(c => c.split('=')[0].trim())
+        });
+        throw new StatusError("No session cookie found", 401);
+      }
+
+    logger.debug('Found session cookie', { cookieName: sessionMatch[0].split('=')[0] });
 
     const sessionToken = decodeURIComponent(sessionMatch[1]);
     
     // Verify session with Appwrite
     const client = new Client()
-      .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-      .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string)
+      .setEndpoint(APPWRITE_CONFIG.endpoint)
+      .setProject(APPWRITE_CONFIG.projectId)
       .setSession(sessionToken);
 
     const account = new Account(client);
     const user = await account.get();
-    return user;
-  } catch (sessionError: any) {
-    console.error('Session verification error:', sessionError.message);
-    throw new StatusError(`Invalid session: ${sessionError.message}`, 401);
+    return user as AuthUser;
+  } catch (sessionError: unknown) {
+    // If it's already a StatusError, re-throw it
+    if (sessionError instanceof StatusError) {
+      throw sessionError;
+    }
+    // Otherwise, throw a new StatusError with 401
+    const errorMessage = sessionError instanceof Error ? sessionError.message : 'Authentication failed';
+    throw new StatusError(`Invalid session: ${errorMessage}`, 401);
   }
 }
 
@@ -125,8 +137,8 @@ export async function requireAuthUser(request: Request): Promise<unknown> {
 export function createAppwriteClient() {
   assertAuthEnv();
   return new Client()
-    .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT as string)
-    .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID as string);
+    .setEndpoint(APPWRITE_CONFIG.endpoint)
+    .setProject(APPWRITE_CONFIG.projectId);
 }
 
 export async function createUserPrivateRecord(userId: string, email?: string, name?: string) {
@@ -134,31 +146,29 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
   const client = createAppwriteClient();
   const databases = new Databases(client);
   
-  console.log("🔍 Creating user private record...");
-  console.log("Database ID:", process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID);
-  console.log("Collection ID:", process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID);
-  console.log("User ID:", userId);
+  logger.debug("Creating user private record", { userId });
   
   try {
     // Check if user record already exists by document ID (which will be the user ID)
-    console.log("📋 Checking for existing user record...");
+    logger.debug("Checking for existing user record");
     try {
       const existingUser = await databases.getDocument(
-        process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-        process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID as string,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.usersPrivate,
         userId
       );
-      console.log("✅ Found existing user record");
+      logger.debug("Found existing user record");
       return existingUser;
-    } catch (getError: any) {
+    } catch (getError: unknown) {
       // Document doesn't exist, continue to create it
-      if (getError.code !== 404) {
+      const error = getError as { code?: number };
+      if (error.code !== 404) {
         throw getError;
       }
     }
     
     // Create new user record using userId as the document ID
-    console.log("🆕 Creating new user record...");
+    logger.debug("Creating new user record");
     
     // Use the actual attributes from your collection schema
     const documentData = {
@@ -168,31 +178,33 @@ export async function createUserPrivateRecord(userId: string, email?: string, na
       ...(name && { name })    // Only add if name exists
     };
     
-    console.log("📝 Document data:", documentData);
+    logger.debug("Document data prepared", { hasEmail: !!email, hasName: !!name });
     
     const userRecord = await databases.createDocument(
-      process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID as string,
-      process.env.NEXT_PUBLIC_APPWRITE_USERS_PRIVATE_COLLECTION_ID as string,
+      APPWRITE_CONFIG.databaseId,
+      COLLECTIONS.usersPrivate,
       userId, // Use userId as document ID instead of ID.unique()
       documentData
     );
     
-    console.log("✅ User record created successfully");
+    logger.info("User record created successfully", { userId });
     return userRecord;
-  } catch (error: any) {
-    console.error("❌ Error creating user private record:", error);
-    console.error("Error details:", {
-      message: error.message,
-      code: error.code,
-      type: error.type
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: number | string; type?: string };
+    logger.error("Error creating user private record", {
+      message: err.message,
+      code: err.code,
+      type: err.type,
+      userId
     });
     
     // Provide helpful error messages
-    if (error.message?.includes('Database not found')) {
-      throw new Error('Database "finance" not found. Please create it in Appwrite Console.');
-    } else if (error.message?.includes('Collection not found')) {
-      throw new Error('Collection "users_private" not found. Please create it in the "finance" database.');
-    } else if (error.message?.includes('Failed to fetch')) {
+    const errorMessage = err.message || '';
+    if (errorMessage.includes('Database not found')) {
+      throw new Error('Database not found. Please create it in Appwrite Console.');
+    } else if (errorMessage.includes('Collection not found')) {
+      throw new Error('Collection not found. Please create it in the database.');
+    } else if (errorMessage.includes('Failed to fetch')) {
       throw new Error('Network error: Cannot connect to Appwrite. Check your endpoint and project ID.');
     }
     

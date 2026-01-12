@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client, Databases } from "appwrite";
 import { requireAuthUser } from "@/lib/auth";
 import { getUserTransactionCache, getUserBalanceCache, filterTransactions } from "@/lib/server/cache-service";
+import { logger } from "@/lib/logger";
 
 type AuthUser = { $id?: string; id?: string };
 
@@ -93,36 +94,40 @@ export async function GET(request: NextRequest) {
     // Get cached balances
     const allBalances = await getUserBalanceCache(userId, databases);
     
-    // Helper: get latest balance per account at or before cutoff date
-    const fetchBalancesTotalAt = (cutoff: string) => {
+    // Helper: get latest balance per account (always use most recent, not filtered by date)
+    const getLatestBalanceTotal = () => {
       const relevantBalances = allBalances.filter(b => {
         const type = b.balanceType || '';
-        const refDate = b.referenceDate || '';
-        return (type === 'interimAvailable' || type === 'expected') && refDate <= cutoff;
+        return (type === 'interimAvailable' || type === 'expected');
       });
       
-      // Get latest balance per account
-      const accountBalances = new Map<string, number>();
+      // Get latest balance per account (most recent referenceDate)
+      const accountBalances = new Map<string, { amount: number; date: string }>();
       for (const b of relevantBalances) {
         const acct = String(b.accountId || '');
         const refDate = b.referenceDate || '';
         if (!acct) continue;
         
         const existing = accountBalances.get(acct);
-        if (!existing || refDate > (existing as any).date) {
-          accountBalances.set(acct, parseFloat(String(b.balanceAmount ?? 0)) || 0);
+        if (!existing || refDate > existing.date) {
+          accountBalances.set(acct, {
+            amount: parseFloat(String(b.balanceAmount ?? 0)) || 0,
+            date: refDate
+          });
         }
       }
       
       let total = 0;
-      for (const amount of accountBalances.values()) {
+      for (const { amount } of accountBalances.values()) {
         total += amount;
       }
       return total;
     };
 
-    const totalBalance = fetchBalancesTotalAt(endStr);
-    const prevBalance = fetchBalancesTotalAt(prevEndStr);
+    // Always use latest balance (not filtered by date range) - sum of all accounts' latest balances
+    const totalBalance = getLatestBalanceTotal();
+    // For delta, balance doesn't change with date range, so use same value (delta will be 0)
+    const prevBalance = totalBalance;
 
     // Delta percents
     const pct = (curr: number, prev: number) => (prev === 0 ? 0 : ((curr - prev) / prev) * 100);
@@ -144,7 +149,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: unknown) {
-    console.error("Error fetching metrics:", error);
+    logger.error("Error fetching metrics", { error: error instanceof Error ? error.message : String(error) });
     const status = (error as { status?: number })?.status || 500;
     return NextResponse.json(
       { error: "Failed to fetch metrics" },

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Client, Databases, ID, Query } from 'appwrite'
 import { requireAuthUser } from '@/lib/auth'
+import { logger } from '@/lib/logger'
+import { APPWRITE_CONFIG, COLLECTIONS } from '@/lib/config'
+import { handleApiError } from '@/lib/api-error-handler'
+import type { AuthUser, BudgetDocument } from '@/lib/types'
 
 // In-memory cache of budget preferences for the current server process
 type BudgetPayload = {
@@ -25,16 +29,13 @@ const client = new Client()
   .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID || '')
 
 const databases = new Databases(client)
-const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '68d42ac20031b27284c9'
-const COLLECTION_ID = process.env.APPWRITE_PREFERENCES_BUDGETS_COLLECTION_ID || 'preferences_budgets_dev'
 
 // GET - Fetch user's budget preferences
 export async function GET(request: NextRequest) {
   try {
     // Authenticate user and derive userId
-    const user: any = await requireAuthUser(request)
-    const userId: string = user.$id || user.id
-
+    const user = await requireAuthUser(request) as AuthUser
+    const userId: string = user.$id || user.id || ''
     if (!userId) {
       return NextResponse.json(
         { error: 'User ID is required' },
@@ -60,8 +61,8 @@ export async function GET(request: NextRequest) {
       }
 
       const response = await databases.listDocuments(
-        databaseId,
-        COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -101,19 +102,11 @@ export async function GET(request: NextRequest) {
         budgetsCache.set(userId, fallback)
         return NextResponse.json(fallback, { headers: { 'X-Cache': 'MISS' } })
       }
-    } catch (error) {
-      console.error('Error fetching budgets:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch budget data' },
-        { status: 500 }
-      )
+    } catch (error: unknown) {
+      return handleApiError(error, 500)
     }
-  } catch (error) {
-    console.error('Error in GET /api/budgets:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+  } catch (error: unknown) {
+    return handleApiError(error, 500)
   }
 }
 
@@ -131,6 +124,8 @@ export async function POST(request: NextRequest) {
       utilitiesBudget,
       entertainmentBudget,
       healthBudget,
+      financeBudget,
+      subscriptionsBudget,
       miscellaneousBudget,
     } = body
 
@@ -148,6 +143,8 @@ export async function POST(request: NextRequest) {
       utilitiesBudget,
       entertainmentBudget,
       healthBudget,
+      financeBudget,
+      subscriptionsBudget,
       miscellaneousBudget,
     }
 
@@ -180,8 +177,8 @@ export async function POST(request: NextRequest) {
 
       // First, try to find existing budget document
       const existingBudgets = await databases.listDocuments(
-        databaseId,
-        COLLECTION_ID,
+        APPWRITE_CONFIG.databaseId,
+        COLLECTIONS.preferences,
         [Query.equal('userId', userId)]
       )
 
@@ -196,6 +193,8 @@ export async function POST(request: NextRequest) {
         utilitiesBudget: utilitiesBudget || 0,
         entertainmentBudget: entertainmentBudget || 0,
         healthBudget: healthBudget || 0,
+        financeBudget: financeBudget || 0,
+        subscriptionsBudget: subscriptionsBudget || 0,
         miscellaneousBudget: miscellaneousBudget || 0,
       }
 
@@ -203,8 +202,8 @@ export async function POST(request: NextRequest) {
         // Update existing budget
         const existingBudget = existingBudgets.documents[0]
         await databases.updateDocument(
-          databaseId,
-          COLLECTION_ID,
+          APPWRITE_CONFIG.databaseId,
+          COLLECTIONS.preferences,
           existingBudget.$id,
           budgetData
         )
@@ -213,8 +212,8 @@ export async function POST(request: NextRequest) {
       } else {
         // Create new budget document
         await databases.createDocument(
-          databaseId,
-          COLLECTION_ID,
+          APPWRITE_CONFIG.databaseId,
+          COLLECTIONS.preferences,
           ID.unique(),
           budgetData
         )
@@ -227,18 +226,10 @@ export async function POST(request: NextRequest) {
         message: 'Budget preferences saved successfully'
       })
 
-    } catch (error) {
-      console.error('Error saving budget:', error)
-      return NextResponse.json(
-        { error: 'Failed to save budget data' },
-        { status: 500 }
-      )
+    } catch (error: unknown) {
+      return handleApiError(error, 500)
     }
-  } catch (error) {
-    console.error('Error in POST /api/budgets:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+  } catch (error: unknown) {
+    return handleApiError(error, 500)
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { SandboxTestButton } from './SandboxTestButton';
 import { useBankConnection } from '@/hooks/useBankConnection';
+import { formatBankName } from '@/lib/bank-name-mapping';
 
 interface Institution {
   id: string;
@@ -180,12 +181,12 @@ export function BankConnectionScreen({ userId, onConnectionSuccess }: BankConnec
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-600 rounded-lg flex items-center justify-center">
                       <span className="text-white font-semibold text-sm">
-                        {connection.institutionName.charAt(0)}
+                        {formatBankName(connection.institutionId).charAt(0)}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate">
-                        {connection.institutionName}
+                        {formatBankName(connection.institutionId)}
                       </h3>
                       <p className="text-gray-400 text-sm capitalize">
                         Status: {connection.status}
