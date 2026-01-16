@@ -3,12 +3,13 @@
 import { useState } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { TransactionsTable } from "@/components/transactions/transactions-table"
+import { RecurringTransactionsTable } from "@/components/transactions/recurring-transactions-table"
 import { RulesTable } from "@/components/rules/rules-table"
 import { RuleDialogV2 } from "@/components/rules/rule-dialog-v2"
 import { useQueryClient } from "@tanstack/react-query"
 import type { TransactionRule } from "@/lib/types/transaction-rules"
 
-type TabValue = "transactions" | "rules"
+type TabValue = "transactions" | "recurring" | "rules"
 
 export function TransactionsTabs() {
   const [activeTab, setActiveTab] = useState<TabValue>("transactions")
@@ -60,6 +61,9 @@ export function TransactionsTabs() {
             <TabsTrigger value="transactions">
               Transactions
             </TabsTrigger>
+            <TabsTrigger value="recurring">
+              Recurring
+            </TabsTrigger>
             <TabsTrigger value="rules">
               Rules
             </TabsTrigger>
@@ -71,6 +75,10 @@ export function TransactionsTabs() {
             onCreateRule={handleCreateRule}
             onCreateRuleFromTransaction={handleCreateRuleFromTransaction}
           />
+        </TabsContent>
+
+        <TabsContent value="recurring" className="flex-1 overflow-hidden mt-4 px-4 lg:px-6">
+          <RecurringTransactionsTable />
         </TabsContent>
 
         <TabsContent value="rules" className="flex-1 overflow-hidden mt-4 px-4 lg:px-6">

@@ -52,6 +52,7 @@ export interface TransactionDocument {
   counterparty?: string;
   category?: string;
   exclude?: boolean;
+  isNotRecurring?: boolean;
   raw?: string;
   $createdAt?: string;
   $updatedAt?: string;

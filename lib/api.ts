@@ -22,6 +22,7 @@ export interface Transaction {
   currency: string;
   accountId: string;
   exclude?: boolean;
+  isNotRecurring?: boolean;
 }
 
 export interface Metrics {
@@ -223,11 +224,12 @@ export const useTransactions = (params?: {
 export const useUpdateTransaction = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { 
-      id: string; 
-      category?: string; 
-      exclude?: boolean; 
-      description?: string; 
+    mutationFn: async (args: {
+      id: string;
+      category?: string;
+      exclude?: boolean;
+      isNotRecurring?: boolean;
+      description?: string;
       counterparty?: string;
       similarTransactionIds?: string[];
     }) => {
@@ -242,6 +244,7 @@ export const useUpdateTransaction = () => {
         body: JSON.stringify({
           category: args.category,
           exclude: args.exclude,
+          isNotRecurring: args.isNotRecurring,
           description: args.description,
           counterparty: args.counterparty,
           similarTransactionIds: args.similarTransactionIds
@@ -275,6 +278,7 @@ export const useUpdateTransaction = () => {
               ...t,
               ...(typeof args.category === "string" ? { category: args.category } : {}),
               ...(typeof args.exclude === "boolean" ? { exclude: args.exclude } : {}),
+              ...(typeof args.isNotRecurring === "boolean" ? { isNotRecurring: args.isNotRecurring } : {}),
               ...(typeof args.counterparty === "string" ? { counterparty: args.counterparty } : {}),
               ...(typeof args.description === "string" ? { description: args.description } : {}),
             };

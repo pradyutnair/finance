@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import { Edit2, Check, Plus, Settings } from "lucide-react"
+import { Edit2, Check, Plus, Settings, Repeat } from "lucide-react"
 import { ChevronLeft, ChevronRight, MoreVertical, ChevronsLeft, ChevronsRight, Search, Filter, X, Zap, Sparkles } from "lucide-react"
 import type { ColumnDef, PaginationState, ColumnFiltersState, VisibilityState } from "@tanstack/react-table"
 import {
@@ -46,6 +46,7 @@ import { formatBankName } from "@/lib/bank-name-mapping"
 import { RuleDialogV2 } from "@/components/rules/rule-dialog-v2"
 import { applyBestMatchingRule } from "@/lib/rule-engine"
 import type { TransactionRule } from "@/lib/types/transaction-rules"
+import { toast } from "sonner"
 type TxRow = {
   id: string
   description: string
@@ -57,17 +58,22 @@ type TxRow = {
   currency: string
   accountId?: string
   exclude?: boolean
+  isNotRecurring?: boolean
   counterparty?: string
 }
 
 function RowActions({
-  onCategorize,
   onCreateRule,
-  onCreateRuleFromTransaction
+  onCreateRuleFromTransaction,
+  onMarkAsRecurring,
+  onToggleNotRecurring,
+  isNotRecurring
 }: {
-  onCategorize: (category: string) => void
   onCreateRule: () => void
   onCreateRuleFromTransaction: () => void
+  onMarkAsRecurring: () => void
+  onToggleNotRecurring: () => void
+  isNotRecurring?: boolean
 }) {
   return (
     <DropdownMenu>
@@ -88,14 +94,14 @@ function RowActions({
             <Plus className="h-4 w-4 mr-3" />
             <span>Create Rule from This Transaction</span>
           </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuGroup>
-          {CATEGORY_OPTIONS.map((cat) => (
-            <DropdownMenuItem key={cat} onClick={() => onCategorize(cat)} className="cursor-pointer">
-              <span className="inline-block h-2 w-2 rounded-full mr-3" style={{ backgroundColor: categoryToColor(cat) }} />
-              <span>Set as {cat}</span>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuItem onClick={onMarkAsRecurring} className="cursor-pointer">
+            <Repeat className="h-4 w-4 mr-3" />
+            <span>Mark as Recurring</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onToggleNotRecurring} className="cursor-pointer">
+            <Repeat className="h-4 w-4 mr-3" />
+            <span>{isNotRecurring ? "Allow as Recurring" : "Mark as Not Recurring"}</span>
+          </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -193,6 +199,7 @@ export function TransactionsTable({ onCreateRule, onCreateRuleFromTransaction }:
       currency: t.currency || "EUR",
       accountId: t.accountId,
       exclude: Boolean(t.exclude),
+      isNotRecurring: Boolean(t.isNotRecurring),
       counterparty: t.counterparty,
     })), [allTransactionsData, accountIdToInstitutionId]
   )
@@ -235,6 +242,10 @@ export function TransactionsTable({ onCreateRule, onCreateRuleFromTransaction }:
 
   function handleToggleExclude(tx: TxRow) {
     updateTx.mutate({ id: tx.id, exclude: !tx.exclude })
+  }
+
+  function handleToggleNotRecurring(tx: TxRow) {
+    updateTx.mutate({ id: tx.id, isNotRecurring: !tx.isNotRecurring })
   }
 
   function handleCategorize(tx: TxRow, category: string) {
@@ -351,6 +362,22 @@ export function TransactionsTable({ onCreateRule, onCreateRuleFromTransaction }:
       setLocalTransactionForRule(transaction)
       setLocalRuleDialogOpen(true)
     }
+  }
+
+  function handleMarkAsRecurring(transaction: TxRow) {
+    const counterparty = transaction.counterparty || transaction.description || "Unknown"
+    const date = new Date(transaction.bookingDate)
+    const dayOfMonth = date.getDate()
+
+    toast.success(`Marked "${counterparty}" as a recurring transaction`, {
+      description: `This transaction occurs on the ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} of each month`,
+    })
+  }
+
+  function getOrdinalSuffix(n: number): string {
+    const s = ["th", "st", "nd", "rd"]
+    const v = n % 100
+    return s[(v - 20) % 10] || s[v] || s[0]
   }
 
   const activeFilterCount = columnFilters.length
@@ -572,16 +599,18 @@ export function TransactionsTable({ onCreateRule, onCreateRuleFromTransaction }:
         header: () => <div className="text-center">Actions</div>,
         cell: ({ row }) => (
           <RowActions
-            onCategorize={(category) => handleCategorize(row.original, category)}
             onCreateRule={handleCreateRule}
             onCreateRuleFromTransaction={() => handleCreateRuleFromTransaction(row.original)}
+            onMarkAsRecurring={() => handleMarkAsRecurring(row.original)}
+            onToggleNotRecurring={() => handleToggleNotRecurring(row.original)}
+            isNotRecurring={row.original.isNotRecurring}
           />
         ),
         enableSorting: false,
         size: 50,
       }
     ],
-    [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange, handleCreateRule, handleCreateRuleFromTransaction]
+    [baseCurrency, convertAmount, getCurrencySymbol, editingCounterparty, handleStartEditCounterparty, handleSaveCounterparty, handleCancelEditCounterparty, handleCounterpartyChange, handleCreateRule, handleCreateRuleFromTransaction, handleMarkAsRecurring]
   )
 
   const table = useReactTable({

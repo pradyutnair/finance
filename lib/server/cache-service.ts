@@ -58,12 +58,13 @@ const ymd = (d: Date) => {
 };
 
 /**
- * Get or load user's transaction cache (365 days)
+ * Get or load user's transaction cache (365 days by default, all if loadAll=true)
  */
 export async function getUserTransactionCache(
   userId: string,
   databases: Databases,
-  forceRefresh = false
+  forceRefresh = false,
+  loadAll = false
 ): Promise<TransactionDoc[]> {
   const cache: Map<string, UserCache> = globalAny.__user_cache;
   const now = Date.now();
@@ -99,17 +100,17 @@ export async function getUserTransactionCache(
   }
 
   try {
-    // Calculate date range (365 days from today)
+    // Calculate date range (365 days from today, or all history if loadAll)
     const toDate = ymd(new Date());
-    const fromDate = ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
+    const fromDate = loadAll ? '2000-01-01' : ymd(new Date(Date.now() - (DEFAULT_DAYS - 1) * msDay));
 
-    logger.debug(`Loading ${DEFAULT_DAYS} days of transactions for user`, { userId, fromDate, toDate });
+    logger.debug(`Loading ${loadAll ? 'ALL' : DEFAULT_DAYS} days of transactions for user`, { userId, fromDate, toDate });
 
-    // Fetch all transactions in the date range with pagination
+    // Fetch all transactions in date range with pagination
     const allTransactions: TransactionDoc[] = [];
     let cursor: string | undefined;
     const pageSize = 100;
-    
+
     while (true) {
       const queries = [
         Query.equal('userId', userId),
@@ -118,7 +119,7 @@ export async function getUserTransactionCache(
         Query.orderDesc('bookingDate'),
         Query.limit(pageSize)
       ];
-      
+
       if (cursor) {
         queries.push(Query.cursorAfter(cursor));
       }

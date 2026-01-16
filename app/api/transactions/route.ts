@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0"));
     const searchTerm = searchParams.get("search")?.trim() || null;
     const includeExcluded = searchParams.get("includeExcluded") === "true";
+    const all = searchParams.get("all") === "true";
 
     // Create Appwrite client for cache service
     const client = new Client()
@@ -49,8 +50,8 @@ export async function GET(request: Request) {
     }
     const databases = new Databases(client);
 
-    // Get cached transactions (loads 365 days on first call)
-    const allTransactions = await getUserTransactionCache(userId, databases);
+    // Get cached transactions (loads 365 days by default, all history if all=true)
+    const allTransactions = await getUserTransactionCache(userId, databases, false, all);
 
     // Filter transactions based on request parameters
     const filtered = filterTransactions(allTransactions, {

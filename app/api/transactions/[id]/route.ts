@@ -24,6 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       description?: string; 
       counterparty?: string;
       similarTransactionIds?: string[];
+      isNotRecurring?: boolean;
     }
 
     const client = new Client()
@@ -53,6 +54,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updatePayload: Partial<TransactionDocument> = {}
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
+    if (typeof body.isNotRecurring === "boolean") updatePayload.isNotRecurring = body.isNotRecurring
     if (typeof body.description === "string") updatePayload.description = body.description.trim() || null
     if (body.counterparty !== undefined) {
       // Allow setting counterparty to empty string or null
