@@ -56,7 +56,7 @@ export function GDPRDashboard() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ name: string; email: string }>({ name: '', email: '' });
+  const [editValues, setEditValues] = useState<{ name: string; email: string; password?: string }>({ name: '', email: '' });
   const [currencyPreferences, setCurrencyPreferences] = useState<string[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState({
     emailNotifications: true,
@@ -94,7 +94,7 @@ export function GDPRDashboard() {
       };
 
       setUserData(userData);
-      setEditValues({ name: userData.name, email: userData.email });
+      setEditValues({ name: userData.name, email: userData.email, password: '' });
 
       // Load currency preferences
       const savedCurrencies = localStorage.getItem('nexpass-preferred-currencies');
@@ -157,9 +157,14 @@ export function GDPRDashboard() {
         toast.success('Name updated successfully');
       } else if (field === 'email') {
         // Update email through Appwrite account API
-        await account.updateEmail(editValues.email);
+        if (!editValues.password) {
+          toast.error('Password is required to update email');
+          return;
+        }
+        await account.updateEmail(editValues.email, editValues.password);
         await loadUserData();
         setEditingField(null);
+        setEditValues(prev => ({ ...prev, password: '' }));
         toast.success('Email updated successfully');
       }
     } catch (error: any) {
@@ -172,7 +177,7 @@ export function GDPRDashboard() {
 
   const handleCancelEdit = () => {
     setEditingField(null);
-    setEditValues({ name: userData?.name || '', email: userData?.email || '' });
+    setEditValues({ name: userData?.name || '', email: userData?.email || '', password: '' });
   };
 
   const handleCurrencyPreferencesUpdate = (currencies: string[]) => {
@@ -351,13 +356,24 @@ export function GDPRDashboard() {
                 <div className="flex items-center gap-2">
                   {editingField === 'email' ? (
                     <>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={editValues.email}
-                        onChange={(e) => setEditValues(prev => ({ ...prev, email: e.target.value }))}
-                        className="flex-1 rounded-xl border-[#40221a]/20 dark:border-white/20 focus-visible:ring-[#40221a] dark:focus-visible:ring-white"
-                      />
+                      <div className="flex-1 space-y-2">
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="New email"
+                          value={editValues.email}
+                          onChange={(e) => setEditValues(prev => ({ ...prev, email: e.target.value }))}
+                          className="rounded-xl border-[#40221a]/20 dark:border-white/20 focus-visible:ring-[#40221a] dark:focus-visible:ring-white"
+                        />
+                        <Input
+                          id="email-password"
+                          type="password"
+                          placeholder="Current password"
+                          value={editValues.password || ''}
+                          onChange={(e) => setEditValues(prev => ({ ...prev, password: e.target.value }))}
+                          className="rounded-xl border-[#40221a]/20 dark:border-white/20 focus-visible:ring-[#40221a] dark:focus-visible:ring-white"
+                        />
+                      </div>
                       <Button
                         size="icon"
                         onClick={() => handleSaveField('email')}

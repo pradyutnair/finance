@@ -58,7 +58,7 @@ export function RecurringGrid({ patterns, isLoading = false, onRefresh }: Recurr
       case 'amount':
         return b.averageAmount - a.averageAmount
       case 'frequency':
-        const frequencyOrder = { daily: 0, weekly: 1, bi_weekly: 2, monthly: 3, quarterly: 4, yearly: 5 }
+        const frequencyOrder = { daily: 0, weekly: 1, bi_weekly: 2, monthly: 3, quarterly: 4, yearly: 5, custom: 6 }
         return frequencyOrder[a.frequency] - frequencyOrder[b.frequency]
       default:
         return 0

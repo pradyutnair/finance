@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       )
 
       if (response.documents.length > 0) {
-        const doc = response.documents[0] as { $id: string; userId: string; balanceGoal?: number; savingsRateGoal?: number; baseCurrency?: string }
+        const doc = response.documents[0] as unknown as { $id: string; userId: string; balanceGoal?: number; savingsRateGoal?: number; baseCurrency?: string }
         const payload: GoalsPayload = {
           $id: doc.$id,
           userId: doc.userId,

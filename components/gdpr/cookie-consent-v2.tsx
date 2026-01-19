@@ -303,7 +303,7 @@ export function CookieConsent({ onConsentChange }: CookieConsentProps) {
                         id={type.key}
                         checked={isEnabled}
                         onCheckedChange={(checked) => handlePreferenceChange(type.key, checked)}
-                        disabled={type.disabled}
+                        disabled={type.required}
                       />
                     </div>
                   </div>

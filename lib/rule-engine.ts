@@ -253,7 +253,7 @@ export function applyRulesToTransactions(
   const updatedTransactions = transactions.map(transaction => {
     if (options?.applyAll) {
       const result = applyAllMatchingRules(transaction, rules)
-      if (result.updated) {
+      if (result.appliedRules.length > 0) {
         ruleApplications.push({
           transactionId: transaction.id,
           appliedRules: result.appliedRules,

@@ -55,10 +55,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (typeof body.category === "string") updatePayload.category = body.category
     if (typeof body.exclude === "boolean") updatePayload.exclude = body.exclude
     if (typeof body.isNotRecurring === "boolean") updatePayload.isNotRecurring = body.isNotRecurring
-    if (typeof body.description === "string") updatePayload.description = body.description.trim() || null
+    if (typeof body.description === "string") updatePayload.description = body.description.trim() || undefined
     if (body.counterparty !== undefined) {
-      // Allow setting counterparty to empty string or null
-      updatePayload.counterparty = typeof body.counterparty === "string" ? (body.counterparty.trim() || null) : null
+      // Allow setting counterparty to empty string or undefined
+      updatePayload.counterparty = typeof body.counterparty === "string" ? (body.counterparty.trim() || undefined) : undefined
     }
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ ok: false, error: "No valid fields to update" }, { status: 400 })
