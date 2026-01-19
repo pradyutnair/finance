@@ -45,10 +45,36 @@ function isTransfer(tx: Transaction): boolean {
 }
 
 /**
+ * Get days in month for a given date
+ */
+function getDaysInMonth(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+}
+
+/**
+ * Check if two days are within +/- 1 day of each other
+ * Handles month boundaries (e.g., day 1 and last day of month are within 1 day)
+ */
+function areDaysWithinWindow(day1: number, daysInMonth1: number, day2: number, daysInMonth2: number): boolean {
+  // Simple case: same day
+  if (day1 === day2) return true
+
+  // Check if day2 is within day1 +/- 1
+  if (day2 === day1 - 1 || day2 === day1 + 1) return true
+
+  // Handle month boundaries
+  // Day 1 of a month is within 1 day of the last day of the previous month
+  if (day1 === 1 && day2 === daysInMonth2) return true
+  if (day2 === 1 && day1 === daysInMonth1) return true
+
+  return false
+}
+
+/**
  * Detect recurring transactions.
  * A transaction is recurring if:
  * 1. It occurs more than once
- * 2. On the same day of each month
+ * 2. On the same day (+/- 1 day) of different months
  * 3. And the category is not "groceries"
  * 4. And it is not a transfer
  */
@@ -79,63 +105,98 @@ export function detectRecurringTransactions(
     return tx.amount <= 0 || Math.abs(tx.amount) < 5
   })
 
-  // Group by counterparty and day of month
-  const groups = new Map<string, Transaction[]>()
+  // First, group by counterparty
+  const byCounterparty = new Map<string, Transaction[]>()
 
   for (const tx of filtered) {
-    const date = new Date(tx.date || tx.bookingDate || "")
-    const dayOfMonth = date.getDate()
     const counterparty = (tx.counterparty || tx.description || "Unknown").trim()
 
-    // Create a key combining counterparty and day of month
-    const key = `${counterparty}|${dayOfMonth}`
-
-    if (!groups.has(key)) {
-      groups.set(key, [])
+    if (!byCounterparty.has(counterparty)) {
+      byCounterparty.set(counterparty, [])
     }
-    groups.get(key)!.push(tx)
+    byCounterparty.get(counterparty)!.push(tx)
   }
 
-  // Filter to only include groups with transactions from 2+ different months
+  // For each counterparty, cluster transactions by day window (day +/- 1)
   const recurring: RecurringTransaction[] = []
 
-  for (const [key, txs] of groups.entries()) {
-    // Count unique months (year-month) in this group
-    const uniqueMonths = new Set(
-      txs.map(tx => {
-        const date = new Date(tx.date || tx.bookingDate || "")
-        return `${date.getFullYear()}-${date.getMonth() + 1}`
-      })
-    )
+  for (const [counterparty, txs] of byCounterparty.entries()) {
+    // Sort transactions by date
+    const sorted = [...txs].sort((a, b) => {
+      const dateA = new Date(a.date || a.bookingDate || "")
+      const dateB = new Date(b.date || b.bookingDate || "")
+      return dateA.getTime() - dateB.getTime()
+    })
 
-    // Only include if transactions span 2+ different months
-    if (uniqueMonths.size >= 2) {
-      const counterparty = txs[0].counterparty || txs[0].description || "Unknown"
-      const date = new Date(txs[0].date || txs[0].bookingDate || "")
-      const dayOfMonth = date.getDate()
-      const currency = txs[0].currency
+    // Cluster transactions by day window
+    const clusters: Transaction[][] = []
 
-      const totalAmount = txs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0)
-      const avgAmount = totalAmount / txs.length
+    for (const tx of sorted) {
+      const txDate = new Date(tx.date || tx.bookingDate || "")
+      const txDay = txDate.getDate()
+      const txDaysInMonth = getDaysInMonth(txDate)
 
-      const totalAbsAmount = txs.reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0)
-      const avgAbsAmount = totalAbsAmount / txs.length
+      // Try to add to existing cluster
+      let added = false
+      for (const cluster of clusters) {
+        // Check if this transaction's day is within the cluster's day window
+        const firstTxDate = new Date(cluster[0].date || cluster[0].bookingDate || "")
+        const firstDay = firstTxDate.getDate()
+        const firstDaysInMonth = getDaysInMonth(firstTxDate)
 
-      recurring.push({
-        key,
-        counterparty,
-        category: txs[0].category || "Uncategorized",
-        dayOfMonth,
-        transactions: txs.sort((a, b) => {
-          const dateA = new Date(a.date || a.bookingDate || "")
-          const dateB = new Date(b.date || b.bookingDate || "")
-          return dateB.getTime() - dateA.getTime() // Sort by date descending
-        }),
-        count: txs.length,
-        avgAmount,
-        avgAbsAmount,
-        currency,
-      })
+        if (areDaysWithinWindow(txDay, txDaysInMonth, firstDay, firstDaysInMonth)) {
+          cluster.push(tx)
+          added = true
+          break
+        }
+      }
+
+      // If not added to any cluster, create a new one
+      if (!added) {
+        clusters.push([tx])
+      }
+    }
+
+    // Check each cluster for recurring pattern (2+ different months)
+    for (const clusterTxs of clusters) {
+      const uniqueMonths = new Set(
+        clusterTxs.map(tx => {
+          const date = new Date(tx.date || tx.bookingDate || "")
+          return `${date.getFullYear()}-${date.getMonth() + 1}`
+        })
+      )
+
+      if (uniqueMonths.size >= 2) {
+        const currency = clusterTxs[0].currency
+
+        const totalAmount = clusterTxs.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0)
+        const avgAmount = totalAmount / clusterTxs.length
+
+        const totalAbsAmount = clusterTxs.reduce((sum, tx) => sum + Math.abs(Number(tx.amount) || 0), 0)
+        const avgAbsAmount = totalAbsAmount / clusterTxs.length
+
+        // Use the first transaction's day as the canonical day
+        const firstDate = new Date(clusterTxs[0].date || clusterTxs[0].bookingDate || "")
+        const canonicalDay = firstDate.getDate()
+
+        const key = `${counterparty}|${canonicalDay}`
+
+        recurring.push({
+          key,
+          counterparty,
+          category: clusterTxs[0].category || "Uncategorized",
+          dayOfMonth: canonicalDay,
+          transactions: clusterTxs.sort((a, b) => {
+            const dateA = new Date(a.date || a.bookingDate || "")
+            const dateB = new Date(b.date || b.bookingDate || "")
+            return dateB.getTime() - dateA.getTime() // Sort by date descending
+          }),
+          count: clusterTxs.length,
+          avgAmount,
+          avgAbsAmount,
+          currency,
+        })
+      }
     }
   }
 
